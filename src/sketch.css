@@ -285,3 +285,17 @@ body.pov-fin .pov-only.pov-fin{
 .status-bar > i{
   position:absolute;left:0;top:0;bottom:0;background:var(--ok);
 }
+
+@media (max-width:600px){
+  .btn{min-height:44px;padding:4px 12px;}
+  .btn.sm{min-height:36px;font-size:12px;padding:3px 10px;}
+  .nav-item{min-height:44px;padding:8px 10px;}
+  .input{min-height:44px;padding:0 10px;}
+  .wf{font-size:13px;}
+  .h2{font-size:20px;}
+  .h3{font-size:16px;}
+}
+
+@media (hover:none){
+  .btn,.nav-item{cursor:default;}
+}

@@ -9,6 +9,14 @@ const __TWEAKS_STYLE = `
     border:.5px solid rgba(255,255,255,.6);border-radius:14px;
     box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
     font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-fab{position:fixed;right:16px;bottom:16px;z-index:2147483645;
+    width:44px;height:44px;border-radius:50%;border:0;cursor:default;
+    background:rgba(250,249,247,.9);color:#29261b;font-size:20px;line-height:1;
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    box-shadow:0 2px 12px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.1);
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .12s,box-shadow .12s}
+  .twk-fab:hover{transform:scale(1.08);box-shadow:0 4px 18px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.12)}
   .twk-hd{display:flex;align-items:center;justify-content:space-between;
     padding:10px 8px 10px 14px;cursor:move;user-select:none}
   .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
@@ -50,6 +58,19 @@ const __TWEAKS_STYLE = `
     border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
   .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
     background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  @media (hover:none){
+    .twk-slider::-webkit-slider-thumb{width:22px;height:22px}
+    .twk-slider::-moz-range-thumb{width:22px;height:22px}
+    .twk-slider{margin:10px 0}
+    .twk-panel{width:100%;max-width:100%;right:0!important;bottom:0!important;
+      border-radius:16px 16px 0 0;max-height:72dvh;transform:none}
+    .twk-fab{right:12px;bottom:12px}
+    .twk-btn,.twk-x{min-height:44px;min-width:44px}
+    .twk-toggle{width:44px;height:26px}
+    .twk-toggle i{width:20px;height:20px}
+    .twk-toggle[data-on="1"] i{transform:translateX(18px)}
+    .twk-hd{padding:14px 12px 14px 16px}
+  }
 
   .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
     background:rgba(0,0,0,.06);user-select:none}
@@ -121,6 +142,17 @@ export function useTweaks(defaults) {
   return [values, setTweak]
 }
 
+function postToParent(msg) {
+  if (window.parent === window) return
+  try { window.parent.postMessage(msg, '*') } catch (_) {}
+}
+
+function isAllowedSource(e) {
+  if (e.source === window) return true
+  if (window.parent !== window && e.source === window.parent) return true
+  return false
+}
+
 export function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
   const [open, setOpen] = React.useState(false)
   const dragRef = React.useRef(null)
@@ -155,18 +187,32 @@ export function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children
 
   React.useEffect(() => {
     const onMsg = (e) => {
+      if (!isAllowedSource(e)) return
       const t = e?.data?.type
+      if (typeof t !== 'string') return
       if (t === '__activate_edit_mode') setOpen(true)
       else if (t === '__deactivate_edit_mode') setOpen(false)
     }
     window.addEventListener('message', onMsg)
-    window.parent.postMessage({ type: '__edit_mode_available' }, '*')
-    return () => window.removeEventListener('message', onMsg)
+    postToParent({ type: '__edit_mode_available' })
+
+    const onKey = (e) => {
+      if (e.key === 't' || e.key === 'T') {
+        const tag = document.activeElement?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        setOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('message', onMsg)
+      window.removeEventListener('keydown', onKey)
+    }
   }, [])
 
   const dismiss = () => {
     setOpen(false)
-    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*')
+    postToParent({ type: '__edit_mode_dismissed' })
   }
 
   const onDragStart = (e) => {
@@ -191,7 +237,13 @@ export function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children
     window.addEventListener('mouseup', up)
   }
 
-  if (!open) return null
+  if (!open) return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <button className="twk-fab" aria-label="Open tweaks panel"
+              onClick={() => setOpen(true)} title="Tweaks (T)">⚙</button>
+    </>
+  )
   return (
     <>
       <style>{__TWEAKS_STYLE}</style>
