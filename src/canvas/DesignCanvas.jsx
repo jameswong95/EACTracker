@@ -48,6 +48,8 @@ if (typeof document !== 'undefined' && !document.getElementById('dc-styles')) {
     '.dc-menu .dc-danger:hover{background:rgba(201,100,66,.1)}',
     '.dc-header{width:calc((100% + 4px) / var(--dc-inv-zoom,1));transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom left}',
     '.dc-sectionhead{zoom:var(--dc-inv-zoom,1)}',
+    /* Mobile: show btns always on touch devices */
+    '@media (hover:none){.dc-btns{opacity:1}}',
   ].join('\n');
   document.head.appendChild(s);
 }
@@ -65,6 +67,34 @@ function dcFlatten(children) {
 
 const DC_STATE_KEY = 'pfms-dc-state';
 
+// Validate saved canvas state from localStorage to prevent injection
+function validateDCState(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!raw.sections || typeof raw.sections !== 'object' || Array.isArray(raw.sections)) return null;
+  const sections = {};
+  for (const [key, val] of Object.entries(raw.sections)) {
+    if (typeof key !== 'string' || key.length > 500) continue;
+    if (!val || typeof val !== 'object' || Array.isArray(val)) continue;
+    sections[key] = val;
+  }
+  return { sections };
+}
+
+// Safe postMessage to parent — only when actually embedded in an iframe
+function postToParent(msg) {
+  if (window.parent === window) return; // not in iframe
+  try { window.parent.postMessage(msg, '*'); } catch {}
+}
+
+// Check if a message event comes from the expected source
+function isAllowedSource(e) {
+  // Same-window messages (e.g. from same-origin scripts)
+  if (e.source === window) return true;
+  // Messages from parent frame
+  if (window.parent !== window && e.source === window.parent) return true;
+  return false;
+}
+
 export function DesignCanvas({ children, minScale, maxScale, style }) {
   const [state, setState] = React.useState({ sections: {}, focus: null });
   const [ready, setReady] = React.useState(false);
@@ -73,8 +103,9 @@ export function DesignCanvas({ children, minScale, maxScale, style }) {
 
   React.useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(DC_STATE_KEY) || 'null');
-      if (saved?.sections) {
+      const raw = JSON.parse(localStorage.getItem(DC_STATE_KEY) || 'null');
+      const saved = validateDCState(raw);
+      if (saved) {
         skipNextWrite.current = true;
         setState((s) => ({ ...s, sections: saved.sections }));
       }
@@ -173,7 +204,7 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
     el.style.setProperty('--dc-inv-zoom', String(1 / scale));
     if (lastPostedScale.current !== scale) {
       lastPostedScale.current = scale;
-      window.parent.postMessage({ type: '__dc_zoom', scale }, '*');
+      postToParent({ type: '__dc_zoom', scale });
     }
     clearTimeout(saveT.current);
     saveT.current = setTimeout(() => {
@@ -187,9 +218,10 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
       try { localStorage.setItem(tfKey, JSON.stringify(tf.current)); } catch {}
     };
     try {
-      const s = JSON.parse(localStorage.getItem(tfKey) || 'null');
-      if (s && Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.scale)) {
-        tf.current = { x: s.x, y: s.y, scale: Math.min(maxScale, Math.max(minScale, s.scale)) };
+      const raw = JSON.parse(localStorage.getItem(tfKey) || 'null');
+      if (raw && Number.isFinite(raw.x) && Number.isFinite(raw.y) && Number.isFinite(raw.scale)
+          && typeof raw.x === 'number' && typeof raw.y === 'number') {
+        tf.current = { x: raw.x, y: raw.y, scale: Math.min(maxScale, Math.max(minScale, raw.scale)) };
         apply();
       }
     } catch {}
@@ -241,32 +273,83 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
       }
     };
 
+    // Safari gesture events (desktop + iOS)
     let gsBase = 1;
     let isGesturing = false;
     const onGestureStart = (e) => { e.preventDefault(); isGesturing = true; gsBase = tf.current.scale; };
     const onGestureChange = (e) => {
       e.preventDefault();
-      zoomAt(e.clientX, e.clientY, (gsBase * e.scale) / tf.current.scale);
+      if (!isPointerPinching) zoomAt(e.clientX, e.clientY, (gsBase * e.scale) / tf.current.scale);
     };
     const onGestureEnd = (e) => { e.preventDefault(); isGesturing = false; };
 
+    // Multi-touch pinch-zoom via Pointer Events (Chrome, Android, Firefox)
+    const activePointers = new Map();
+    let pinch = null; // { startDist, startScale, midX, midY }
+    let isPointerPinching = false;
+
     let drag = null;
     const onPointerDown = (e) => {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (activePointers.size === 2) {
+        // Start pinch
+        const pts = [...activePointers.values()];
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        pinch = {
+          startDist: dist,
+          startScale: tf.current.scale,
+          midX: (pts[0].x + pts[1].x) / 2,
+          midY: (pts[0].y + pts[1].y) / 2,
+        };
+        isPointerPinching = true;
+        drag = null; // cancel any active drag
+        vp.style.cursor = '';
+        return;
+      }
+
       const onBg = !e.target.closest('[data-dc-slot], .dc-editable');
-      if (!(e.button === 1 || (e.button === 0 && onBg))) return;
+      if (!(e.button === 1 || (e.button === 0 && onBg) || e.pointerType === 'touch')) return;
+      if (e.pointerType === 'touch' && !onBg) return;
       e.preventDefault();
       vp.setPointerCapture(e.pointerId);
       drag = { id: e.pointerId, lx: e.clientX, ly: e.clientY };
       vp.style.cursor = 'grabbing';
     };
+
     const onPointerMove = (e) => {
+      if (activePointers.has(e.pointerId)) {
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+
+      // Two-finger pinch
+      if (activePointers.size === 2 && pinch) {
+        const pts = [...activePointers.values()];
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        if (pinch.startDist > 0) {
+          const targetScale = pinch.startScale * (dist / pinch.startDist);
+          const factor = targetScale / tf.current.scale;
+          zoomAt(pinch.midX, pinch.midY, factor);
+          // Update midpoint as fingers move
+          pinch.midX = (pts[0].x + pts[1].x) / 2;
+          pinch.midY = (pts[0].y + pts[1].y) / 2;
+        }
+        return;
+      }
+
       if (!drag || e.pointerId !== drag.id) return;
       tf.current.x += e.clientX - drag.lx;
       tf.current.y += e.clientY - drag.ly;
       drag.lx = e.clientX; drag.ly = e.clientY;
       apply();
     };
+
     const onPointerUp = (e) => {
+      activePointers.delete(e.pointerId);
+      if (activePointers.size < 2) {
+        pinch = null;
+        isPointerPinching = false;
+      }
       if (!drag || e.pointerId !== drag.id) return;
       vp.releasePointerCapture(e.pointerId);
       drag = null;
@@ -274,18 +357,21 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
     };
 
     const onHostMsg = (e) => {
+      // Only accept messages from the parent frame or same window
+      if (!isAllowedSource(e)) return;
       const d = e.data;
-      if (d && d.type === '__dc_set_zoom' && typeof d.scale === 'number') {
+      if (!d || typeof d !== 'object') return;
+      if (d.type === '__dc_set_zoom' && typeof d.scale === 'number' && Number.isFinite(d.scale)) {
         const r = vp.getBoundingClientRect();
         zoomAt(r.left + r.width / 2, r.top + r.height / 2, d.scale / tf.current.scale);
-      } else if (d && d.type === '__dc_probe') {
-        window.parent.postMessage({ type: '__dc_present' }, '*');
+      } else if (d.type === '__dc_probe') {
+        postToParent({ type: '__dc_present' });
         lastPostedScale.current = undefined;
         apply();
       }
     };
     window.addEventListener('message', onHostMsg);
-    window.parent.postMessage({ type: '__dc_present' }, '*');
+    postToParent({ type: '__dc_present' });
     lastPostedScale.current = undefined;
     apply();
 
@@ -316,7 +402,7 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
       ref={vpRef}
       className="design-canvas"
       style={{
-        height: '100vh', width: '100vw',
+        height: '100dvh', width: '100dvw',
         background: DC.bg,
         overflow: 'hidden',
         overscrollBehavior: 'none',
@@ -517,14 +603,14 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
     if (!cardRef.current) return;
     const name = String(label || id || 'artboard').replace(/[^\w\s.-]+/g, '_');
     dcExport(cardRef.current, width, height, name, kind)
-      .catch((e) => console.error('[design-canvas] export failed:', e));
+      .catch(() => {});
   };
 
   const onGripDown = (e) => {
     e.preventDefault(); e.stopPropagation();
     const me = ref.current;
     const scale = me.getBoundingClientRect().width / me.offsetWidth || 1;
-    const peers = Array.from(document.querySelectorAll(`[data-dc-section="${sectionId}"] [data-dc-slot]`));
+    const peers = Array.from(document.querySelectorAll(`[data-dc-section="${CSS.escape(sectionId)}"] [data-dc-slot]`));
     const homes = peers.map((el) => ({ el, id: el.dataset.dcSlot, x: el.getBoundingClientRect().left }));
     const slotXs = homes.map((h) => h.x);
     const startIdx = order.indexOf(id);
@@ -603,7 +689,7 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
               </div>
             )}
           </div>
-          <button className="dc-expand" onClick={onFocus} title="Focus">
+          <button className="dc-expand" onClick={onFocus} title="Focus (tap to fullscreen)">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M7 1h4v4M5 11H1V7M11 1L7.5 4.5M1 11l3.5-3.5"/></svg>
           </button>
         </div>
@@ -661,15 +747,23 @@ function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
 
   const { width = 260, height = 480, children } = artboard.props;
   const [vp, setVp] = React.useState({ w: window.innerWidth, h: window.innerHeight });
-  React.useEffect(() => { const r = () => setVp({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
-  const scale = Math.max(0.1, Math.min((vp.w - 200) / width, (vp.h - 260) / height, 2));
+  React.useEffect(() => {
+    const r = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', r);
+    return () => window.removeEventListener('resize', r);
+  }, []);
+  // On mobile, use more of the viewport
+  const hPad = vp.w < 600 ? 40 : 200;
+  const vPad = vp.w < 600 ? 140 : 260;
+  const scale = Math.max(0.1, Math.min((vp.w - hPad) / width, (vp.h - vPad) / height, 2));
 
   const [ddOpen, setDd] = React.useState(false);
-  const Arrow = ({ dir, onClick }) => (
-    <button onClick={(e) => { e.stopPropagation(); onClick(); }}
-      style={{ position: 'absolute', top: '50%', [dir]: 28, transform: 'translateY(-50%)',
+  const NavArrow = ({ dir, onClick: handleClick }) => (
+    <button onClick={(e) => { e.stopPropagation(); handleClick(); }}
+      style={{ position: 'absolute', top: '50%', [dir]: vp.w < 600 ? 8 : 28, transform: 'translateY(-50%)',
         border: 'none', background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.9)',
-        width: 44, height: 44, borderRadius: 22, fontSize: 18, cursor: 'pointer',
+        width: vp.w < 600 ? 40 : 44, height: vp.w < 600 ? 40 : 44,
+        borderRadius: 22, fontSize: 18, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s' }}
       onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
       onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.08)')}>
@@ -698,7 +792,8 @@ function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
           </button>
           {ddOpen && (
             <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#2a251f', borderRadius: 8,
-              boxShadow: '0 8px 32px rgba(0,0,0,.4)', padding: 4, minWidth: 200, zIndex: 10 }}>
+              boxShadow: '0 8px 32px rgba(0,0,0,.4)', padding: 4, minWidth: 200, zIndex: 10,
+              maxHeight: '60vh', overflowY: 'auto' }}>
               {sectionOrder.filter((sid) => sectionMeta[sid].slotIds.length).map((sid) => (
                 <button key={sid} onClick={() => { setDd(false); const f = sectionMeta[sid].slotIds[0]; if (f) ctx.setFocus(`${sid}/${f}`); }}
                   style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
@@ -712,14 +807,15 @@ function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
         </div>
         <div style={{ flex: 1 }} />
         <button onClick={() => ctx.setFocus(null)}
+          aria-label="Close"
           onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.12)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          style={{ border: 'none', background: 'transparent', color: 'rgba(255,255,255,.7)', width: 32, height: 32,
-            borderRadius: 16, fontSize: 20, cursor: 'pointer', lineHeight: 1, transition: 'background .12s' }}>×</button>
+          style={{ border: 'none', background: 'transparent', color: 'rgba(255,255,255,.7)', width: 44, height: 44,
+            borderRadius: 22, fontSize: 20, cursor: 'pointer', lineHeight: 1, transition: 'background .12s' }}>×</button>
       </div>
 
       <div
-        style={{ position: 'absolute', top: 64, bottom: 56, left: 100, right: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        style={{ position: 'absolute', top: 64, bottom: 56, left: hPad / 2, right: hPad / 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
         <div onClick={(e) => e.stopPropagation()} style={{ width: width * scale, height: height * scale, position: 'relative' }}>
           <div style={{ width, height, transform: `scale(${scale})`, transformOrigin: 'top left', background: '#fff', borderRadius: 2, overflow: 'hidden',
             boxShadow: '0 20px 80px rgba(0,0,0,.4)' }}>
@@ -732,14 +828,15 @@ function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
         </div>
       </div>
 
-      <Arrow dir="left" onClick={() => go(-1)} />
-      <Arrow dir="right" onClick={() => go(1)} />
+      <NavArrow dir="left" onClick={() => go(-1)} />
+      <NavArrow dir="right" onClick={() => go(1)} />
 
       <div onClick={(e) => e.stopPropagation()}
         style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8 }}>
         {peers.map((p, i) => (
           <button key={p} onClick={() => ctx.setFocus(`${sectionId}/${p}`)}
-            style={{ border: 'none', padding: 0, cursor: 'pointer', width: 6, height: 6, borderRadius: 3,
+            aria-label={`Go to ${p}`}
+            style={{ border: 'none', padding: 0, cursor: 'pointer', width: 8, height: 8, borderRadius: 4,
               background: i === idx ? '#fff' : 'rgba(255,255,255,.3)' }} />
         ))}
       </div>
@@ -749,13 +846,12 @@ function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
 }
 
 export function DCPostIt({ children, top, left, right, bottom, rotate = -2, width = 180 }) {
-  const DC_local = { postitBg: '#fef4a8', postitText: '#5a4a2a', font: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif' };
   return (
     <div style={{
       position: 'absolute', top, left, right, bottom, width,
-      background: DC_local.postitBg, padding: '14px 16px',
+      background: DC.postitBg, padding: '14px 16px',
       fontFamily: '"Comic Sans MS", "Marker Felt", "Segoe Print", cursive',
-      fontSize: 14, lineHeight: 1.4, color: DC_local.postitText,
+      fontSize: 14, lineHeight: 1.4, color: DC.postitText,
       boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)',
       transform: `rotate(${rotate}deg)`,
       zIndex: 5,
