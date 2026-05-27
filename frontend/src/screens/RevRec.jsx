@@ -2,41 +2,41 @@ import React, { useState } from 'react';
 import { getProject, fmt, MONTHS } from '../data/mock.js';
 import { LineChart } from '../components/Charts.jsx';
 
+const NOW_MONTH = 4; // May — months 0..NOW_MONTH are locked (SAP actuals)
+
 export default function RevRec({ projectId, navigate }) {
-  const p = getProject(projectId);
+  const p  = getProject(projectId);
   const rr = p.revrec;
 
-  const [curve, setCurve] = useState([...rr.recognitionCurve]);
-  const [saved, setSaved] = useState(false);
+  // Derive initial monthly values from existing curve data
+  const initMonthly = MONTHS.map((_, mi) => {
+    const thisPct = rr.recognitionCurve[mi] / 100;
+    const prevPct = mi > 0 ? rr.recognitionCurve[mi - 1] / 100 : 0;
+    return Math.round((thisPct - prevPct) * rr.forecastFull);
+  });
 
-  function updateCurve(mi, val) {
-    const num = Math.min(100, Math.max(0, parseFloat(val) || 0));
-    setCurve(prev => {
-      const next = [...prev];
-      next[mi] = num;
-      return next;
-    });
+  const [monthly, setMonthly] = useState(initMonthly);
+  const [saved,   setSaved]   = useState(false);
+
+  function update(mi, val) {
+    const num = Math.max(0, parseFloat(val) || 0);
+    setMonthly(prev => prev.map((v, i) => i === mi ? num : v));
     setSaved(false);
   }
 
-  const recognisedPct    = (rr.recognisedToDate / rr.forecastFull * 100).toFixed(1);
-  const remainingRevenue = rr.forecastFull - rr.recognisedToDate;
+  // Derived
+  const cumulative       = MONTHS.map((_, mi) => monthly.slice(0, mi + 1).reduce((s, v) => s + v, 0));
+  const totalForecast    = monthly.reduce((s, v) => s + v, 0);
+  const recognisedToDate = monthly.slice(0, NOW_MONTH + 1).reduce((s, v) => s + v, 0);
+  const remaining        = rr.forecastFull - totalForecast;
+  const recognisedPct    = (recognisedToDate / rr.forecastFull * 100).toFixed(1);
 
-  const monthlyRevenue = MONTHS.map((_, mi) => {
-    const thisMonth = curve[mi] / 100 * rr.forecastFull;
-    const prevMonth = mi > 0 ? curve[mi - 1] / 100 * rr.forecastFull : 0;
-    return thisMonth - prevMonth;
-  });
-
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  }
+  function handleSave() { setSaved(true); setTimeout(() => setSaved(false), 3000); }
 
   const guardrails = [
-    { ok: true,                       text: 'Monthly reconciliation active' },
-    { ok: parseFloat(recognisedPct) <= 100, text: 'Recognition does not exceed contract' },
-    { ok: curve.every((v, i) => i === 0 || v >= curve[i - 1]), text: 'Curve is monotonically increasing' },
+    { ok: true,                             text: 'Monthly reconciliation active' },
+    { ok: totalForecast <= rr.forecastFull, text: 'Total recognition does not exceed contract' },
+    { ok: monthly.every(v => v >= 0),       text: 'No negative monthly values' },
   ];
 
   return (
@@ -50,10 +50,18 @@ export default function RevRec({ projectId, navigate }) {
         <div className="grow" />
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}>← Back</button>
         <button className="btn btn-primary btn-sm" onClick={handleSave}>
-          {saved ? '✓ Saved' : 'Save RevRec'}
+          {saved ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1.5 6l3 3 6-6"/>
+              </svg>
+              Saved
+            </span>
+          ) : 'Save RevRec'}
         </button>
       </div>
 
+      {/* KPI tiles */}
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }}>
         <div className="kpi-tile">
           <div className="kpi-label">Contract value</div>
@@ -62,20 +70,24 @@ export default function RevRec({ projectId, navigate }) {
         </div>
         <div className="kpi-tile">
           <div className="kpi-label">Recognised to date</div>
-          <div className="kpi-value num" style={{ color: 'var(--ok)' }}>{fmt(rr.recognisedToDate)}</div>
+          <div className="kpi-value num" style={{ color: 'var(--ok)' }}>{fmt(recognisedToDate)}</div>
           <div className="kpi-sub">{recognisedPct}% of contract</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Remaining revenue</div>
-          <div className="kpi-value num">{fmt(remainingRevenue)}</div>
-          <div className="kpi-sub">to be recognised</div>
+          <div className="kpi-label">Full-year forecast</div>
+          <div className="kpi-value num" style={{ color: totalForecast > rr.forecastFull ? 'var(--bad)' : 'var(--text)' }}>
+            {fmt(totalForecast)}
+          </div>
+          <div className="kpi-sub" style={{ color: remaining < 0 ? 'var(--bad)' : undefined }}>
+            {remaining >= 0 ? `${fmt(remaining)} remaining` : `${fmt(Math.abs(remaining))} over contract`}
+          </div>
         </div>
         <div className="kpi-tile">
           <div className="kpi-label">Method</div>
           <div style={{ marginTop: 10 }}>
-            <span className="badge badge-accent">% Complete</span>
+            <span className="badge badge-accent">Monthly value</span>
           </div>
-          <div className="kpi-sub">PM-entered monthly</div>
+          <div className="kpi-sub">PM-entered per month</div>
         </div>
       </div>
 
@@ -92,6 +104,26 @@ export default function RevRec({ projectId, navigate }) {
                 </div>
               ))}
             </div>
+
+            {/* Contract utilisation bar */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 10 }}>
+                Contract utilisation
+              </div>
+              <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-3)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min(100, totalForecast / rr.forecastFull * 100).toFixed(1)}%`,
+                  background: totalForecast > rr.forecastFull ? 'var(--bad)' : 'var(--ok)',
+                  borderRadius: 4,
+                  transition: 'width .2s',
+                }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--text-3)' }}>
+                <span>{(totalForecast / rr.forecastFull * 100).toFixed(1)}% used</span>
+                <span>{fmt(rr.forecastFull)}</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -99,7 +131,7 @@ export default function RevRec({ projectId, navigate }) {
         <div className="flex-col gap-4 grow">
           <div className="card card-p">
             <div className="flex items-center justify-between mb-4">
-              <h4>Cumulative recognition curve</h4>
+              <h4>Cumulative recognition</h4>
               <div className="flex gap-3" style={{ fontSize: 11, color: 'var(--text-3)' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ width: 14, height: 2, background: 'var(--accent)', display: 'inline-block', borderRadius: 1 }} /> Recognised
@@ -110,7 +142,7 @@ export default function RevRec({ projectId, navigate }) {
               </div>
             </div>
             <LineChart
-              data={curve.map(v => v / 100 * rr.forecastFull / 1000)}
+              data={cumulative.map(v => v / 1000)}
               budget={rr.forecastFull / 1000}
               width={500} height={140}
             />
@@ -123,7 +155,7 @@ export default function RevRec({ projectId, navigate }) {
             <div style={{ padding: '14px 20px 0', marginBottom: 4 }}>
               <h4>Monthly input</h4>
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-                Enter cumulative % complete for each month. Locked months show actuals from SAP.
+                Enter revenue recognised each month. Locked months are SAP actuals.
               </div>
             </div>
             <div className="table-wrap">
@@ -131,53 +163,73 @@ export default function RevRec({ projectId, navigate }) {
                 <thead>
                   <tr>
                     <th>Month</th>
-                    <th style={{ textAlign: 'right' }}>% Complete</th>
-                    <th style={{ textAlign: 'right' }}>Cumulative value</th>
-                    <th style={{ textAlign: 'right' }}>This month</th>
+                    <th style={{ textAlign: 'right' }}>Recognised ($)</th>
+                    <th style={{ textAlign: 'right' }}>Cumulative</th>
+                    <th style={{ textAlign: 'right' }}>% of contract</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {MONTHS.map((m, mi) => {
-                    const isPast    = mi <= 4;
-                    const isCurrent = mi === 4;
-                    const cumVal    = curve[mi] / 100 * rr.forecastFull;
-                    const thisMonth = monthlyRevenue[mi];
+                    const isLocked  = mi <= NOW_MONTH;
+                    const isCurrent = mi === NOW_MONTH;
+                    const cumVal    = cumulative[mi];
+                    const cumPct    = (cumVal / rr.forecastFull * 100).toFixed(1);
+                    const isOver    = cumVal > rr.forecastFull;
                     return (
                       <tr key={m} style={{ background: isCurrent ? 'var(--accent-light)' : 'transparent' }}>
                         <td style={{ fontWeight: isCurrent ? 700 : 400 }}>
                           {m} '26
                           {isCurrent && <span className="badge badge-accent" style={{ fontSize: 10, marginLeft: 8 }}>Current</span>}
                         </td>
-                        <td style={{ textAlign: 'right', padding: '8px 14px' }}>
-                          {isPast ? (
+                        <td style={{ textAlign: 'right', padding: '6px 14px' }}>
+                          {isLocked ? (
                             <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--text-3)' }}>
-                              {curve[mi]}%
+                              {monthly[mi] > 0 ? fmt(monthly[mi]) : '—'}
                             </span>
                           ) : (
                             <input
                               type="number"
-                              min="0" max="100" step="1"
+                              min="0"
+                              step="1000"
                               className="eac-cell eac-editable"
-                              value={curve[mi] || ''}
+                              value={monthly[mi] || ''}
                               placeholder="0"
-                              onChange={e => updateCurve(mi, e.target.value)}
-                              style={{ width: 72, display: 'inline-block' }}
+                              onChange={e => update(mi, e.target.value)}
+                              style={{ width: 100, display: 'inline-block', textAlign: 'right' }}
                             />
                           )}
                         </td>
-                        <td className="num text-right">{fmt(cumVal)}</td>
-                        <td className="num text-right" style={{ fontWeight: 600, color: thisMonth > 0 ? 'var(--ok)' : 'var(--text-3)' }}>
-                          {thisMonth > 0 ? '+' + fmt(thisMonth) : '—'}
+                        <td className="num text-right" style={{ color: isOver ? 'var(--bad)' : undefined, fontWeight: 600 }}>
+                          {fmt(cumVal)}
+                        </td>
+                        <td className="num text-right" style={{ color: 'var(--text-2)' }}>
+                          {cumPct}%
                         </td>
                         <td>
-                          <span className={`badge badge-${isPast ? 'ok' : 'neutral'}`} style={{ fontSize: 10 }}>
-                            {isPast ? 'Recognised' : 'Forecast'}
+                          <span className={`badge badge-${isLocked ? 'ok' : 'neutral'}`} style={{ fontSize: 10 }}>
+                            {isLocked ? 'Recognised' : 'Forecast'}
                           </span>
                         </td>
                       </tr>
                     );
                   })}
+                  {/* Total row */}
+                  <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border-2)' }}>
+                    <td style={{ paddingLeft: 20 }}>Total</td>
+                    <td className="num text-right" style={{ color: totalForecast > rr.forecastFull ? 'var(--bad)' : 'var(--text)' }}>
+                      {fmt(totalForecast)}
+                    </td>
+                    <td className="num text-right">—</td>
+                    <td className="num text-right" style={{ color: totalForecast > rr.forecastFull ? 'var(--bad)' : 'var(--text)' }}>
+                      {(totalForecast / rr.forecastFull * 100).toFixed(1)}%
+                    </td>
+                    <td>
+                      {totalForecast > rr.forecastFull && (
+                        <span className="badge badge-bad" style={{ fontSize: 10 }}>Over contract</span>
+                      )}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

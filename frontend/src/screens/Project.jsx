@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { getProject, fmt, fmtPct, statusLabel, MONTHS } from '../data/mock.js';
 import { LineChart, DonutChart, StackedBar } from '../components/Charts.jsx';
@@ -42,7 +42,7 @@ export default function Project({ projectId, navigate }) {
   const [risks, setRisks] = useState(() => p.risks.map(r => ({ ...r, _id: nextRid++ })));
   const variance = (p.eac - p.budget) / p.budget * 100;
 
-  const tabs = ['Overview', 'Update history', 'Milestones', 'Risks'];
+  const tabs = ['Overview', 'Update history', 'Milestones', 'Risks', 'Mitigation'];
 
   return (
     <div className="screen">
@@ -181,7 +181,7 @@ export default function Project({ projectId, navigate }) {
         </div>
 
         {/* Right: tabs */}
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', maxHeight: 520, overflow: 'hidden' }}>
           <div className="flex" style={{ borderBottom: '1px solid var(--border)', padding: '0 16px' }}>
             {tabs.map(t => (
               <button key={t} onClick={() => setTab(t.toLowerCase().replace(' ', '-'))}
@@ -200,6 +200,7 @@ export default function Project({ projectId, navigate }) {
             {tab === 'update-history' && <UpdatesTab p={p} />}
             {tab === 'milestones'     && <MilestonesTab milestones={milestones} setMilestones={setMilestones} />}
             {tab === 'risks'          && <RisksTab risks={risks} setRisks={setRisks} />}
+            {tab === 'mitigation'     && <MitigationTab risks={risks} />}
           </div>
         </div>
       </div>
@@ -267,7 +268,7 @@ export default function Project({ projectId, navigate }) {
 function OverviewTab({ p }) {
   return (
     <div className="flex-col gap-3">
-      <KV label="Department"       val={p.department} />
+      <KV label="Project name"      val={p.name} />
       <KV label="WBS code"         val={<code className="mono" style={{ fontSize: 12 }}>{p.wbs}</code>} />
       <KV label="Project Director" val={p.pd} />
       <KV label="Months remaining" val={`${p.monthsLeft} months`} />
@@ -346,9 +347,14 @@ function MilestonesTab({ milestones, setMilestones }) {
   const [importErr, setImportErr]         = useState(null);
   const fileRef = useRef(null);
 
-  function toggleDone(id) {
+  function cycleStatus(id) {
     setConfirmingMid(null);
-    setMilestones(prev => prev.map(m => m._id === id ? { ...m, done: !m.done, warn: m.done ? m.warn : false } : m));
+    setMilestones(prev => prev.map(m => {
+      if (m._id !== id) return m;
+      if (!m.done && !m.warn) return { ...m, done: true,  warn: false }; // pending → done
+      if (m.done)             return { ...m, done: false, warn: true  }; // done → at-risk
+      return                         { ...m, done: false, warn: false }; // at-risk → pending
+    }));
   }
 
   function remove(id) {
@@ -443,14 +449,14 @@ function MilestonesTab({ milestones, setMilestones }) {
                 </span>
               )}
               <button
-                onClick={() => toggleDone(m._id)}
+                onClick={() => cycleStatus(m._id)}
                 style={{
                   width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   border: 'none', cursor: 'pointer',
                   background: m.done ? 'var(--ok-bg)' : m.warn ? 'var(--warn-bg)' : 'var(--surface-3)',
                 }}
-                title={m.done ? 'Mark incomplete' : 'Mark done'}
+                title={m.done ? 'Done → At-risk' : m.warn ? 'At-risk → Pending' : 'Pending → Done'}
               >
                 {m.done ? (
                   <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="var(--ok-text)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -536,6 +542,7 @@ function parseRiskXlsx(arrayBuffer) {
   const impactCol     = hdrs.indexOf('impact');
   const probCol       = hdrs.indexOf('probability');
   const mitigationCol = hdrs.indexOf('mitigation');
+  const monthCol      = hdrs.indexOf('month introduced');
   const normalise = v => {
     const s = String(v || '').trim();
     if (/high/i.test(s))       return 'High';
@@ -556,6 +563,7 @@ function parseRiskXlsx(arrayBuffer) {
       mitigation: mitigationCol >= 0 && row[mitigationCol]
                     ? String(row[mitigationCol]).trim()
                     : 'To be defined.',
+      month:      monthCol >= 0 && row[monthCol] ? String(row[monthCol]).trim() : '',
     });
   }
   return out;
@@ -563,12 +571,12 @@ function parseRiskXlsx(arrayBuffer) {
 
 function downloadRiskTemplate() {
   const ws = XLSX.utils.aoa_to_sheet([
-    ['Title', 'Impact', 'Probability', 'Mitigation'],
-    ['Vendor lead time slippage',       'High',   'Medium', 'Dual-source contract in progress.'],
-    ['Headcount shortage in Wave 2',    'Medium', 'Low',    'Resourcing request submitted.'],
-    ['Third-party certification delay', 'High',   'High',   'Engaged external expediter.'],
+    ['Title', 'Impact', 'Probability', 'Mitigation', 'Month Introduced'],
+    ['Vendor lead time slippage',       'High',   'Medium', 'Dual-source contract in progress.', 'Jan 2026'],
+    ['Headcount shortage in Wave 2',    'Medium', 'Low',    'Resourcing request submitted.',      'Mar 2026'],
+    ['Third-party certification delay', 'High',   'High',   'Engaged external expediter.',        'Apr 2026'],
   ]);
-  ws['!cols'] = [{ wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 50 }];
+  ws['!cols'] = [{ wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 16 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Risks');
   XLSX.writeFile(wb, 'risks_template.xlsx');
@@ -576,16 +584,24 @@ function downloadRiskTemplate() {
 
 function RisksTab({ risks, setRisks }) {
   const [adding, setAdding]               = useState(false);
-  const [form, setForm]                   = useState({ title: '', impact: 'Medium', prob: 'Medium', mitigation: '' });
-  const [confirmingRid, setConfirmingRid] = useState(null);
+  const [form, setForm]                   = useState({ title: '', impact: 'Medium', prob: 'Medium', mitigation: '', month: '' });
+  const [editingMonthRid, setEditingMonthRid] = useState(null);
   const [dragIdx, setDragIdx]             = useState(null);
   const [overIdx, setOverIdx]             = useState(null);
   const [importErr, setImportErr]         = useState(null);
   const fileRef = useRef(null);
 
-  function remove(id) {
-    setRisks(prev => prev.filter(r => r._id !== id));
-    setConfirmingRid(null);
+  function setField(id, field, val) {
+    setRisks(prev => prev.map(r => r._id !== id ? r : { ...r, [field]: val }));
+  }
+  function cycleStatus(id) {
+    const ORDER = ['Open', 'Mitigated', 'Resolved'];
+    setRisks(prev => prev.map(r => r._id !== id ? r : {
+      ...r, status: ORDER[(ORDER.indexOf(r.status || 'Open') + 1) % 3],
+    }));
+  }
+  function setMonth(id, val) {
+    setRisks(prev => prev.map(r => r._id !== id ? r : { ...r, month: val }));
   }
 
   function addRisk() {
@@ -593,10 +609,11 @@ function RisksTab({ risks, setRisks }) {
     setRisks(prev => [...prev, {
       _id: nextRid++, id: `R-${nextRid}`,
       title: form.title.trim(),
-      impact: form.impact, prob: form.prob,
+      impact: form.impact, prob: form.prob, status: 'Open',
       mitigation: form.mitigation.trim() || 'To be defined.',
+      month: form.month.trim(),
     }]);
-    setForm({ title: '', impact: 'Medium', prob: 'Medium', mitigation: '' });
+    setForm({ title: '', impact: 'Medium', prob: 'Medium', mitigation: '', month: '' });
     setAdding(false);
   }
 
@@ -653,13 +670,15 @@ function RisksTab({ risks, setRisks }) {
       )}
 
       {risks.map((r, i) => {
-        const isConfirming = confirmingRid === r._id;
-        const isDragging   = dragIdx === i;
-        const isTarget     = overIdx === i && dragIdx !== null && dragIdx !== i;
+        const isDragging = dragIdx === i;
+        const isTarget   = overIdx === i && dragIdx !== null && dragIdx !== i;
+        const status     = r.status || 'Open';
+        const statusColor = status === 'Resolved' ? 'var(--ok)' : status === 'Mitigated' ? 'var(--warn-text)' : 'var(--bad)';
+        const statusBg    = status === 'Resolved' ? 'var(--ok-bg)' : status === 'Mitigated' ? 'var(--warn-bg)' : 'var(--bad-bg)';
         return (
           <div
             key={r._id}
-            draggable={!isConfirming}
+            draggable
             onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
             onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOverIdx(i); }}
             onDrop={() => handleDrop(i)}
@@ -667,47 +686,50 @@ function RisksTab({ risks, setRisks }) {
             className="card"
             style={{
               padding: 14,
-              marginTop: isTarget ? 0 : undefined,
               borderTop: isTarget ? '2px solid var(--accent)' : undefined,
-              borderColor: isConfirming ? 'var(--bad)' : undefined,
-              background: isConfirming ? 'var(--bad-bg)' : undefined,
               opacity: isDragging ? 0.3 : 1,
-              cursor: isConfirming ? 'default' : 'grab',
+              cursor: 'grab',
               transition: 'opacity .1s',
             }}
           >
             <div className="flex items-center gap-2 mb-2">
-              {!isConfirming && (
-                <span style={{ color: 'var(--border-2)', display: 'flex', alignItems: 'center', marginRight: 2 }} title="Drag to reorder">
-                  <GripIcon />
-                </span>
-              )}
-              <span style={{ fontSize: 11, fontWeight: 700, color: isConfirming ? 'var(--bad)' : 'var(--text-3)' }}>{r.id}</span>
-              <span style={{ fontWeight: 600, fontSize: 13, color: isConfirming ? 'var(--bad-text)' : 'var(--text)' }}>{r.title}</span>
-              <div className="grow" />
-              {!isConfirming && (
-                <>
-                  <span className={`badge badge-${r.impact === 'High' ? 'bad' : r.impact === 'Medium' ? 'warn' : 'neutral'}`}>{r.impact} impact</span>
-                  <span className={`badge badge-${r.prob   === 'High' ? 'bad' : r.prob   === 'Medium' ? 'warn' : 'neutral'}`}>{r.prob} prob</span>
-                </>
-              )}
-              {isConfirming ? (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingRid(null)}>Cancel</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => remove(r._id)}>Remove</button>
-                </div>
+              <span style={{ color: 'var(--border-2)', display: 'flex', alignItems: 'center', marginRight: 2 }} title="Drag to reorder">
+                <GripIcon />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)' }}>{r.id}</span>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{r.title}</span>
+              {editingMonthRid === r._id ? (
+                <input
+                  autoFocus
+                  className="eac-cell eac-editable"
+                  style={{ width: 96, fontSize: 11 }}
+                  placeholder="e.g. May 2026"
+                  defaultValue={r.month || ''}
+                  onBlur={e => { setMonth(r._id, e.target.value.trim()); setEditingMonthRid(null); }}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
+                  onClick={e => e.stopPropagation()}
+                />
               ) : (
-                <button onClick={() => setConfirmingRid(r._id)} className="btn btn-icon" style={{ color: 'var(--text-3)', padding: 4 }} title="Remove">
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2 3h8M4.5 3V2a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v1M3 3l.5 7h5L9 3"/>
-                  </svg>
-                </button>
+                <span
+                  onClick={e => { e.stopPropagation(); setEditingMonthRid(r._id); }}
+                  style={{ fontSize: 11, color: r.month ? 'var(--text-3)' : 'var(--border-2)', cursor: 'text', userSelect: 'none', borderBottom: '1px dashed var(--border-2)' }}
+                  title="Click to set month introduced"
+                >{r.month || 'Month introduced'}</span>
               )}
+              <div className="grow" />
+              <LevelSelect value={r.impact} suffix="impact" onChange={val => setField(r._id, 'impact', val)} />
+              <LevelSelect value={r.prob}   suffix="prob"   onChange={val => setField(r._id, 'prob',   val)} />
+              <button
+                onClick={e => { e.stopPropagation(); cycleStatus(r._id); }}
+                style={{
+                  padding: '3px 8px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700, background: statusBg, color: statusColor,
+                  fontFamily: 'inherit',
+                }}
+                title="Click to cycle: Open → Mitigated → Resolved"
+              >{status}</button>
             </div>
-            {isConfirming
-              ? <div style={{ fontSize: 12, color: 'var(--bad)', fontWeight: 500 }}>Remove this risk permanently?</div>
-              : <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}><strong>Mitigation:</strong> {r.mitigation}</div>
-            }
+            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}><strong>Mitigation:</strong> {r.mitigation}</div>
           </div>
         );
       })}
@@ -722,20 +744,22 @@ function RisksTab({ risks, setRisks }) {
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               autoFocus
             />
-            <div className="flex gap-2">
-              <div style={{ flex: 1 }}>
+            <div className="flex gap-4 items-center flex-wrap">
+              <div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>Impact</div>
-                <select className="select" value={form.impact} onChange={e => setForm(f => ({ ...f, impact: e.target.value }))}>
-                  <option>Low</option><option>Medium</option><option>High</option>
-                </select>
+                <LevelSelect value={form.impact} suffix="impact" onChange={val => setForm(f => ({ ...f, impact: val }))} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>Probability</div>
-                <select className="select" value={form.prob} onChange={e => setForm(f => ({ ...f, prob: e.target.value }))}>
-                  <option>Low</option><option>Medium</option><option>High</option>
-                </select>
+                <LevelSelect value={form.prob} suffix="prob" onChange={val => setForm(f => ({ ...f, prob: val }))} />
               </div>
             </div>
+            <input
+              className="input"
+              placeholder="Month introduced (e.g. May 2026)"
+              value={form.month}
+              onChange={e => setForm(f => ({ ...f, month: e.target.value }))}
+            />
             <textarea
               className="textarea"
               rows={2}
@@ -757,6 +781,92 @@ function RisksTab({ risks, setRisks }) {
           Add risk
         </button>
       )}
+    </div>
+  );
+}
+
+function LevelSelect({ value, suffix = '', onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+  const OPTIONS = ['Low', 'Medium', 'High'];
+  const colorOf = v => v === 'High' ? 'var(--bad)' : v === 'Medium' ? 'var(--warn-text)' : 'var(--text-3)';
+  const bgOf    = v => v === 'High' ? 'var(--bad-bg)' : v === 'Medium' ? 'var(--warn-bg)' : 'var(--surface-3)';
+  useEffect(() => {
+    function h(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 999,
+          border: `1px solid ${open ? colorOf(value) : 'var(--border)'}`,
+          background: bgOf(value), color: colorOf(value),
+          fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          boxShadow: open ? `0 0 0 3px ${bgOf(value)}` : 'none',
+          transition: 'border-color .12s, box-shadow .12s',
+        }}
+      >
+        {value}{suffix ? ` ${suffix}` : ''}
+        <svg width="8" height="5" viewBox="0 0 8 5" fill="none"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>
+          <path d="M0 0l4 5 4-5z" fill="currentColor" opacity=".7"/>
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 300,
+          background: 'var(--surface)', border: '1px solid var(--border-2)',
+          borderRadius: 8, boxShadow: 'var(--shadow-md)', overflow: 'hidden', minWidth: 100,
+        }}>
+          {OPTIONS.map(opt => (
+            <div key={opt}
+              onMouseDown={e => { e.stopPropagation(); onChange(opt); setOpen(false); }}
+              style={{
+                padding: '8px 12px', cursor: 'pointer', fontSize: 12,
+                fontWeight: opt === value ? 700 : 500,
+                color: colorOf(opt),
+                background: opt === value ? bgOf(opt) : 'transparent',
+              }}
+              onMouseEnter={e => { if (opt !== value) e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = opt === value ? bgOf(opt) : 'transparent'; }}
+            >{opt}{suffix ? ` ${suffix}` : ''}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MitigationTab({ risks }) {
+  const groups = [
+    { label: 'Open',      color: 'var(--bad)',       items: risks.filter(r => !r.status || r.status === 'Open') },
+    { label: 'Mitigated', color: 'var(--warn-text)',  items: risks.filter(r => r.status === 'Mitigated') },
+    { label: 'Resolved',  color: 'var(--ok)',         items: risks.filter(r => r.status === 'Resolved') },
+  ];
+  if (!risks.length) return <div style={{ fontSize: 13, color: 'var(--text-3)', padding: 8 }}>No risks logged.</div>;
+  return (
+    <div className="flex-col gap-1">
+      {groups.map(g => g.items.length === 0 ? null : (
+        <div key={g.label} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: g.color, marginBottom: 8 }}>
+            {g.label} ({g.items.length})
+          </div>
+          {g.items.map(r => (
+            <div key={r._id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)' }}>{r.id}</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{r.title}</span>
+                {r.month && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>· {r.month}</span>}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}>{r.mitigation}</div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

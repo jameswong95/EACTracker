@@ -3,8 +3,8 @@ import React from 'react';
 /* ── LineChart ─────────────────────────────────────────────── */
 export function LineChart({ data = [], budget, width = 400, height = 120, color = 'var(--accent)' }) {
   if (!data.length) return null;
-  const pad = { t: 8, r: 8, b: 8, l: 8 };
-  const w = width  - pad.l - pad.r;
+  const pad = { t: 8, r: 0, b: 8, l: 0 };
+  const w = width - pad.l - pad.r;
   const h = height - pad.t - pad.b;
   const max = Math.max(...data, budget || 0) * 1.08;
   const px = (i) => pad.l + (i / (data.length - 1)) * w;
@@ -12,15 +12,15 @@ export function LineChart({ data = [], budget, width = 400, height = 120, color 
 
   const linePts = data.map((v, i) => `${px(i)},${py(v)}`).join(' ');
   const areaPts = [
-    `${px(0)},${py(0) + h + pad.b}`,
+    `${px(0)},${pad.t + h + pad.b}`,
     ...data.map((v, i) => `${px(i)},${py(v)}`),
-    `${px(data.length - 1)},${py(0) + h + pad.b}`,
+    `${px(data.length - 1)},${pad.t + h + pad.b}`,
   ].join(' ');
 
   const budgetY = budget ? py(budget) : null;
 
   return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ overflow: 'visible', width: '100%', height: `${height}px` }}>
       <defs>
         <linearGradient id="area-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%"   stopColor={color} stopOpacity="0.18" />
@@ -36,11 +36,6 @@ export function LineChart({ data = [], budget, width = 400, height = 120, color 
         <line x1={pad.l} y1={budgetY} x2={pad.l + w} y2={budgetY}
           stroke="var(--bad)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.7" />
       )}
-      {/* Dots on last 2 points */}
-      {data.slice(-2).map((v, ii) => {
-        const i = data.length - 2 + ii;
-        return <circle key={i} cx={px(i)} cy={py(v)} r="3" fill={color} />;
-      })}
     </svg>
   );
 }
