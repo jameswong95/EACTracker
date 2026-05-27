@@ -1,6 +1,51 @@
 import React, { useState } from 'react';
 import { getProject, fmt, MONTHS } from '../data/mock.js';
 
+function OverTooltip({ x, y, month, colTotal, budgetMonthly, rows, absIdx, viewYear }) {
+  const over = colTotal - budgetMonthly;
+  const pct = ((over / budgetMonthly) * 100).toFixed(1);
+  const mi = MONTHS.indexOf(month);
+  const sorted = [...rows]
+    .map(r => ({ label: r.label, value: r.values[absIdx(viewYear, mi)] || 0 }))
+    .filter(r => r.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  return (
+    <div style={{
+      position: 'fixed', left: x + 14, top: y, transform: 'translateY(-100%)',
+      zIndex: 9999,
+      background: 'var(--surface)', border: '1.5px solid var(--bad)', borderRadius: 4,
+      padding: '10px 14px', minWidth: 220,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12)', pointerEvents: 'none', whiteSpace: 'nowrap',
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--bad)', marginBottom: 8 }}>
+        Over budget · {month}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, marginBottom: 4 }}>
+        <span style={{ color: 'var(--text-3)' }}>Monthly total</span>
+        <span style={{ fontFamily: 'Courier New, monospace', fontWeight: 700, color: 'var(--bad)' }}>${colTotal.toFixed(0)}K</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, marginBottom: 8 }}>
+        <span style={{ color: 'var(--text-3)' }}>Monthly budget</span>
+        <span style={{ fontFamily: 'Courier New, monospace', color: 'var(--text-2)' }}>${budgetMonthly.toFixed(0)}K</span>
+      </div>
+      <div style={{ borderTop: '1px solid var(--surface-2)', paddingTop: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--text-3)', marginBottom: 6 }}>Cost breakdown</div>
+        {sorted.map(r => (
+          <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontSize: 12, marginBottom: 3 }}>
+            <span style={{ color: 'var(--text-2)' }}>{r.label}</span>
+            <span style={{ fontFamily: 'Courier New, monospace', color: 'var(--text)' }}>${r.value.toFixed(0)}K</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ borderTop: '1px solid var(--surface-2)', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+        <span style={{ color: 'var(--text-3)' }}>Overspend</span>
+        <span style={{ fontFamily: 'Courier New, monospace', fontWeight: 700, color: 'var(--bad)' }}>+${over.toFixed(0)}K ({pct}%)</span>
+      </div>
+    </div>
+  );
+}
+
 export default function EacEditor({ projectId, navigate }) {
   const p = getProject(projectId);
 
@@ -30,6 +75,7 @@ export default function EacEditor({ projectId, navigate }) {
     })
   );
   const [saved, setSaved] = useState(false);
+  const [tooltip, setTooltip] = useState(null); // { mi, x, y }
 
   function updateCell(rowIdx, year, mi, val) {
     if (isLocked(year, mi) || !inRange(year, mi)) return;
@@ -200,11 +246,6 @@ export default function EacEditor({ projectId, navigate }) {
                       borderBottom: '1px solid var(--border)',
                     }}>
                       {m}
-                      {locked && (
-                        <svg width="8" height="9" viewBox="0 0 8 9" fill="none" stroke="var(--text-3)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '3px auto 0' }}>
-                          <rect x="1" y="4" width="6" height="5" rx="1"/><path d="M2.5 4V2.5a1.5 1.5 0 0 1 3 0V4"/>
-                        </svg>
-                      )}
                     </th>
                   );
                 })}
@@ -236,6 +277,9 @@ export default function EacEditor({ projectId, navigate }) {
                             placeholder="0"
                             onChange={e => updateCell(ri, viewYear, mi, e.target.value)}
                             style={{ display: 'block', width: '100%' }}
+                            onMouseEnter={e => isOver && setTooltip({ mi, x: e.clientX, y: e.clientY })}
+                            onMouseMove={e => isOver && setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : t)}
+                            onMouseLeave={() => setTooltip(null)}
                           />
                         )}
                       </td>
@@ -254,12 +298,16 @@ export default function EacEditor({ projectId, navigate }) {
                   const inRng = inRange(viewYear, mi);
                   const locked = inRng && isLocked(viewYear, mi);
                   return (
-                    <td key={mi} style={{
-                      padding: '10px 4px', textAlign: 'right', fontWeight: 700, fontSize: 13,
-                      fontVariantNumeric: 'tabular-nums',
-                      color: !inRng ? 'var(--border-2)' : locked ? 'var(--text-3)' : 'var(--text)',
-                      background: !inRng ? 'var(--surface-3)' : locked ? 'var(--surface-2)' : 'var(--surface-3)',
-                    }}>
+                    <td key={mi}
+                      onMouseEnter={e => t > budgetK / 10 && !locked && inRng && setTooltip({ mi, x: e.clientX, y: e.clientY })}
+                      onMouseMove={e => t > budgetK / 10 && !locked && inRng && setTooltip(s => s ? { ...s, x: e.clientX, y: e.clientY } : s)}
+                      onMouseLeave={() => setTooltip(null)}
+                      style={{
+                        padding: '10px 4px', textAlign: 'right', fontWeight: 700, fontSize: 13,
+                        fontVariantNumeric: 'tabular-nums',
+                        color: !inRng ? 'var(--border-2)' : locked ? 'var(--text-3)' : t > budgetK / 10 ? 'var(--bad)' : 'var(--text)',
+                        background: !inRng ? 'var(--surface-3)' : locked ? 'var(--surface-2)' : 'var(--surface-3)',
+                      }}>
                       {t == null ? '—' : t > 0 ? t.toFixed(0) : '—'}
                     </td>
                   );
@@ -271,6 +319,16 @@ export default function EacEditor({ projectId, navigate }) {
             </tbody>
           </table>
         </div>
+
+      {tooltip && viewColTotals[tooltip.mi] > budgetK / 10 && (
+        <OverTooltip
+          x={tooltip.x} y={tooltip.y}
+          month={MONTHS[tooltip.mi]}
+          colTotal={viewColTotals[tooltip.mi]}
+          budgetMonthly={budgetK / 10}
+          rows={rows} absIdx={absIdx} viewYear={viewYear}
+        />
+      )}
 
         <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, color: 'var(--text-3)', display: 'flex', gap: 24 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
