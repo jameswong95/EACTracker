@@ -335,5 +335,5 @@ export default function Assists({ navigate }) {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
-  );
+   );
 }
