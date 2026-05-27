@@ -1,0 +1,118 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: P
+      - generic [ref=e8]:
+        - generic [ref=e9]: PFMS
+        - generic [ref=e10]: Financial Mgmt
+    - generic [ref=e11]: Main
+    - button "⊞ Dashboard" [ref=e12] [cursor=pointer]:
+      - generic [ref=e13]: ⊞
+      - text: Dashboard
+    - button "⊟ Portfolio" [ref=e14] [cursor=pointer]:
+      - generic [ref=e15]: ⊟
+      - text: Portfolio
+    - generic [ref=e16]: Finance & Admin
+    - button "⤓ SAP Import" [active] [ref=e17] [cursor=pointer]:
+      - generic [ref=e18]: ⤓
+      - text: SAP Import
+    - button "◎ Standards" [ref=e19] [cursor=pointer]:
+      - generic [ref=e20]: ◎
+      - text: Standards
+    - button "✦ AI Assist" [ref=e21] [cursor=pointer]:
+      - generic [ref=e22]: ✦
+      - text: AI Assist
+    - generic [ref=e24]:
+      - generic [ref=e25]: ST
+      - generic [ref=e26]:
+        - generic [ref=e27]: Sara Tan
+        - generic [ref=e28]: PROJECT MANAGER
+  - main [ref=e29]:
+    - generic [ref=e850]:
+      - generic [ref=e851]:
+        - generic [ref=e852]:
+          - generic [ref=e853]: SAP Import
+          - generic [ref=e854]: Monthly cost data import · Finance only
+        - generic [ref=e856]: L. Cheng · Finance
+      - generic [ref=e857]:
+        - generic [ref=e858]:
+          - generic [ref=e859]: "1"
+          - generic [ref=e860]: Upload
+        - generic [ref=e862]:
+          - generic [ref=e863]: "2"
+          - generic [ref=e864]: Parse & map
+        - generic [ref=e866]:
+          - generic [ref=e867]: "3"
+          - generic [ref=e868]: Preview
+        - generic [ref=e870]:
+          - generic [ref=e871]: "4"
+          - generic [ref=e872]: Commit
+      - generic [ref=e873]:
+        - generic [ref=e875] [cursor=pointer]:
+          - generic [ref=e876]: ⤓
+          - generic [ref=e877]: Drop monthly SAP template here
+          - generic [ref=e878]: or click to browse · .xlsx format
+          - generic [ref=e879]:
+            - generic [ref=e880]: Projects
+            - generic [ref=e881]: WBS hierarchy
+            - generic [ref=e882]: Contract
+            - generic [ref=e883]: Budget
+            - generic [ref=e884]: Actuals
+            - generic [ref=e885]: Commits
+        - generic [ref=e886]:
+          - generic [ref=e887]:
+            - generic [ref=e888]:
+              - heading "Import history" [level=4] [ref=e889]
+              - generic [ref=e890]: One upload per month
+            - generic [ref=e891]:
+              - generic [ref=e892]:
+                - generic [ref=e894]:
+                  - generic [ref=e895]: Apr '26
+                  - generic [ref=e896]: (pending) · L. Cheng
+                  - generic [ref=e897]: 3 new · 47 updated · 2 exceptions
+                - generic [ref=e898]: Preview
+              - generic [ref=e899]:
+                - generic [ref=e901]:
+                  - generic [ref=e902]: Mar '26
+                  - generic [ref=e903]: 12 Apr 14:03 · L. Cheng
+                  - generic [ref=e904]: 1 new · 49 updated · 0 exceptions
+                - generic [ref=e905]: Locked
+              - generic [ref=e906]:
+                - generic [ref=e908]:
+                  - generic [ref=e909]: Feb '26
+                  - generic [ref=e910]: 10 Mar 10:48 · L. Cheng
+                  - generic [ref=e911]: 50 updated · 0 exceptions
+                - generic [ref=e912]: Locked
+              - generic [ref=e913]:
+                - generic [ref=e915]:
+                  - generic [ref=e916]: Jan '26
+                  - generic [ref=e917]: 8 Feb 11:22 · M. Tan
+                  - generic [ref=e918]: 2 new · 48 updated · 1 exceptions
+                - generic [ref=e919]: Locked
+              - generic [ref=e920]:
+                - generic [ref=e922]:
+                  - generic [ref=e923]: Dec '25
+                  - generic [ref=e924]: 9 Jan 09:55 · L. Cheng
+                  - generic [ref=e925]: 50 updated · 0 exceptions
+                - generic [ref=e926]: Locked
+          - generic [ref=e927]:
+            - heading "Template sheets" [level=4] [ref=e928]
+            - generic [ref=e929]:
+              - generic [ref=e930]: ✓
+              - generic [ref=e931]: Projects
+            - generic [ref=e932]:
+              - generic [ref=e933]: ✓
+              - generic [ref=e934]: WBS hierarchy
+            - generic [ref=e935]:
+              - generic [ref=e936]: ✓
+              - generic [ref=e937]: Contract value
+            - generic [ref=e938]:
+              - generic [ref=e939]: ✓
+              - generic [ref=e940]: Budget (per WBS)
+            - generic [ref=e941]:
+              - generic [ref=e942]: ✓
+              - generic [ref=e943]: Actuals
+            - generic [ref=e944]:
+              - generic [ref=e945]: ✓
+              - generic [ref=e946]: Commitments
+            - generic [ref=e947]: Same template every month. No mapping needed — SAP is the truth.

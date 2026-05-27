@@ -1,0 +1,46 @@
+[      85ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:21548
+[     125ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5181/favicon.ico:0
+[ 2404221ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5181/@vite/client:559
+[ 2404224ms] [ERROR] Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED @ http://localhost:5181/:0
+[10725909ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:21548
+[15596630ms] ReferenceError: ROLE_LABELS is not defined
+    at Sidebar (http://localhost:5181/src/components/Sidebar.jsx?t=1779871350875:595:132)
+    at renderWithHooks (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:11546:26)
+    at updateFunctionComponent (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:14580:28)
+    at beginWork (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:15922:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:3672:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:3697:24)
+    at invokeGuardedCallback (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:3731:39)
+    at beginWork$1 (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19763:15)
+    at performUnitOfWork (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19196:20)
+    at workLoopSync (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19135:13)
+[15596717ms] ReferenceError: ROLE_LABELS is not defined
+    at Sidebar (http://localhost:5181/src/components/Sidebar.jsx?t=1779871350875:595:132)
+    at renderWithHooks (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:11546:26)
+    at updateFunctionComponent (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:14580:28)
+    at beginWork (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:15922:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:3672:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:3697:24)
+    at invokeGuardedCallback (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:3731:39)
+    at beginWork$1 (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19763:15)
+    at performUnitOfWork (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19196:20)
+    at workLoopSync (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19135:13)
+[15596728ms] [ERROR] The above error occurred in the <Sidebar> component:
+
+    at Sidebar (http://localhost:5181/src/components/Sidebar.jsx?t=1779871350875:257:35)
+    at div
+    at App (http://localhost:5181/src/App.jsx?t=1779870932322:38:27)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:14029
+[15596751ms] ReferenceError: ROLE_LABELS is not defined
+    at Sidebar (http://localhost:5181/src/components/Sidebar.jsx?t=1779871350875:595:132)
+    at renderWithHooks (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:11546:26)
+    at updateFunctionComponent (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:14580:28)
+    at beginWork (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:15922:22)
+    at beginWork$1 (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19751:22)
+    at performUnitOfWork (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19196:20)
+    at workLoopSync (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19135:13)
+    at renderRootSync (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:19114:15)
+    at recoverFromConcurrentError (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:18734:28)
+    at performSyncWorkOnRoot (http://localhost:5181/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:18877:28)

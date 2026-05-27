@@ -1,0 +1,107 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - img [ref=e8]
+      - generic [ref=e10]:
+        - generic [ref=e11]: PFMS
+        - generic [ref=e12]: Financial Mgmt
+    - generic [ref=e13]:
+      - generic [ref=e14]: Viewing as
+      - generic [ref=e15]:
+        - button "PM" [ref=e16] [cursor=pointer]
+        - button "PD" [ref=e17] [cursor=pointer]
+        - button "Finance" [ref=e18] [cursor=pointer]
+    - generic [ref=e19]: Navigation
+    - button "Portfolio" [ref=e163] [cursor=pointer]:
+      - img [ref=e29]
+      - text: Portfolio
+    - button "Approvals" [active] [ref=e164] [cursor=pointer]:
+      - img [ref=e166]
+      - text: Approvals
+    - generic [ref=e37]:
+      - button "Light mode" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+        - text: Light mode
+      - generic [ref=e43]:
+        - generic [ref=e44]: KR
+        - generic [ref=e45]:
+          - generic [ref=e46]: K. Rajah
+          - generic [ref=e47]: Project Director
+  - main [ref=e48]:
+    - generic [ref=e433]:
+      - generic [ref=e434]:
+        - generic [ref=e435]:
+          - generic [ref=e436]: Approvals
+          - generic [ref=e437]: Items awaiting your decision · K. Rajah, Project Director
+        - generic [ref=e438]: 5 pending
+        - generic [ref=e439]: "SLA: respond within 3 days"
+      - generic [ref=e440]:
+        - generic [ref=e441]:
+          - 'button "Re-baseline 1 day EAC Refresh Programme PM: Sara Tan" [ref=e442] [cursor=pointer]':
+            - generic [ref=e443]:
+              - generic [ref=e444]: Re-baseline
+              - generic [ref=e445]: 1 day
+            - generic [ref=e446]: EAC Refresh Programme
+            - generic [ref=e447]: "PM: Sara Tan"
+          - 'button "Variance ack 1 day Network Modernisation PM: A. Kumar" [ref=e448] [cursor=pointer]':
+            - generic [ref=e449]:
+              - generic [ref=e450]: Variance ack
+              - generic [ref=e451]: 1 day
+            - generic [ref=e452]: Network Modernisation
+            - generic [ref=e453]: "PM: A. Kumar"
+          - 'button "Re-baseline 2 days Quality Lab Build-out PM: M. Wee" [ref=e454] [cursor=pointer]':
+            - generic [ref=e455]:
+              - generic [ref=e456]: Re-baseline
+              - generic [ref=e457]: 2 days
+            - generic [ref=e458]: Quality Lab Build-out
+            - generic [ref=e459]: "PM: M. Wee"
+          - 'button "New project 2 days Branch Wi-Fi Refresh PM: M. Wee" [ref=e460] [cursor=pointer]':
+            - generic [ref=e461]:
+              - generic [ref=e462]: New project
+              - generic [ref=e463]: 2 days
+            - generic [ref=e464]: Branch Wi-Fi Refresh
+            - generic [ref=e465]: "PM: M. Wee"
+          - 'button "Variance ack 3 days Wave 3 Cabling PM: K. Yeo" [ref=e466] [cursor=pointer]':
+            - generic [ref=e467]:
+              - generic [ref=e468]: Variance ack
+              - generic [ref=e469]: 3 days
+            - generic [ref=e470]: Wave 3 Cabling
+            - generic [ref=e471]: "PM: K. Yeo"
+        - generic [ref=e472]:
+          - generic [ref=e473]:
+            - generic [ref=e474]:
+              - generic [ref=e475]: Re-baseline
+              - generic [ref=e476]: Requested by Sara Tan · 1 day ago
+            - heading "EAC Refresh Programme" [level=2] [ref=e477]
+            - generic [ref=e478]: PM requesting a baseline reset on the recognition plan.
+          - generic [ref=e479]:
+            - generic [ref=e480]:
+              - generic [ref=e481]: Before
+              - generic [ref=e482]: $1.20M over 3 yrs — approved 12 Mar '26
+            - generic [ref=e483]:
+              - generic [ref=e484]: Proposed
+              - generic [ref=e485]: $1.24M (+3.3%) — 2 sub-jobs uplifted
+            - generic [ref=e486]:
+              - generic [ref=e487]: Financial impact
+              - generic [ref=e488]: +$28K Y1 · +$12K Y2
+          - generic [ref=e489]:
+            - heading "PM's note" [level=4] [ref=e490]
+            - generic [ref=e491]: "\"Network swap completed early but vendor lead-time on quality test rig pushed hardware into May. EAC drift now $40K — recommend baseline reset so future recognition curve stays achievable.\""
+            - generic [ref=e492]:
+              - generic [ref=e493]: Evidence attached
+              - generic [ref=e494]:
+                - generic [ref=e495] [cursor=pointer]:
+                  - img [ref=e496]
+                  - text: EAC v3.xlsx
+                - generic [ref=e499] [cursor=pointer]:
+                  - img [ref=e500]
+                  - text: Vendor email · 18 May
+                - generic [ref=e503] [cursor=pointer]:
+                  - img [ref=e504]
+                  - text: May draft update
+          - generic [ref=e507]:
+            - button "Request changes" [ref=e508] [cursor=pointer]
+            - button "Reject" [ref=e509] [cursor=pointer]
+            - button "Approve" [ref=e510] [cursor=pointer]:
+              - img [ref=e511]
+              - text: Approve

@@ -1,0 +1,94 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: P
+      - generic [ref=e8]:
+        - generic [ref=e9]: PFMS
+        - generic [ref=e10]: Financial Mgmt
+    - generic [ref=e11]: Main
+    - button "⊞ Dashboard" [ref=e12] [cursor=pointer]:
+      - generic [ref=e13]: ⊞
+      - text: Dashboard
+    - button "⊟ Portfolio" [ref=e14] [cursor=pointer]:
+      - generic [ref=e15]: ⊟
+      - text: Portfolio
+    - generic [ref=e16]: Finance & Admin
+    - button "⤓ SAP Import" [ref=e17] [cursor=pointer]:
+      - generic [ref=e18]: ⤓
+      - text: SAP Import
+    - button "◎ Standards" [ref=e19] [cursor=pointer]:
+      - generic [ref=e20]: ◎
+      - text: Standards
+    - button "✦ AI Assist" [active] [ref=e21] [cursor=pointer]:
+      - generic [ref=e22]: ✦
+      - text: AI Assist
+    - generic [ref=e24]:
+      - generic [ref=e25]: ST
+      - generic [ref=e26]:
+        - generic [ref=e27]: Sara Tan
+        - generic [ref=e28]: PROJECT MANAGER
+  - main [ref=e29]:
+    - generic [ref=e777]:
+      - generic [ref=e778]:
+        - generic [ref=e779]:
+          - generic [ref=e780]: AI Update Drafter
+          - generic [ref=e781]: Monthly update — May '26 · EAC Refresh Programme
+        - generic [ref=e782]:
+          - button "Save draft" [ref=e783] [cursor=pointer]
+          - button "Submit to PD" [disabled] [ref=e784] [cursor=pointer]
+      - generic [ref=e785]:
+        - generic [ref=e786]:
+          - generic [ref=e787]:
+            - generic [ref=e788]:
+              - generic [ref=e789]: ◉
+              - generic [ref=e790]: Update template
+              - generic [ref=e791]: on-device
+            - generic [ref=e792]: Same shape every month. PD can compare like-for-like across all projects.
+            - list [ref=e794]:
+              - listitem [ref=e795]: What changed this month
+              - listitem [ref=e796]: Schedule — on plan? slips?
+              - listitem [ref=e797]: Cost / EAC movement + why
+              - listitem [ref=e798]: Risks & mitigation
+              - listitem [ref=e799]: Next month's focus
+          - generic [ref=e800]:
+            - generic [ref=e801]: Guardrails
+            - generic [ref=e804]: 120–250 words total
+            - generic [ref=e807]: Plain English · no acronyms
+            - generic [ref=e810]: $ amounts must match EAC
+            - generic [ref=e813]: Flag anything >$25K change
+            - generic [ref=e814]: Drafts mirror PD's preferred update style from approved exemplars.
+          - generic [ref=e815]:
+            - generic [ref=e816]: What goes in
+            - generic [ref=e817]: EAC numbers · SAP costs · resource plan · last 3 updates · risk register · your bullet notes
+            - generic [ref=e818]: Nothing leaves your laptop — local model, off the cloud.
+        - generic [ref=e819]:
+          - generic [ref=e820]:
+            - generic [ref=e821]:
+              - generic [ref=e822]:
+                - generic [ref=e823]: Your bullets
+                - generic [ref=e824]: Private — only you see these
+              - button "✨ Generate draft" [ref=e825] [cursor=pointer]
+            - textbox "- write bullet points about what happened this month..." [ref=e826]: "- test rig: vendor delivered 2/5, rest by 20 May - network swap done, 4 days early - Mar slippage on 2 servers, cost $8K expedite - wave 2 kickoff next week, need Sara to confirm headcount - risk: vendor lead time still tight, dual-source in motion"
+          - generic [ref=e827]:
+            - generic [ref=e828]: Context pulled automatically
+            - generic [ref=e829]:
+              - generic [ref=e830]:
+                - generic [ref=e831]: EAC
+                - generic [ref=e832]: $1.24M
+                - generic [ref=e833]: +3.3% vs budget
+              - generic [ref=e834]:
+                - generic [ref=e835]: Actual CTD
+                - generic [ref=e836]: $480K
+                - generic [ref=e837]: from SAP Apr lock
+              - generic [ref=e838]:
+                - generic [ref=e839]: Last update
+                - generic [ref=e840]: Apr '26
+                - generic [ref=e841]: submitted on time
+              - generic [ref=e842]:
+                - generic [ref=e843]: Open risks
+                - generic [ref=e844]: "2"
+                - generic [ref=e845]: 1 high, 1 medium
+              - generic [ref=e846]:
+                - generic [ref=e847]: "% complete"
+                - generic [ref=e848]: 64%
+                - generic [ref=e849]: of planned schedule

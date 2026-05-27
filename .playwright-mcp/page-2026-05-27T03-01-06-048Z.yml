@@ -1,0 +1,221 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: P
+      - generic [ref=e8]:
+        - generic [ref=e9]: PFMS
+        - generic [ref=e10]: Financial Mgmt
+    - generic [ref=e11]: Main
+    - button "⊞ Dashboard" [ref=e12] [cursor=pointer]:
+      - generic [ref=e13]: ⊞
+      - text: Dashboard
+    - button "⊟ Portfolio" [ref=e14] [cursor=pointer]:
+      - generic [ref=e15]: ⊟
+      - text: Portfolio
+    - generic [ref=e408]: Project
+    - generic [ref=e409]:
+      - generic [ref=e410]: Asset Refresh — Office
+      - generic [ref=e411]: PR-2025-007
+    - button "▸ Overview" [ref=e412] [cursor=pointer]
+    - button "· EAC Editor" [ref=e413] [cursor=pointer]
+    - button "· Resource Plan" [ref=e414] [cursor=pointer]
+    - button "· Rev. Recognition" [ref=e415] [cursor=pointer]
+    - generic [ref=e16]: Finance & Admin
+    - button "⤓ SAP Import" [ref=e17] [cursor=pointer]:
+      - generic [ref=e18]: ⤓
+      - text: SAP Import
+    - button "◎ Standards" [ref=e19] [cursor=pointer]:
+      - generic [ref=e20]: ◎
+      - text: Standards
+    - button "✦ AI Assist" [ref=e21] [cursor=pointer]:
+      - generic [ref=e22]: ✦
+      - text: AI Assist
+    - generic [ref=e24]:
+      - generic [ref=e25]: ST
+      - generic [ref=e26]:
+        - generic [ref=e27]: Sara Tan
+        - generic [ref=e28]: PROJECT MANAGER
+  - main [ref=e29]:
+    - generic [ref=e416]:
+      - generic [ref=e417]:
+        - generic [ref=e418] [cursor=pointer]: Portfolio
+        - generic [ref=e419]: /
+        - generic [ref=e420]: Asset Refresh — Office
+        - button "◧ EAC Editor" [ref=e421] [cursor=pointer]
+        - button "◫ Resources" [ref=e422] [cursor=pointer]
+        - button "✦ Draft update" [ref=e423] [cursor=pointer]
+      - generic [ref=e424]:
+        - generic [ref=e425]:
+          - generic [ref=e426]:
+            - generic [ref=e427]:
+              - heading "Asset Refresh — Office" [level=2] [ref=e428]
+              - generic [ref=e429]: On Track
+            - generic [ref=e431]:
+              - text: "PM:"
+              - strong [ref=e432]: J. Lim
+              - text: "· Director:"
+              - strong [ref=e433]: K. Rajah
+              - text: "· WBS:"
+              - code [ref=e434]: 456789012/004-1
+              - text: "· Last update: 2026-05-09"
+          - img [ref=e435]:
+            - generic [ref=e438]: 78%
+        - generic [ref=e439]:
+          - generic [ref=e440]: EAC build-up
+          - generic [ref=e441]:
+            - generic [ref=e442]:
+              - generic [ref=e443]: Actual (SAP)
+              - generic [ref=e444]: $280K
+            - generic [ref=e445]: +
+            - generic [ref=e446]:
+              - generic [ref=e447]: Committed
+              - generic [ref=e448]: $90K
+            - generic [ref=e449]: +
+            - generic [ref=e450]:
+              - generic [ref=e451]: Labour ETC
+              - generic [ref=e452]: $30K
+            - generic [ref=e453]: +
+            - generic [ref=e454]:
+              - generic [ref=e455]: Other ETC
+              - generic [ref=e456]: $18K
+            - generic [ref=e457]: =
+            - generic [ref=e458]:
+              - generic [ref=e459]: EAC
+              - generic [ref=e460]: $418K
+            - generic [ref=e461]:
+              - generic [ref=e462]: "-0.5%"
+              - generic [ref=e463]: vs $420K budget
+        - generic [ref=e465]:
+          - 'generic "Actual: 280000" [ref=e466]'
+          - 'generic "Committed: 90000" [ref=e467]'
+          - 'generic "Labour ETC: 30000" [ref=e468]'
+          - 'generic "Other ETC: 18000" [ref=e469]'
+      - generic [ref=e470]:
+        - generic [ref=e471]:
+          - generic [ref=e472]: Budget
+          - generic [ref=e473]: $420K
+          - generic [ref=e474]: approved
+        - generic [ref=e475]:
+          - generic [ref=e476]: EAC
+          - generic [ref=e477]: $418K
+          - generic [ref=e478]: current estimate
+        - generic [ref=e479]:
+          - generic [ref=e480]: Variance
+          - generic [ref=e481]: "-0.5%"
+          - generic [ref=e482]: vs $420K
+        - generic [ref=e483]:
+          - generic [ref=e484]: "% Complete"
+          - generic [ref=e485]: 78%
+          - generic [ref=e486]: progress to date
+        - generic [ref=e487]:
+          - generic [ref=e488]: Months left
+          - generic [ref=e489]: "3"
+          - generic [ref=e490]: of 10 total
+      - generic [ref=e491]:
+        - generic [ref=e492]:
+          - generic [ref=e493]:
+            - heading "Cost trend · Jan–Dec '26" [level=4] [ref=e494]
+            - generic [ref=e495]:
+              - generic [ref=e496]: EAC forecast
+              - generic [ref=e498]: Budget
+          - img [ref=e500]
+          - generic [ref=e505]:
+            - generic [ref=e506]: Jan
+            - generic [ref=e507]: Feb
+            - generic [ref=e508]: Mar
+            - generic [ref=e509]: Apr
+            - generic [ref=e510]: May
+            - generic [ref=e511]: Jun
+            - generic [ref=e512]: Jul
+            - generic [ref=e513]: Aug
+            - generic [ref=e514]: Sep
+            - generic [ref=e515]: Oct
+            - generic [ref=e516]: Nov
+            - generic [ref=e517]: Dec
+          - generic [ref=e518]:
+            - text: "Burn rate:"
+            - strong [ref=e519]: 85%
+            - text: "of plan · Months left:"
+            - strong [ref=e520]: "3"
+        - generic [ref=e521]:
+          - generic [ref=e522]:
+            - button "Overview" [ref=e523] [cursor=pointer]
+            - button "Update history" [ref=e524] [cursor=pointer]
+            - button "Milestones" [ref=e525] [cursor=pointer]
+            - button "Risks" [ref=e526] [cursor=pointer]
+          - generic [ref=e528]:
+            - generic [ref=e529]:
+              - generic [ref=e530]: Department
+              - generic [ref=e531]: Corporate IT
+            - generic [ref=e532]:
+              - generic [ref=e533]: WBS code
+              - code [ref=e535]: 456789012/004-1
+            - generic [ref=e536]:
+              - generic [ref=e537]: Project Director
+              - generic [ref=e538]: K. Rajah
+            - generic [ref=e539]:
+              - generic [ref=e540]: Months remaining
+              - generic [ref=e541]: 3 months
+            - generic [ref=e542]:
+              - generic [ref=e543]: Budget
+              - generic [ref=e544]: $420K
+            - generic [ref=e545]:
+              - generic [ref=e546]: EAC
+              - generic [ref=e547]: $418K
+            - generic [ref=e548]:
+              - generic [ref=e549]: Actual to date
+              - generic [ref=e550]: $280K
+      - generic [ref=e551]:
+        - generic [ref=e552]:
+          - heading "WBS / Sub-job breakdown" [level=4] [ref=e553]
+          - button "Open EAC editor →" [ref=e554] [cursor=pointer]
+        - table [ref=e556]:
+          - rowgroup [ref=e557]:
+            - row "Sub-job WBS Name Budget Actual CTD Committed ETC EAC Variance" [ref=e558]:
+              - columnheader "Sub-job WBS" [ref=e559]
+              - columnheader "Name" [ref=e560]
+              - columnheader "Budget" [ref=e561]
+              - columnheader "Actual CTD" [ref=e562]
+              - columnheader "Committed" [ref=e563]
+              - columnheader "ETC" [ref=e564]
+              - columnheader "EAC" [ref=e565]
+              - columnheader "Variance" [ref=e566]
+          - rowgroup [ref=e567]:
+            - row "…/004-1-1 Project management $80K $45K $5K $28K $78K $2K" [ref=e568] [cursor=pointer]:
+              - cell "…/004-1-1" [ref=e569]:
+                - code [ref=e570]: …/004-1-1
+              - cell "Project management" [ref=e571]
+              - cell "$80K" [ref=e572]
+              - cell "$45K" [ref=e573]
+              - cell "$5K" [ref=e574]
+              - cell "$28K" [ref=e575]
+              - cell "$78K" [ref=e576]
+              - cell "$2K" [ref=e577]
+            - row "…/004-1-2 Hardware $280K $200K $70K $0 $270K $10K" [ref=e578] [cursor=pointer]:
+              - cell "…/004-1-2" [ref=e579]:
+                - code [ref=e580]: …/004-1-2
+              - cell "Hardware" [ref=e581]
+              - cell "$280K" [ref=e582]
+              - cell "$200K" [ref=e583]
+              - cell "$70K" [ref=e584]
+              - cell "$0" [ref=e585]
+              - cell "$270K" [ref=e586]
+              - cell "$10K" [ref=e587]
+            - row "…/004-1-3 Deployment services $60K $35K $15K $2K $52K $8K" [ref=e588] [cursor=pointer]:
+              - cell "…/004-1-3" [ref=e589]:
+                - code [ref=e590]: …/004-1-3
+              - cell "Deployment services" [ref=e591]
+              - cell "$60K" [ref=e592]
+              - cell "$35K" [ref=e593]
+              - cell "$15K" [ref=e594]
+              - cell "$2K" [ref=e595]
+              - cell "$52K" [ref=e596]
+              - cell "$8K" [ref=e597]
+            - row "Total $420K $280K $90K $48K $418K $2K" [ref=e598] [cursor=pointer]:
+              - cell "Total" [ref=e599]
+              - cell "$420K" [ref=e600]
+              - cell "$280K" [ref=e601]
+              - cell "$90K" [ref=e602]
+              - cell "$48K" [ref=e603]
+              - cell "$418K" [ref=e604]
+              - cell "$2K" [ref=e605]

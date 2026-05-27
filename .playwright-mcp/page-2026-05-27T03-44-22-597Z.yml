@@ -1,0 +1,134 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - img [ref=e8]
+      - generic [ref=e10]:
+        - generic [ref=e11]: PFMS
+        - generic [ref=e12]: Financial Mgmt
+    - generic [ref=e13]:
+      - generic [ref=e14]: Viewing as
+      - generic [ref=e15]:
+        - button "PM" [ref=e16] [cursor=pointer]
+        - button "PD" [ref=e17] [cursor=pointer]
+        - button "Finance" [ref=e18] [cursor=pointer]
+    - generic [ref=e19]: Navigation
+    - button "Dashboard" [ref=e20] [cursor=pointer]:
+      - img [ref=e22]
+      - text: Dashboard
+    - button "My Projects" [ref=e27] [cursor=pointer]:
+      - img [ref=e29]
+      - text: My Projects
+    - button "AI Assist" [ref=e32] [cursor=pointer]:
+      - img [ref=e34]
+      - text: AI Assist
+    - generic [ref=e37]:
+      - button "Light mode" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+        - text: Light mode
+      - generic [ref=e43]:
+        - generic [ref=e44]: ST
+        - generic [ref=e45]:
+          - generic [ref=e46]: Sara Tan
+          - generic [ref=e47]: Project Manager
+  - main [ref=e48]:
+    - generic [ref=e49]:
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - generic [ref=e52]: Good morning, Sara
+          - generic [ref=e53]:
+            - text: Here's what needs your attention today ·
+            - strong [ref=e54]: 26 May 2026
+        - button "Draft monthly update" [ref=e55] [cursor=pointer]:
+          - img [ref=e56]
+          - text: Draft monthly update
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e60]: My Projects
+          - generic [ref=e61]: "2"
+          - generic [ref=e62]: across 2 departments
+        - generic [ref=e63]:
+          - generic [ref=e64]: Update compliance
+          - generic [ref=e65]: 100%
+          - generic [ref=e66]: target 90% · all current
+        - generic [ref=e67]:
+          - generic [ref=e68]: Total Portfolio EAC
+          - generic [ref=e69]: $2.37M
+          - generic [ref=e70]: vs $2.30M budget
+        - generic [ref=e71]:
+          - generic [ref=e72]: At risk / delayed
+          - generic [ref=e73]: "0"
+          - generic [ref=e74]: of 2 projects
+      - generic [ref=e75]:
+        - generic [ref=e76]: My projects
+        - generic [ref=e77]:
+          - button "All" [ref=e78] [cursor=pointer]
+          - button "On Track" [ref=e79] [cursor=pointer]
+          - button "At Risk" [ref=e80] [cursor=pointer]
+          - button "Delayed" [ref=e81] [cursor=pointer]
+        - button "View all projects →" [ref=e82] [cursor=pointer]
+      - generic [ref=e83]:
+        - generic [ref=e84] [cursor=pointer]:
+          - generic [ref=e85]:
+            - generic [ref=e86]:
+              - generic [ref=e87]: EAC Refresh Programme
+              - generic [ref=e88]: PR-2025-014 · Technology
+            - generic [ref=e89]: On Track
+          - generic [ref=e92]:
+            - generic [ref=e93]: Progress
+            - generic [ref=e94]: 64%
+          - separator [ref=e97]
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - generic [ref=e100]: Budget
+              - generic [ref=e101]: $1.20M
+            - generic [ref=e102]:
+              - generic [ref=e103]: EAC
+              - generic [ref=e104]: $1.24M
+            - generic [ref=e105]:
+              - generic [ref=e106]: Variance
+              - generic [ref=e107]: +3.3%
+            - generic [ref=e108]:
+              - generic [ref=e109]: Trend
+              - img [ref=e110]
+          - generic [ref=e113]:
+            - generic [ref=e114]: "Last update: 2026-05-05"
+            - generic [ref=e115]: 7 months left
+        - generic [ref=e116] [cursor=pointer]:
+          - generic [ref=e117]:
+            - generic [ref=e118]:
+              - generic [ref=e119]: CRM Rollout
+              - generic [ref=e120]: PR-2025-072 · Corporate
+            - generic [ref=e121]: On Track
+          - generic [ref=e124]:
+            - generic [ref=e125]: Progress
+            - generic [ref=e126]: 55%
+          - separator [ref=e129]
+          - generic [ref=e130]:
+            - generic [ref=e131]:
+              - generic [ref=e132]: Budget
+              - generic [ref=e133]: $1.10M
+            - generic [ref=e134]:
+              - generic [ref=e135]: EAC
+              - generic [ref=e136]: $1.13M
+            - generic [ref=e137]:
+              - generic [ref=e138]: Variance
+              - generic [ref=e139]: +2.7%
+            - generic [ref=e140]:
+              - generic [ref=e141]: Trend
+              - img [ref=e142]
+          - generic [ref=e145]:
+            - generic [ref=e146]: "Last update: 2026-05-07"
+            - generic [ref=e147]: 6 months left
+      - generic [ref=e148]:
+        - generic [ref=e149]: Recent updates across my projects
+        - generic [ref=e150]:
+          - generic [ref=e153]:
+            - generic [ref=e154]:
+              - generic [ref=e155]: EAC Refresh Programme
+              - generic [ref=e156]: May 2026
+            - generic [ref=e157]: Test rig 2/5 delivered. Vendor confirms remainder by 20 May. % complete +6.
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - generic [ref=e162]: CRM Rollout
+              - generic [ref=e163]: May 2026
+            - generic [ref=e164]: UAT phase 2 underway with 15 business users. 3 minor defects raised.

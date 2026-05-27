@@ -1,0 +1,8 @@
+[     174ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5178/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:21548
+[     304ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5178/favicon.ico:0
+[  715691ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5178/src/App.jsx?t=1779851485200:0
+[  715692ms] [ERROR] [hmr] Failed to reload /src/App.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5178/@vite/client:175
+[  770976ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5178/src/App.jsx?t=1779851540414:0
+[  829032ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5178/src/App.jsx?t=1779851598507:0
+[  866044ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5178/src/App.jsx?t=1779851635542:0
+[  919762ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5178/node_modules/.vite/deps/chunk-373CG7ZK.js?v=c18367f0:21548

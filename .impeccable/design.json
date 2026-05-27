@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-27T00:00:00Z",
+  "title": "Design System: PFMS",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Warm Ash Cream",
+        "canonical": "oklch(98.5% 0.006 72)",
+        "tonalRamp": ["#0d0c0b", "#1a1815", "#3a352f", "#6b655e", "#8c8680", "#bab4ad", "#ddd8d0", "#ebe6dc", "#f3efe7", "#fdfcf8"]
+      },
+      "paper-subtle": {
+        "role": "neutral",
+        "displayName": "Aged Linen",
+        "canonical": "oklch(94% 0.012 72)",
+        "tonalRamp": ["#0d0c0b", "#1a1815", "#3a352f", "#6b655e", "#8c8680", "#bab4ad", "#ddd8d0", "#ebe6dc", "#f3efe7", "#fdfcf8"]
+      },
+      "paper-deep": {
+        "role": "neutral",
+        "displayName": "Worn Fold",
+        "canonical": "oklch(91% 0.016 72)",
+        "tonalRamp": ["#0d0c0b", "#1a1815", "#3a352f", "#6b655e", "#8c8680", "#bab4ad", "#ddd8d0", "#ebe6dc", "#f3efe7", "#fdfcf8"]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Carbon Draft",
+        "canonical": "oklch(12% 0.012 60)",
+        "tonalRamp": ["#0d0c0b", "#1a1815", "#2d2923", "#3a352f", "#4d4840", "#6b655e", "#8c8680", "#bab4ad", "#ddd8d0", "#f3efe7"]
+      },
+      "ink-secondary": {
+        "role": "primary",
+        "displayName": "Weathered Ink",
+        "canonical": "oklch(23% 0.014 60)",
+        "tonalRamp": ["#0d0c0b", "#1a1815", "#2d2923", "#3a352f", "#4d4840", "#6b655e", "#8c8680", "#bab4ad", "#ddd8d0", "#f3efe7"]
+      },
+      "ink-muted": {
+        "role": "primary",
+        "displayName": "Faded Annotation",
+        "canonical": "oklch(44% 0.016 62)",
+        "tonalRamp": ["#0d0c0b", "#1a1815", "#2d2923", "#3a352f", "#4d4840", "#6b655e", "#8c8680", "#bab4ad", "#ddd8d0", "#f3efe7"]
+      },
+      "status-ok": {
+        "role": "secondary",
+        "displayName": "Ledger Green",
+        "canonical": "oklch(44% 0.10 152)",
+        "tonalRamp": ["#1a3826", "#253f2d", "#2d5038", "#3b7a55", "#4d9169", "#6aaa80", "#90c4a0", "#b8dabd", "#d5edda", "#eef7f0"]
+      },
+      "status-warn": {
+        "role": "tertiary",
+        "displayName": "Amber Flag",
+        "canonical": "oklch(60% 0.15 62)",
+        "tonalRamp": ["#5c3d0e", "#7a5118", "#9b681e", "#c98a2c", "#d9a040", "#e6b860", "#f0cf8a", "#f7e3b0", "#faf0d0", "#fdf8ed"]
+      },
+      "status-bad": {
+        "role": "tertiary",
+        "displayName": "Red Variance",
+        "canonical": "oklch(46% 0.18 28)",
+        "tonalRamp": ["#4a1a0f", "#6b2318", "#8c3022", "#b8442e", "#c96050", "#d98070", "#e8a098", "#f2c4bc", "#f8dcd8", "#fdf0ee"]
+      },
+      "status-info": {
+        "role": "tertiary",
+        "displayName": "Blueprint Blue",
+        "canonical": "oklch(40% 0.10 248)",
+        "tonalRamp": ["#1a2d45", "#253a58", "#2e4a6e", "#3a5e8c", "#4d74a8", "#6a90c0", "#90aad4", "#b5c5e4", "#d0daf0", "#ecf0f8"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Screen-level anchors only. Greetings, period labels, portfolio totals. One per screen." },
+      "headline": { "displayName": "Headline", "purpose": "Section titles within a screen. EAC totals, module names." },
+      "title": { "displayName": "Title", "purpose": "Panel headings, table section names, card titles." },
+      "body": { "displayName": "Body", "purpose": "All data values, descriptions, task labels. The default type." },
+      "label": { "displayName": "Label", "purpose": "Column headers, section dividers, metadata. Always uppercase, always Faded Annotation." },
+      "mono": { "displayName": "Mono", "purpose": "WBS codes, SAP identifiers, scannable reference numbers in columns." }
+    },
+    "shadows": [
+      {
+        "name": "dropdown",
+        "value": "0 2px 8px rgba(0,0,0,0.12)",
+        "purpose": "Floating elements only: open dropdown panels, popovers. Never on cards or containers at rest."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "0.1s ease-out",
+        "purpose": "Default for hover/active state changes: background color, border color."
+      }
+    ],
+    "breakpoints": [
+      { "name": "desktop-min", "value": "1280px", "purpose": "Minimum supported width. PFMS is desktop-first; no mobile layout." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Consequential actions: period lock, submit, save EAC. One per screen.",
+      "html": "<button class=\"ds-btn-primary\">Lock Period</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 12px; background: #1a1815; color: #fdfcf8; border: 1.5px solid #1a1815; border-radius: 4px; font-family: 'Kalam', system-ui, sans-serif; font-size: 13px; font-weight: 400; line-height: 1.3; cursor: pointer; white-space: nowrap; user-select: none; transition: background 0.1s ease-out, border-color 0.1s ease-out; } .ds-btn-primary:hover { background: #3a352f; border-color: #3a352f; } .ds-btn-primary:focus-visible { outline: 2px solid #3a5e8c; outline-offset: 2px; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Standard actions: open, add, filter. Most common button in the system.",
+      "html": "<button class=\"ds-btn\">Open Period</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 12px; background: #fdfcf8; color: #1a1815; border: 1.5px solid #1a1815; border-radius: 4px; font-family: 'Kalam', system-ui, sans-serif; font-size: 13px; font-weight: 400; line-height: 1.3; cursor: pointer; white-space: nowrap; user-select: none; transition: background 0.1s ease-out; } .ds-btn:hover { background: #f3efe7; } .ds-btn:focus-visible { outline: 2px solid #3a5e8c; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Contextual actions within data rows. Always ends with ' →' for navigation actions.",
+      "html": "<button class=\"ds-btn-ghost\">open recognition →</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; background: #fdfcf8; color: #3a352f; border: 1.5px solid #6b655e; border-radius: 4px; font-family: 'Kalam', system-ui, sans-serif; font-size: 11px; font-weight: 400; line-height: 1.3; cursor: pointer; white-space: nowrap; user-select: none; transition: background 0.1s ease-out, border-color 0.1s ease-out; } .ds-btn-ghost:hover { background: #f3efe7; border-color: #3a352f; } .ds-btn-ghost:focus-visible { outline: 2px solid #3a5e8c; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "pill-warn",
+      "description": "Status indicator. Outlined only, never filled. Always paired with a label.",
+      "html": "<span class=\"ds-pill ds-pill-warn\"><span class=\"ds-dot ds-dot-warn\"></span>Variance +3.3%</span>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px; border: 1.5px solid currentColor; font-family: 'Kalam', system-ui, sans-serif; font-size: 12px; line-height: 1.3; white-space: nowrap; background: transparent; } .ds-pill-ok { color: #3b7a55; } .ds-pill-warn { color: #c98a2c; } .ds-pill-bad { color: #b8442e; } .ds-pill-info { color: #3a5e8c; } .ds-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard form input. Focus shifts border to Blueprint Blue.",
+      "html": "<div class=\"ds-input\" tabindex=\"0\">Q2 2026 EAC Refresh</div>",
+      "css": ".ds-input { display: flex; align-items: center; padding: 4px 8px; border: 1.5px solid #1a1815; border-radius: 4px; font-family: 'Kalam', system-ui, sans-serif; font-size: 13px; color: #1a1815; background: #fdfcf8; min-height: 28px; transition: border-color 0.1s ease-out; } .ds-input:focus-within, .ds-input:focus { border-color: #3a5e8c; outline: none; }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "button-ghost",
+      "description": "Primary navigation. Active state fully inverts to Carbon Draft.",
+      "html": "<div class=\"ds-nav-item ds-nav-item--active\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 13 13\" fill=\"none\"><rect x=\"1\" y=\"1\" width=\"11\" height=\"11\" rx=\"1\" stroke=\"currentColor\" stroke-width=\"1.5\"/></svg>Dashboard</div>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 16px; font-family: 'Kalam', system-ui, sans-serif; font-size: 11.5px; color: #3a352f; cursor: pointer; border-radius: 3px; margin: 0 4px; line-height: 1.3; border: 1.5px solid transparent; transition: background 0.1s ease-out; } .ds-nav-item:hover { background: #ebe6dc; } .ds-nav-item--active { background: #1a1815; color: #fdfcf8; font-weight: 700; border-color: #1a1815; } .ds-nav-item--active:hover { background: #3a352f; }"
+    },
+    {
+      "name": "Data Card",
+      "kind": "card",
+      "refersTo": "button-default",
+      "description": "Container for grouped content. Never nest cards inside cards.",
+      "html": "<div class=\"ds-box\"><div class=\"ds-box__label\">Portfolio EAC</div><div class=\"ds-box__value\">$2.1M</div></div>",
+      "css": ".ds-box { border: 1.5px solid #1a1815; border-radius: 4px; padding: 12px; display: flex; flex-direction: column; gap: 4px; background: #fdfcf8; } .ds-box--fill { background: #f3efe7; } .ds-box--ghost { border-style: dashed; border-color: #6b655e; } .ds-box__label { font-family: 'Kalam', system-ui, sans-serif; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6b655e; } .ds-box__value { font-family: 'Caveat', cursive; font-size: 22px; font-weight: 700; color: #1a1815; line-height: 1.2; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Valuation Report",
+    "overview": "A valuation report is trusted because it is precise, complete, and well-organised. It earns authority through legibility, not through decoration. Every number is accountable. Every table row carries weight. The professional who reads it doesn't have to work to find what matters: the hierarchy does that for them.\n\nPFMS takes this as its design posture. The interface is dense by necessity (construction finance is dense), but density is managed through typographic hierarchy, spatial rhythm, and consistent status vocabulary, not by hiding data behind tabs or simplifying it away. The warmth of the paper-and-ink palette is not decorative; it signals that a human designed this for a professional who has to trust their numbers, not for a product demo.\n\nWhat this system explicitly rejects: the blue-heavy corporate overload of Salesforce-style SaaS; the undifferentiated grid density of SAP and Excel where every cell shouts equally; the startup dashboard template with gradient metric cards, hero numbers in 72px type, and dark mode with neon accents.",
+    "keyCharacteristics": [
+      "Warm neutral palette rooted in paper and ink, not in blue-grey system defaults",
+      "Two-font system: expressive display (Caveat) for headings, humanist handwriting (Kalam) for data",
+      "Status communicated through a four-color semantic vocabulary, always with a label, never by color alone",
+      "4px border radius throughout: consistent, minimal, never rounded for softness",
+      "Flat elevation: depth through tonal layering, not shadows",
+      "Controls feel tactile and considered: 1.5px borders, deliberate padding, crisp state transitions"
+    ],
+    "rules": [
+      { "name": "The Four-Signal Rule", "body": "Every status is one of four: ok, warn, bad, info. No custom one-off colors. If a state doesn't map to these four, reconsider whether it's a real state.", "section": "colors" },
+      { "name": "The Rarity Rule", "body": "Red Variance appears only when a PM must act. If more than 20% of a screen is red, the design has lost signal discipline.", "section": "colors" },
+      { "name": "The Two-Font Boundary Rule", "body": "Caveat is for structure-giving text: headings, period labels, totals that anchor a screen. Kalam is for everything else. Never use Caveat below 17px.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "If you reach for box-shadow, stop and ask: can this be expressed with a border or background shift instead? Reserve any shadow for floating elements only.", "section": "elevation" },
+      { "name": "The No-Fill Rule", "body": "Status pills are outlined only. A filled red pill looks like an error badge from a design system template. An outlined red pill looks like a deliberate annotation.", "section": "components" },
+      { "name": "The Arrow Convention", "body": "Ghost row CTAs end with ' →'. No other icon. This is the system idiom for 'navigate into'.", "section": "components" },
+      { "name": "The Scan Rule", "body": "A PM should scan a 20-row table in 3 seconds. WBS codes get mono type; amounts get right-aligned mono; status gets a fixed narrow column.", "section": "components" }
+    ],
+    "dos": [
+      "Do use Carbon Draft (#1a1815) as the sole border color for interactive elements at rest.",
+      "Do pair every status dot or pill with a text label or value.",
+      "Do use custom div-based dropdowns. Never OS native <select>.",
+      "Do use Worn Fold (#ebe6dc) for hover states on interactive list items.",
+      "Do express priority through spatial placement and typographic weight before reaching for color.",
+      "Do keep the sidebar at 200px fixed.",
+      "Do use Caveat only at 17px and above."
+    ],
+    "donts": [
+      "Don't use gradient text (background-clip: text). Single solid color only.",
+      "Don't add box-shadow to cards or containers at rest.",
+      "Don't use the hero-metric template (big number, small label, gradient accent).",
+      "Don't make identical card grids (icon + heading + body repeated in 3 cols).",
+      "Don't use color alone to communicate status.",
+      "Don't use side-stripe borders (colored border-left > 1px as a card accent).",
+      "Don't reach for dark mode.",
+      "Don't use modal dialogs as the first response to any interaction.",
+      "Don't use blue-heavy chrome, overloaded sidebars, or Salesforce-style corporate nav.",
+      "Don't use grid-everything density where every cell has the same visual weight.",
+      "Don't use gradient metric cards, neon accents, or dark backgrounds with glowing numbers."
+    ]
+  }
+}

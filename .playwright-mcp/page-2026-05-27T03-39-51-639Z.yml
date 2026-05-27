@@ -1,0 +1,255 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - img [ref=e8]
+      - generic [ref=e10]:
+        - generic [ref=e11]: PFMS
+        - generic [ref=e12]: Financial Mgmt
+    - generic [ref=e13]:
+      - generic [ref=e14]: Viewing as
+      - generic [ref=e15]:
+        - button "PM" [ref=e16] [cursor=pointer]
+        - button "PD" [ref=e17] [cursor=pointer]
+        - button "Finance" [ref=e18] [cursor=pointer]
+    - generic [ref=e19]: Navigation
+    - button "Dashboard" [ref=e20] [cursor=pointer]:
+      - img [ref=e22]
+      - text: Dashboard
+    - button "My Projects" [ref=e27] [cursor=pointer]:
+      - img [ref=e29]
+      - text: My Projects
+    - button "AI Assist" [ref=e32] [cursor=pointer]:
+      - img [ref=e34]
+      - text: AI Assist
+    - generic [ref=e429]: Project
+    - generic [ref=e430]:
+      - generic [ref=e431]: EAC Refresh Programme
+      - generic [ref=e432]: PR-2025-014
+    - button "Overview" [ref=e433] [cursor=pointer]
+    - button "EAC Editor" [ref=e434] [cursor=pointer]
+    - button "Resource Plan" [active] [ref=e435] [cursor=pointer]
+    - button "Rev. Recognition" [ref=e436] [cursor=pointer]
+    - generic [ref=e37]:
+      - button "Light mode" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+        - text: Light mode
+      - generic [ref=e43]:
+        - generic [ref=e44]: ST
+        - generic [ref=e45]:
+          - generic [ref=e46]: Sara Tan
+          - generic [ref=e47]: Project Manager
+  - main [ref=e48]:
+    - generic [ref=e686]:
+      - generic [ref=e687]:
+        - generic [ref=e688] [cursor=pointer]: Portfolio
+        - generic [ref=e689]: /
+        - generic [ref=e690] [cursor=pointer]: EAC Refresh Programme
+        - generic [ref=e691]: /
+        - generic [ref=e692]: Resource Plan
+        - button "← Back" [ref=e693] [cursor=pointer]
+        - button "Save plan" [ref=e694] [cursor=pointer]
+      - generic [ref=e695]:
+        - generic [ref=e696]:
+          - generic [ref=e697]: Total labour cost
+          - generic [ref=e698]: $267K
+          - generic [ref=e699]: full year estimate
+        - generic [ref=e700]:
+          - generic [ref=e701]: Roles on project
+          - generic [ref=e702]: "4"
+          - generic [ref=e703]: resource lines
+        - generic [ref=e704]:
+          - generic [ref=e705]: Peak FTE this month
+          - generic [ref=e706]: "4.5"
+          - generic [ref=e707]: May '26
+        - generic [ref=e708]:
+          - generic [ref=e709]: Total FTE·months
+          - generic [ref=e710]: "38.0"
+          - generic [ref=e711]: across full project
+      - generic [ref=e712]:
+        - generic [ref=e713]:
+          - generic [ref=e714]:
+            - heading "FTE plan by role · Jan–Dec '26" [level=4] [ref=e715]
+            - generic [ref=e716]: Jan–Apr locked · actuals from SAP
+          - button "Add resource" [ref=e717] [cursor=pointer]:
+            - img [ref=e718]
+            - text: Add resource
+        - table [ref=e721]:
+          - rowgroup [ref=e739]:
+            - row "Role Grade Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec Total" [ref=e740]:
+              - columnheader "Role" [ref=e741]
+              - columnheader "Grade" [ref=e742]
+              - columnheader "Jan" [ref=e743]
+              - columnheader "Feb" [ref=e744]
+              - columnheader "Mar" [ref=e745]
+              - columnheader "Apr" [ref=e746]
+              - columnheader "May" [ref=e747]
+              - columnheader "Jun" [ref=e748]
+              - columnheader "Jul" [ref=e749]
+              - columnheader "Aug" [ref=e750]
+              - columnheader "Sep" [ref=e751]
+              - columnheader "Oct" [ref=e752]
+              - columnheader "Nov" [ref=e753]
+              - columnheader "Dec" [ref=e754]
+              - columnheader "Total" [ref=e755]
+              - columnheader [ref=e756]
+          - rowgroup [ref=e757]:
+            - row "Programme Manager E4 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 6.0" [ref=e758] [cursor=pointer]:
+              - cell "Programme Manager" [ref=e759]
+              - cell "E4" [ref=e760]:
+                - generic [ref=e761]: E4
+              - cell "0.5" [ref=e762]:
+                - generic [ref=e763]: "0.5"
+              - cell "0.5" [ref=e764]:
+                - generic [ref=e765]: "0.5"
+              - cell "0.5" [ref=e766]:
+                - generic [ref=e767]: "0.5"
+              - cell "0.5" [ref=e768]:
+                - generic [ref=e769]: "0.5"
+              - cell "0.5" [ref=e770]:
+                - spinbutton [ref=e771]: "0.5"
+              - cell "0.5" [ref=e772]:
+                - spinbutton [ref=e773]: "0.5"
+              - cell "0.5" [ref=e774]:
+                - spinbutton [ref=e775]: "0.5"
+              - cell "0.5" [ref=e776]:
+                - spinbutton [ref=e777]: "0.5"
+              - cell "0.5" [ref=e778]:
+                - spinbutton [ref=e779]: "0.5"
+              - cell "0.5" [ref=e780]:
+                - spinbutton [ref=e781]: "0.5"
+              - cell "0.5" [ref=e782]:
+                - spinbutton [ref=e783]: "0.5"
+              - cell "0.5" [ref=e784]:
+                - spinbutton [ref=e785]: "0.5"
+              - cell "6.0" [ref=e786]
+              - cell [ref=e787]:
+                - button "Remove row" [ref=e788]:
+                  - img [ref=e789]
+            - row "Tech Lead E3 1.0 1.0 1.0 1.0 1 1 1 1 8.0" [ref=e790] [cursor=pointer]:
+              - cell "Tech Lead" [ref=e791]
+              - cell "E3" [ref=e792]:
+                - generic [ref=e793]: E3
+              - cell "1.0" [ref=e794]:
+                - generic [ref=e795]: "1.0"
+              - cell "1.0" [ref=e796]:
+                - generic [ref=e797]: "1.0"
+              - cell "1.0" [ref=e798]:
+                - generic [ref=e799]: "1.0"
+              - cell "1.0" [ref=e800]:
+                - generic [ref=e801]: "1.0"
+              - cell "1" [ref=e802]:
+                - spinbutton [ref=e803]: "1"
+              - cell "1" [ref=e804]:
+                - spinbutton [ref=e805]: "1"
+              - cell "1" [ref=e806]:
+                - spinbutton [ref=e807]: "1"
+              - cell "1" [ref=e808]:
+                - spinbutton [ref=e809]: "1"
+              - cell [ref=e810]:
+                - spinbutton [ref=e811]
+              - cell [ref=e812]:
+                - spinbutton [ref=e813]
+              - cell [ref=e814]:
+                - spinbutton [ref=e815]
+              - cell [ref=e816]:
+                - spinbutton [ref=e817]
+              - cell "8.0" [ref=e818]
+              - cell [ref=e819]:
+                - button "Remove row" [ref=e820]:
+                  - img [ref=e821]
+            - row "Engineer E2 2.0 2.0 2.0 2.0 2 2 2 2 2 1 19.0" [ref=e822] [cursor=pointer]:
+              - cell "Engineer" [ref=e823]
+              - cell "E2" [ref=e824]:
+                - generic [ref=e825]: E2
+              - cell "2.0" [ref=e826]:
+                - generic [ref=e827]: "2.0"
+              - cell "2.0" [ref=e828]:
+                - generic [ref=e829]: "2.0"
+              - cell "2.0" [ref=e830]:
+                - generic [ref=e831]: "2.0"
+              - cell "2.0" [ref=e832]:
+                - generic [ref=e833]: "2.0"
+              - cell "2" [ref=e834]:
+                - spinbutton [ref=e835]: "2"
+              - cell "2" [ref=e836]:
+                - spinbutton [ref=e837]: "2"
+              - cell "2" [ref=e838]:
+                - spinbutton [ref=e839]: "2"
+              - cell "2" [ref=e840]:
+                - spinbutton [ref=e841]: "2"
+              - cell "2" [ref=e842]:
+                - spinbutton [ref=e843]: "2"
+              - cell "1" [ref=e844]:
+                - spinbutton [ref=e845]: "1"
+              - cell [ref=e846]:
+                - spinbutton [ref=e847]
+              - cell [ref=e848]:
+                - spinbutton [ref=e849]
+              - cell "19.0" [ref=e850]
+              - cell [ref=e851]:
+                - button "Remove row" [ref=e852]:
+                  - img [ref=e853]
+            - row "Analyst E1 1.0 1.0 1.0 1.0 1 5.0" [ref=e854] [cursor=pointer]:
+              - cell "Analyst" [ref=e855]
+              - cell "E1" [ref=e856]:
+                - generic [ref=e857]: E1
+              - cell "1.0" [ref=e858]:
+                - generic [ref=e859]: "1.0"
+              - cell "1.0" [ref=e860]:
+                - generic [ref=e861]: "1.0"
+              - cell "1.0" [ref=e862]:
+                - generic [ref=e863]: "1.0"
+              - cell "1.0" [ref=e864]:
+                - generic [ref=e865]: "1.0"
+              - cell "1" [ref=e866]:
+                - spinbutton [ref=e867]: "1"
+              - cell [ref=e868]:
+                - spinbutton [ref=e869]
+              - cell [ref=e870]:
+                - spinbutton [ref=e871]
+              - cell [ref=e872]:
+                - spinbutton [ref=e873]
+              - cell [ref=e874]:
+                - spinbutton [ref=e875]
+              - cell [ref=e876]:
+                - spinbutton [ref=e877]
+              - cell [ref=e878]:
+                - spinbutton [ref=e879]
+              - cell [ref=e880]:
+                - spinbutton [ref=e881]
+              - cell "5.0" [ref=e882]
+              - cell [ref=e883]:
+                - button "Remove row" [ref=e884]:
+                  - img [ref=e885]
+            - row "Total FTE 4.5 4.5 4.5 4.5 4.5 3.5 3.5 3.5 2.5 1.5 0.5 0.5 38.0" [ref=e886] [cursor=pointer]:
+              - cell "Total FTE" [ref=e887]
+              - cell "4.5" [ref=e888]
+              - cell "4.5" [ref=e889]
+              - cell "4.5" [ref=e890]
+              - cell "4.5" [ref=e891]
+              - cell "4.5" [ref=e892]
+              - cell "3.5" [ref=e893]
+              - cell "3.5" [ref=e894]
+              - cell "3.5" [ref=e895]
+              - cell "2.5" [ref=e896]
+              - cell "1.5" [ref=e897]
+              - cell "0.5" [ref=e898]
+              - cell "0.5" [ref=e899]
+              - cell "38.0" [ref=e900]
+              - cell [ref=e901]
+            - row "Est. labour cost ($K) 30 30 30 30 30 26 26 26 18 11 5 5 267" [ref=e902] [cursor=pointer]:
+              - cell "Est. labour cost ($K)" [ref=e903]
+              - cell "30" [ref=e904]
+              - cell "30" [ref=e905]
+              - cell "30" [ref=e906]
+              - cell "30" [ref=e907]
+              - cell "30" [ref=e908]
+              - cell "26" [ref=e909]
+              - cell "26" [ref=e910]
+              - cell "26" [ref=e911]
+              - cell "18" [ref=e912]
+              - cell "11" [ref=e913]
+              - cell "5" [ref=e914]
+              - cell "5" [ref=e915]
+              - cell "267" [ref=e916]
+              - cell [ref=e917]

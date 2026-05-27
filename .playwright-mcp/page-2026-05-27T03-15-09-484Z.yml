@@ -1,0 +1,250 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - img [ref=e8]
+      - generic [ref=e10]:
+        - generic [ref=e11]: PFMS
+        - generic [ref=e12]: Financial Mgmt
+    - generic [ref=e13]:
+      - generic [ref=e14]: Viewing as
+      - generic [ref=e15]:
+        - button "PM" [ref=e16] [cursor=pointer]
+        - button "PD" [active] [ref=e17] [cursor=pointer]
+        - button "Finance" [ref=e18] [cursor=pointer]
+    - generic [ref=e19]: Navigation
+    - button "Portfolio" [ref=e163] [cursor=pointer]:
+      - img [ref=e29]
+      - text: Portfolio
+    - button "Approvals" [ref=e164] [cursor=pointer]:
+      - img [ref=e166]
+      - text: Approvals
+    - generic [ref=e37]:
+      - button "Light mode" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+        - text: Light mode
+      - generic [ref=e43]:
+        - generic [ref=e44]: KR
+        - generic [ref=e45]:
+          - generic [ref=e46]: K. Rajah
+          - generic [ref=e47]: Project Director
+  - main [ref=e48]:
+    - generic [ref=e169]:
+      - generic [ref=e170]:
+        - generic [ref=e171]:
+          - generic [ref=e172]: Portfolio
+          - generic [ref=e173]: All projects · K. Rajah (Project Director)
+        - generic [ref=e174]:
+          - button "⤓ Export" [ref=e175] [cursor=pointer]
+          - button "+ New project" [ref=e176] [cursor=pointer]
+      - generic [ref=e177]:
+        - generic [ref=e178]:
+          - generic [ref=e179]: Portfolio Budget
+          - generic [ref=e180]: $9.89M
+          - generic [ref=e181]: 8 active projects
+        - generic [ref=e182]:
+          - generic [ref=e183]: Portfolio EAC
+          - generic [ref=e184]: $10.13M
+          - generic [ref=e185]: +2.4% vs budget
+        - generic [ref=e186]:
+          - generic [ref=e187]: Status mix
+          - generic [ref=e188]:
+            - generic [ref=e189]: 5 on track
+            - generic [ref=e190]: 2 at risk
+            - generic [ref=e191]: 1 delayed
+        - generic [ref=e192]:
+          - generic [ref=e193]: Overdue updates
+          - generic [ref=e194]: "0"
+          - generic [ref=e195]: "> 30 days without update"
+      - generic [ref=e196]:
+        - textbox "🔍 Search project or PM…" [ref=e197]
+        - generic [ref=e198]:
+          - button "All" [ref=e199] [cursor=pointer]
+          - button "On Track" [ref=e200] [cursor=pointer]
+          - button "At Risk" [ref=e201] [cursor=pointer]
+          - button "Delayed" [ref=e202] [cursor=pointer]
+        - generic [ref=e203]: 8 of 8 shown
+      - table [ref=e206]:
+        - rowgroup [ref=e207]:
+          - row "Project ↑ PM ↑ Budget ↑ EAC ↑ Variance Complete ↑ Status Last update ↑ Trend" [ref=e208]:
+            - columnheader [ref=e209]
+            - columnheader "Project ↑" [ref=e210] [cursor=pointer]:
+              - generic [ref=e211]:
+                - text: Project
+                - generic [ref=e212]: ↑
+            - columnheader "PM ↑" [ref=e213] [cursor=pointer]:
+              - generic [ref=e214]:
+                - text: PM
+                - generic [ref=e215]: ↑
+            - columnheader "Budget ↑" [ref=e216] [cursor=pointer]:
+              - generic [ref=e217]:
+                - text: Budget
+                - generic [ref=e218]: ↑
+            - columnheader "EAC ↑" [ref=e219] [cursor=pointer]:
+              - generic [ref=e220]:
+                - text: EAC
+                - generic [ref=e221]: ↑
+            - columnheader "Variance" [ref=e222]
+            - columnheader "Complete ↑" [ref=e223] [cursor=pointer]:
+              - generic [ref=e224]:
+                - text: Complete
+                - generic [ref=e225]: ↑
+            - columnheader "Status" [ref=e226]
+            - columnheader "Last update ↑" [ref=e227] [cursor=pointer]:
+              - generic [ref=e228]:
+                - text: Last update
+                - generic [ref=e229]: ↑
+            - columnheader "Trend" [ref=e230]
+            - columnheader [ref=e231]
+        - rowgroup [ref=e232]:
+          - row "Asset Refresh — Office PR-2025-007 J. Lim $420K $418K -0.5% 78% On Track 2026-05-09 Open →" [ref=e233] [cursor=pointer]:
+            - cell [ref=e234]
+            - cell "Asset Refresh — Office PR-2025-007" [ref=e236]:
+              - generic [ref=e237]: Asset Refresh — Office
+              - generic [ref=e238]: PR-2025-007
+            - cell "J. Lim" [ref=e239]
+            - cell "$420K" [ref=e240]
+            - cell "$418K" [ref=e241]
+            - cell "-0.5%" [ref=e242]:
+              - generic [ref=e243]: "-0.5%"
+            - cell "78%" [ref=e244]:
+              - generic [ref=e248]: 78%
+            - cell "On Track" [ref=e249]:
+              - generic [ref=e250]: On Track
+            - cell "2026-05-09" [ref=e251]
+            - cell [ref=e252]:
+              - img [ref=e253]
+            - cell "Open →" [ref=e256]:
+              - button "Open →" [ref=e257]
+          - row "CRM Rollout PR-2025-072 Sara Tan $1.10M $1.13M +2.7% 55% On Track 2026-05-07 Open →" [ref=e258] [cursor=pointer]:
+            - cell [ref=e259]
+            - cell "CRM Rollout PR-2025-072" [ref=e261]:
+              - generic [ref=e262]: CRM Rollout
+              - generic [ref=e263]: PR-2025-072
+            - cell "Sara Tan" [ref=e264]
+            - cell "$1.10M" [ref=e265]
+            - cell "$1.13M" [ref=e266]
+            - cell "+2.7%" [ref=e267]:
+              - generic [ref=e268]: +2.7%
+            - cell "55%" [ref=e269]:
+              - generic [ref=e273]: 55%
+            - cell "On Track" [ref=e274]:
+              - generic [ref=e275]: On Track
+            - cell "2026-05-07" [ref=e276]
+            - cell [ref=e277]:
+              - img [ref=e278]
+            - cell "Open →" [ref=e281]:
+              - button "Open →" [ref=e282]
+          - row "Datacentre Migration PR-2025-089 R. Patel $3.40M $3.45M +1.5% 38% On Track 2026-05-06 Open →" [ref=e283] [cursor=pointer]:
+            - cell [ref=e284]
+            - cell "Datacentre Migration PR-2025-089" [ref=e286]:
+              - generic [ref=e287]: Datacentre Migration
+              - generic [ref=e288]: PR-2025-089
+            - cell "R. Patel" [ref=e289]
+            - cell "$3.40M" [ref=e290]
+            - cell "$3.45M" [ref=e291]
+            - cell "+1.5%" [ref=e292]:
+              - generic [ref=e293]: +1.5%
+            - cell "38%" [ref=e294]:
+              - generic [ref=e298]: 38%
+            - cell "On Track" [ref=e299]:
+              - generic [ref=e300]: On Track
+            - cell "2026-05-06" [ref=e301]
+            - cell [ref=e302]:
+              - img [ref=e303]
+            - cell "Open →" [ref=e306]:
+              - button "Open →" [ref=e307]
+          - row "EAC Refresh Programme PR-2025-014 Sara Tan $1.20M $1.24M +3.3% 64% On Track 2026-05-05 Open →" [ref=e308] [cursor=pointer]:
+            - cell [ref=e309]
+            - cell "EAC Refresh Programme PR-2025-014" [ref=e311]:
+              - generic [ref=e312]: EAC Refresh Programme
+              - generic [ref=e313]: PR-2025-014
+            - cell "Sara Tan" [ref=e314]
+            - cell "$1.20M" [ref=e315]
+            - cell "$1.24M" [ref=e316]
+            - cell "+3.3%" [ref=e317]:
+              - generic [ref=e318]: +3.3%
+            - cell "64%" [ref=e319]:
+              - generic [ref=e323]: 64%
+            - cell "On Track" [ref=e324]:
+              - generic [ref=e325]: On Track
+            - cell "2026-05-05" [ref=e326]
+            - cell [ref=e327]:
+              - img [ref=e328]
+            - cell "Open →" [ref=e331]:
+              - button "Open →" [ref=e332]
+          - row "Network Modernisation PR-2026-022 A. Kumar $900K $880K -2.2% 41% At Risk 2026-05-02 Open →" [ref=e333] [cursor=pointer]:
+            - cell [ref=e334]
+            - cell "Network Modernisation PR-2026-022" [ref=e336]:
+              - generic [ref=e337]: Network Modernisation
+              - generic [ref=e338]: PR-2026-022
+            - cell "A. Kumar" [ref=e339]
+            - cell "$900K" [ref=e340]
+            - cell "$880K" [ref=e341]
+            - cell "-2.2%" [ref=e342]:
+              - generic [ref=e343]: "-2.2%"
+            - cell "41%" [ref=e344]:
+              - generic [ref=e348]: 41%
+            - cell "At Risk" [ref=e349]:
+              - generic [ref=e350]: At Risk
+            - cell "2026-05-02" [ref=e351]
+            - cell [ref=e352]:
+              - img [ref=e353]
+            - cell "Open →" [ref=e356]:
+              - button "Open →" [ref=e357]
+          - row "Security Hardening Wave 3 PR-2026-003 M. Goh $240K $246K +2.5% 45% At Risk 2026-05-01 Open →" [ref=e358] [cursor=pointer]:
+            - cell [ref=e359]
+            - cell "Security Hardening Wave 3 PR-2026-003" [ref=e361]:
+              - generic [ref=e362]: Security Hardening Wave 3
+              - generic [ref=e363]: PR-2026-003
+            - cell "M. Goh" [ref=e364]
+            - cell "$240K" [ref=e365]
+            - cell "$246K" [ref=e366]
+            - cell "+2.5%" [ref=e367]:
+              - generic [ref=e368]: +2.5%
+            - cell "45%" [ref=e369]:
+              - generic [ref=e373]: 45%
+            - cell "At Risk" [ref=e374]:
+              - generic [ref=e375]: At Risk
+            - cell "2026-05-01" [ref=e376]
+            - cell [ref=e377]:
+              - img [ref=e378]
+            - cell "Open →" [ref=e381]:
+              - button "Open →" [ref=e382]
+          - row "Site Commissioning Ph.2 PR-2025-031 L. Wong $1.95M $2.10M +7.7% 52% Delayed 2026-04-28 Open →" [ref=e383] [cursor=pointer]:
+            - cell [ref=e384]
+            - cell "Site Commissioning Ph.2 PR-2025-031" [ref=e386]:
+              - generic [ref=e387]: Site Commissioning Ph.2
+              - generic [ref=e388]: PR-2025-031
+            - cell "L. Wong" [ref=e389]
+            - cell "$1.95M" [ref=e390]
+            - cell "$2.10M" [ref=e391]
+            - cell "+7.7%" [ref=e392]:
+              - generic [ref=e393]: +7.7%
+            - cell "52%" [ref=e394]:
+              - generic [ref=e398]: 52%
+            - cell "Delayed" [ref=e399]:
+              - generic [ref=e400]: Delayed
+            - cell "2026-04-28" [ref=e401]
+            - cell [ref=e402]:
+              - img [ref=e403]
+            - cell "Open →" [ref=e406]:
+              - button "Open →" [ref=e407]
+          - row "Wireless Refresh PR-2025-055 A. Kumar $680K $665K -2.2% 72% On Track 2026-05-10 Open →" [ref=e408] [cursor=pointer]:
+            - cell [ref=e409]
+            - cell "Wireless Refresh PR-2025-055" [ref=e411]:
+              - generic [ref=e412]: Wireless Refresh
+              - generic [ref=e413]: PR-2025-055
+            - cell "A. Kumar" [ref=e414]
+            - cell "$680K" [ref=e415]
+            - cell "$665K" [ref=e416]
+            - cell "-2.2%" [ref=e417]:
+              - generic [ref=e418]: "-2.2%"
+            - cell "72%" [ref=e419]:
+              - generic [ref=e423]: 72%
+            - cell "On Track" [ref=e424]:
+              - generic [ref=e425]: On Track
+            - cell "2026-05-10" [ref=e426]
+            - cell [ref=e427]:
+              - img [ref=e428]
+            - cell "Open →" [ref=e431]:
+              - button "Open →" [ref=e432]
