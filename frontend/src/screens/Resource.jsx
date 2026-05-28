@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { getProject, fmt, MONTHS, RATES, RESOURCE_POOL } from '../data/mock.js';
 
 let nextId = 100;
@@ -176,8 +177,80 @@ export default function Resource({ projectId, navigate }) {
   const [pendingFn, setPendingFn]     = useState('');
   const [confirmingId, setConfirmingId] = useState(null);
   const [saveStatus, setSaveStatus]   = useState(null);
-  const saveTimer   = useRef();
-  const firstRender = useRef(true);
+  const [importErr, setImportErr]     = useState(null);
+  const saveTimer    = useRef();
+  const firstRender  = useRef(true);
+  const importRef    = useRef(null);
+
+  function downloadResourceTemplate() {
+    const header = ['Name', 'Grade', 'Function', ...MONTHS];
+    const dataRows = rows.map(r => {
+      const fteVals = MONTHS.map((_, mi) => {
+        if (!inRange(viewYear, mi)) return '';
+        return r.fte[absIdx(viewYear, mi)] || '';
+      });
+      return [r.role, r.grade, r.fn, ...fteVals];
+    });
+    const blankRows = Array(3).fill(['', '', '', ...Array(12).fill('')]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows, ...blankRows]);
+    ws['!cols'] = [{ wch: 22 }, { wch: 7 }, { wch: 24 }, ...Array(12).fill({ wch: 7 })];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Resource Plan');
+    XLSX.writeFile(wb, `resource_plan_${p.id}_${viewYear}.xlsx`);
+  }
+
+  function handleResourceImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportErr(null);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const wb   = XLSX.read(ev.target.result, { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const hdrs = (data[0] || []).map(h => String(h).trim());
+        const nameCol  = hdrs.findIndex(h => /name/i.test(h));
+        const gradeCol = hdrs.findIndex(h => /grade/i.test(h));
+        const fnCol    = hdrs.findIndex(h => /function|role/i.test(h));
+        const monthCols = MONTHS.map(m => hdrs.indexOf(m));
+        if (nameCol === -1) { setImportErr('No "Name" column found.'); return; }
+        let added = 0, updated = 0;
+        setRows(prev => {
+          const next = [...prev];
+          for (let i = 1; i < data.length; i++) {
+            const row  = data[i];
+            const name = row[nameCol] ? String(row[nameCol]).trim() : '';
+            if (!name) continue;
+            const grade = gradeCol >= 0 && row[gradeCol] ? String(row[gradeCol]).trim() : 'E2';
+            const fn    = fnCol    >= 0 && row[fnCol]    ? String(row[fnCol]).trim()    : '';
+            const existing = next.find(r => r.role === name);
+            if (existing) {
+              monthCols.forEach((col, mi) => {
+                if (col === -1 || isLocked(viewYear, mi) || !inRange(viewYear, mi)) return;
+                const v = parseFloat(row[col]);
+                if (!isNaN(v)) existing.fte[absIdx(viewYear, mi)] = Math.max(0, v);
+              });
+              updated++;
+            } else {
+              const fte = Array(totalMonths).fill(0);
+              monthCols.forEach((col, mi) => {
+                if (col === -1 || !inRange(viewYear, mi)) return;
+                const v = parseFloat(row[col]);
+                if (!isNaN(v)) fte[absIdx(viewYear, mi)] = Math.max(0, v);
+              });
+              next.push({ id: nextId++, role: name, grade, fn, fte });
+              added++;
+            }
+          }
+          if (updated + added === 0) { setImportErr('No valid rows found.'); return prev; }
+          return next.map(r => ({ ...r }));
+        });
+      } catch { setImportErr('Could not parse file. Download the template to see expected format.'); }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  }
 
   const assignedNames = new Set(rows.map(r => r.role));
   const available = RESOURCE_POOL.filter(p => !assignedNames.has(p.name));
@@ -296,6 +369,7 @@ export default function Resource({ projectId, navigate }) {
         <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ flex: 1 }}>
             <h4>FTE plan by person</h4>
+            {importErr && <div style={{ fontSize: 11, color: 'var(--bad)', marginTop: 3 }}>{importErr}</div>}
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
               {rangeLabel}
               {projectYears.length > 1 && (
@@ -336,6 +410,19 @@ export default function Resource({ projectId, navigate }) {
             </div>
           )}
 
+          <input ref={importRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleResourceImport} />
+          <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => { setImportErr(null); importRef.current.click(); }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 8V2M3 5l3-3 3 3"/><path d="M1 10h10"/>
+            </svg>
+            Import
+          </button>
+          <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={downloadResourceTemplate}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 2v6M3 6l3 3 3-3"/><path d="M1 10h10"/>
+            </svg>
+            Template
+          </button>
           {!adding && (
             <button className="btn btn-ghost btn-sm" onClick={() => setAdding(true)}>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

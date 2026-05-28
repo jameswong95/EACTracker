@@ -78,6 +78,12 @@ function Icon({ name, size = 16 }) {
         <path d="M6 12l4-4-4-4" />
       </svg>
     ),
+    shield: (
+      <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 1L2 4v4c0 3.31 2.69 6 6 6s6-2.69 6-6V4L8 1Z" />
+        <path d="M5.5 8l2 2 3-3" />
+      </svg>
+    ),
   };
   return icons[name] || null;
 }
@@ -96,6 +102,11 @@ const NAV = {
     { id: 'standards',  label: 'Standards',  icon: 'standards' },
     { id: 'portfolio',  label: 'Projects',   icon: 'project' },
   ],
+  Admin: [
+    { id: 'admin-pool',        label: 'Resource Pool', icon: 'resource'  },
+    { id: 'admin-permissions', label: 'Permissions',   icon: 'shield'    },
+    { id: 'admin-audit',       label: 'Audit Trail',   icon: 'standards' },
+  ],
 };
 
 const PROJECT_SUB = [
@@ -105,9 +116,9 @@ const PROJECT_SUB = [
   { id: 'revrec',   label: 'Rev. Rec.',      icon: 'revrec' },
 ];
 
-const ROLES = ['PM', 'PD', 'Finance'];
+const ROLES = ['PM', 'PD', 'Finance', 'Admin'];
 
-export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle }) {
+export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed }) {
   const activeProject = projects.find(p => p.id === projectId);
   const inProjectView = PROJECT_SUB.map(s => s.id).includes(screen);
   const navItems = NAV[role] || NAV.PM;

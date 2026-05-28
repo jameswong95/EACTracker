@@ -10,13 +10,16 @@ import SapImport from './screens/SapImport.jsx';
 import Standards from './screens/Standards.jsx';
 import Assists from './screens/Assists.jsx';
 import PdApprovals from './screens/PdApprovals.jsx';
+import AdminPanel from './screens/AdminPanel.jsx';
+import { logAction } from './data/auditLog.js';
 
-const ROLE_DEFAULTS = { PM: 'dashboard', PD: 'portfolio', Finance: 'sap-import' };
+const ROLE_DEFAULTS = { PM: 'dashboard', PD: 'portfolio', Finance: 'sap-import', Admin: 'admin-pool' };
 
-const ROLE_ALLOWED = {
+const ROLE_ALLOWED_INIT = {
   PM:      ['dashboard', 'portfolio', 'project', 'eac', 'resource', 'revrec', 'assists'],
   PD:      ['portfolio', 'project', 'eac', 'resource', 'revrec'],
   Finance: ['sap-import', 'standards', 'portfolio'],
+  Admin:   ['admin-pool', 'admin-permissions', 'admin-audit'],
 };
 
 export default function App() {
@@ -25,6 +28,7 @@ export default function App() {
   const [screen, setScreen]   = useState('dashboard');
   const [projectId, setProjectId] = useState('PR-2025-014');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [roleAllowed, setRoleAllowed] = useState(ROLE_ALLOWED_INIT);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -32,17 +36,18 @@ export default function App() {
   }, [theme]);
 
   function navigate(s, pid) {
-    if (!ROLE_ALLOWED[role].includes(s)) return;
+    if (!(roleAllowed[role] || []).includes(s)) return;
     setScreen(s);
     if (pid) setProjectId(pid);
   }
 
   function switchRole(newRole) {
+    logAction({ action: 'Switch role', detail: `${role} → ${newRole}`, user: 'System', role: newRole });
     setRole(newRole);
     setScreen(ROLE_DEFAULTS[newRole]);
   }
 
-  const allowed = ROLE_ALLOWED[role];
+  const allowed = roleAllowed[role] || [];
   const activeScreen = allowed.includes(screen) ? screen : ROLE_DEFAULTS[role];
 
   const screens = {
@@ -55,7 +60,10 @@ export default function App() {
     'sap-import': <SapImport navigate={navigate} />,
     standards:    <Standards navigate={navigate} />,
     assists:      <Assists navigate={navigate} />,
-    'pd-approvals': <PdApprovals navigate={navigate} />,
+    'pd-approvals':      <PdApprovals navigate={navigate} />,
+    'admin-pool':        <AdminPanel tab="pool"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
+    'admin-permissions': <AdminPanel tab="permissions" roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
+    'admin-audit':       <AdminPanel tab="audit"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
   };
 
   return (
@@ -70,6 +78,8 @@ export default function App() {
         toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(c => !c)}
+        roleAllowed={roleAllowed}
+        setRoleAllowed={setRoleAllowed}
       />
       <main className="main">
         {screens[activeScreen] || screens[ROLE_DEFAULTS[role]]}
