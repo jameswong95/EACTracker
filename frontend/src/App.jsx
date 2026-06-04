@@ -25,6 +25,7 @@ export default function App() {
   const [screen, setScreen]   = useState('dashboard');
   const [projectId, setProjectId] = useState('PR-2025-014');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -35,11 +36,13 @@ export default function App() {
     if (!ROLE_ALLOWED[role].includes(s)) return;
     setScreen(s);
     if (pid) setProjectId(pid);
+    setMobileNavOpen(false);
   }
 
   function switchRole(newRole) {
     setRole(newRole);
     setScreen(ROLE_DEFAULTS[newRole]);
+    setMobileNavOpen(false);
   }
 
   const allowed = ROLE_ALLOWED[role];
@@ -70,8 +73,18 @@ export default function App() {
         toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(c => !c)}
+        mobileOpen={mobileNavOpen}
       />
+      {mobileNavOpen && (
+        <div className="mobile-overlay" onClick={() => setMobileNavOpen(false)} />
+      )}
       <main className="main">
+        <div className="mobile-topbar">
+          <button className="hamburger" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
+            <span /><span /><span />
+          </button>
+          <span className="mobile-topbar-title">PFMS</span>
+        </div>
         {screens[activeScreen] || screens[ROLE_DEFAULTS[role]]}
       </main>
     </div>

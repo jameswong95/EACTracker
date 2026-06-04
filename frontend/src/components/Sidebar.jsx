@@ -107,7 +107,7 @@ const PROJECT_SUB = [
 
 const ROLES = ['PM', 'PD', 'Finance'];
 
-export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle }) {
+export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, mobileOpen }) {
   const activeProject = projects.find(p => p.id === projectId);
   const inProjectView = PROJECT_SUB.map(s => s.id).includes(screen);
   const navItems = NAV[role] || NAV.PM;
@@ -116,7 +116,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
 
   return (
     <nav
-      className="sidebar"
+      className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}
       style={{
         width: collapsed ? 56 : 220,
         transition: 'width .2s ease',
