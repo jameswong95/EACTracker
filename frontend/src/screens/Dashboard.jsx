@@ -1,10 +1,10 @@
 import React from 'react';
-import { projects, fmt, fmtPct, statusLabel } from '../data/mock.js';
+import { useProjects, fmt, fmtPct, statusLabel } from '../data/store.js';
 import { Sparkline } from '../components/Charts.jsx';
 
-const NOW = new Date('2026-05-27');
-const PERIOD_CLOSE = new Date('2026-06-10');
-const daysLeft = Math.round((PERIOD_CLOSE - NOW) / 86400000);
+const NOW = new Date();
+const PERIOD_CLOSE = new Date(NOW.getFullYear(), NOW.getMonth() + 1, 10);
+const daysLeft = Math.max(0, Math.round((PERIOD_CLOSE - NOW) / 86400000));
 
 function StatusDot({ status }) {
   const colors = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)', info: 'var(--info)' };
@@ -16,8 +16,10 @@ function StatusDot({ status }) {
   );
 }
 
-export default function Dashboard({ navigate }) {
-  const myProjects = projects.filter(p => p.pm === 'Sara Tan');
+export default function Dashboard({ navigate, session }) {
+  const { projects, loading } = useProjects();
+  const myName = session?.full_name;
+  const myProjects = myName ? projects.filter(p => p.pm === myName || p.pd === myName) : projects;
   const portfolioEac = myProjects.reduce((a, p) => a + p.eac, 0);
   const portfolioBudget = myProjects.reduce((a, p) => a + p.budget, 0);
   const variance = portfolioEac - portfolioBudget;
@@ -30,9 +32,9 @@ export default function Dashboard({ navigate }) {
       {/* Header */}
       <div className="dash-header">
         <div>
-          <div className="dash-greeting">Good morning, Sara</div>
+          <div className="dash-greeting">Good morning, {session?.full_name?.split(' ')[0] || 'there'}</div>
           <div className="dash-period-label">
-            May 2026 &middot; Period closes in {daysLeft} days
+            {NOW.toLocaleString('en', { month: 'long', year: 'numeric' })} &middot; Period closes in {daysLeft} days
           </div>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => navigate('assists')}>
@@ -58,7 +60,7 @@ export default function Dashboard({ navigate }) {
         </div>
         <div className="pulse-sep" />
         <div className="pulse-stat">
-          May closes <strong>{daysLeft} days</strong>
+          {NOW.toLocaleString('en', { month: 'short' })} closes <strong>{daysLeft} days</strong>
         </div>
       </div>
 

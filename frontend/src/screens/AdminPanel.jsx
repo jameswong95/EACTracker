@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { RESOURCE_POOL } from '../data/mock.js';
-import { entries as auditEntries } from '../data/auditLog.js';
+import { useResourcePool, useAudit } from '../data/store.js';
 
 const ALL_SCREENS = [
   { id: 'dashboard',    label: 'Dashboard' },
@@ -87,6 +86,7 @@ function FilterSelect({ value, onChange, options }) {
 }
 
 function ResourcePoolTab() {
+  const RESOURCE_POOL = useResourcePool();
   const [q, setQ] = useState('');
   const filtered = RESOURCE_POOL.filter(r =>
     !q ||
@@ -241,6 +241,7 @@ function PermissionsTab({ roleAllowed, setRoleAllowed }) {
 }
 
 function AuditTab() {
+  const { entries: auditEntries } = useAudit();
   const [q, setQ] = useState('');
   const [roleF, setRoleF] = useState('');
 

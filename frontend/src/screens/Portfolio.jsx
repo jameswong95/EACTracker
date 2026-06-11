@@ -1,13 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { projects, fmt, fmtPct, statusLabel, ROLE_USERS } from '../data/mock.js';
+import { useProjects, fmt, fmtPct, statusLabel } from '../data/store.js';
 import { Sparkline } from '../components/Charts.jsx';
 
-export default function Portfolio({ navigate, role }) {
+export default function Portfolio({ navigate, role, session }) {
+  const { projects, loading } = useProjects();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sort, setSort] = useState({ key: 'name', dir: 1 });
 
-  const baseList = role === 'PM' ? projects.filter(p => p.pm === ROLE_USERS.PM.name) : projects;
+  const myName = session?.full_name;
+  const baseList = (role === 'PM' && myName)
+    ? projects.filter(p => p.pm === myName)
+    : projects;
 
   const filtered = useMemo(() => {
     let list = [...baseList];
@@ -25,8 +29,9 @@ export default function Portfolio({ navigate, role }) {
   const totalBudget = baseList.reduce((a, p) => a + p.budget, 0);
   const totalEac = baseList.reduce((a, p) => a + p.eac, 0);
   const overdue = baseList.filter(p => {
+    if (!p.lastUpdate || p.lastUpdate === '—') return false;
     const d = new Date(p.lastUpdate);
-    return (new Date('2026-05-26') - d) / 86400000 > 30;
+    return (new Date() - d) / 86400000 > 30;
   }).length;
 
   function toggleSort(key) {

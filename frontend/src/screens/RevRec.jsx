@@ -1,18 +1,27 @@
 import React, { useState } from 'react';
-import { getProject, fmt, MONTHS } from '../data/mock.js';
+import { useProject, fmt, MONTHS } from '../data/store.js';
 import { LineChart } from '../components/Charts.jsx';
 
-const NOW_MONTH = 4; // May — months 0..NOW_MONTH are locked (SAP actuals)
+const NOW_MONTH = new Date().getMonth(); // months 0..NOW_MONTH are locked
 
 export default function RevRec({ projectId, navigate }) {
-  const p  = getProject(projectId);
+  const { project: p, loading } = useProject(projectId);
+  if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
+  return <RevRecBody p={p} navigate={navigate} />;
+}
+
+function RevRecBody({ p, navigate }) {
   const rr = p.revrec;
+  // Build a recognition curve if one isn't provided yet
+  const curve = (rr.recognitionCurve && rr.recognitionCurve.length === 12)
+    ? rr.recognitionCurve
+    : [0, 8, 17, 26, 36, 45, 55, 64, 73, 79, 85, 100];
 
   // Derive initial monthly values from existing curve data
   const initMonthly = MONTHS.map((_, mi) => {
-    const thisPct = rr.recognitionCurve[mi] / 100;
-    const prevPct = mi > 0 ? rr.recognitionCurve[mi - 1] / 100 : 0;
-    return Math.round((thisPct - prevPct) * rr.forecastFull);
+    const thisPct = curve[mi] / 100;
+    const prevPct = mi > 0 ? curve[mi - 1] / 100 : 0;
+    return Math.round((thisPct - prevPct) * (rr.forecastFull || 0));
   });
 
   const [monthly, setMonthly] = useState(initMonthly);

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getProject, fmt, MONTHS, RATES, RESOURCE_POOL } from '../data/mock.js';
+import { useProject, useResourcePool, useRates, fmt, MONTHS } from '../data/store.js';
 
 let nextId = 100;
 
@@ -144,8 +144,14 @@ function RoleSelect({ roles, value, onChange }) {
 }
 
 export default function Resource({ projectId, navigate }) {
-  const p = getProject(projectId);
+  const { project: p, loading } = useProject(projectId);
+  const RESOURCE_POOL = useResourcePool();
+  const RATES = useRates();
+  if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
+  return <ResourceBody p={p} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} />;
+}
 
+function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
   // Derive project span from resource data. fte arrays are indexed from (startYear, startMonth).
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;    // 0 = January

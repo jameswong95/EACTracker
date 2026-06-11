@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RATES } from '../data/mock.js';
+import { useRates } from '../data/store.js';
 
 const WBS_TREE = [
   {
@@ -21,6 +21,7 @@ const WBS_TREE = [
 ];
 
 export default function Standards({ navigate }) {
+  const RATES = useRates();
   const [rateTab, setRateTab] = useState('rates');
   const [historyOpen, setHistoryOpen] = useState(false);
 

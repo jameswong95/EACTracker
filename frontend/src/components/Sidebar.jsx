@@ -1,5 +1,6 @@
 import React from 'react';
-import { projects, ROLE_USERS } from '../data/mock.js';
+import { ROLE_USERS } from '../data/mock.js';
+import { useProjects } from '../data/store.js';
 
 function Icon({ name, size = 16 }) {
   const s = size;
@@ -118,7 +119,8 @@ const PROJECT_SUB = [
 
 const ROLES = ['PM', 'PD', 'Finance', 'Admin'];
 
-export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed }) {
+export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed, session, onSignOut }) {
+  const { projects } = useProjects();
   const activeProject = projects.find(p => p.id === projectId);
   const inProjectView = PROJECT_SUB.map(s => s.id).includes(screen);
   const navItems = NAV[role] || NAV.PM;
@@ -159,30 +161,6 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
           )}
         </div>
       </div>
-
-      {/* Role switcher — hidden when collapsed */}
-      {!collapsed && (
-        <div style={{ padding: '12px 12px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(255,255,255,0.25)', marginBottom: 6 }}>
-            Viewing as
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {ROLES.map(r => (
-              <button
-                key={r}
-                onClick={() => switchRole(r)}
-                style={{
-                  flex: 1, padding: '4px 0', fontSize: 10, fontWeight: 700,
-                  borderRadius: 4, border: 'none', cursor: 'pointer',
-                  background: role === r ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)',
-                  color: role === r ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.40)',
-                  transition: 'all .12s',
-                }}
-              >{r}</button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Main nav */}
       {!collapsed && <div className="sidebar-section">Navigation</div>}
@@ -293,17 +271,34 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
               cursor: collapsed ? 'pointer' : 'default',
             }}
           >
-            {ROLE_USERS[role]?.initials}
+            {session?.initials || ROLE_USERS[role]?.initials}
           </button>
           {!collapsed && (
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.80)', lineHeight: 1.2 }}>
-                {ROLE_USERS[role]?.name}
+                {session?.full_name || ROLE_USERS[role]?.name}
               </div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.30)', fontWeight: 500 }}>
-                {ROLE_USERS[role]?.title}
+                {session?.role || ROLE_USERS[role]?.title}
               </div>
             </div>
+          )}
+          {!collapsed && onSignOut && (
+            <button
+              onClick={onSignOut}
+              title="Sign out"
+              style={{
+                background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 4, padding: '4px 6px', cursor: 'pointer',
+                color: 'rgba(255,255,255,0.45)', display: 'flex', alignItems: 'center',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 11l3-3-3-3"/><path d="M13 8H6"/><path d="M9 14H3a1 1 0 01-1-1V3a1 1 0 011-1h6"/>
+              </svg>
+            </button>
           )}
         </div>
       </div>
