@@ -62,9 +62,36 @@ function parseWorkbook(buf) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
 
-  // Dedupe project blocks: the SAP report repeats the same project header on
-  // continuation pages. We keep one record per sap_project_no, merge sub-jobs
-  // (dedupe by wbs_code), and prefer the first non-null totals.
+  // ZPSR0021A structural quirks this parser handles:
+  //   • Continuation pages — the same Project block reprinted on each page (same Total).
+  //   • Multi-block projects — one project number with several Project headers, each
+  //     covering a different WBS branch and its own Total row.
+  //   • Hierarchical WBS — sub-jobs at multiple depths (e.g. `…-1`, `…-1-1`, `…-1-W-A`).
+  //   • Applicant grouping — `Applicant no. X` / `Totals: X` separators (ignored).
+  //   • Bare-project row — a row whose WBS equals the project number, carrying either
+  //     level-0 direct costs (new format) or a duplicate of the Total (old format).
+  //
+  // Strategy:
+  //   • Project header opens / re-enters a project context (deduped by sap_project_no).
+  //   • Sub-job rows are collected and deduped by wbs_code across blocks/pages.
+  //   • Total rows accumulate into project totals, deduped by their numeric signature
+  //     so identical Totals (continuation pages) count once but distinct Totals
+  //     (multi-block projects) all contribute.
+  //   • Bare-project rows are skipped — the Total row already accounts for them.
+
+  const SUM_KEYS = ['lab','foh','mat','doc','sco','tot_cost','com_cst','plan_cos',
+                    'quot_pr','rev','pb','os_pb','gr_profit'];
+  const emptyTotals = () => Object.fromEntries(SUM_KEYS.map(k => [k, 0]));
+  const readTotals = (row) => ({
+    lab: num(row[C.LAB]), foh: num(row[C.FOH]), mat: num(row[C.MAT]),
+    doc: num(row[C.DOC]), sco: num(row[C.SCO]),
+    tot_cost: num(row[C.TOT]), com_cst: num(row[C.COM]), plan_cos: num(row[C.PLAN]),
+    quot_pr: num(row[C.QUOT]), rev: num(row[C.REV]), pb: num(row[C.PB]),
+    os_pb: num(row[C.OSPB]), gr_profit: num(row[C.GP]),
+  });
+  // Warranty/DLP detection — any WBS segment of W, WA, WN, or W-A/W-N.
+  const isWarrantySuffix = (suffix) => /(^|-)W(-?[AN])?$/.test(suffix);
+
   const byKey = new Map();
   let current = null;
 
@@ -72,20 +99,12 @@ function parseWorkbook(buf) {
     const row = rows[i] || [];
     const c0 = row[0];
 
-    // Project header row
+    // Project header → set/refresh project context
     if (c0 === 'Project' && row[4]) {
       const key = String(row[4]).trim();
-      const existing = byKey.get(key);
-      if (existing) {
-        current = existing;
-        // Back-fill missing header fields from later occurrences if present
-        if (!current.responsible && row[22]) current.responsible = String(row[22]).trim();
-        if (!current.responsible_id && row[21] != null) current.responsible_id = Number(row[21]) || null;
-        if (!current.customer && row[26]) current.customer = String(row[26]).trim();
-        if (!current.start_date) current.start_date = parseDdMmYyyy(row[32]);
-        if (!current.end_date) current.end_date = parseDdMmYyyy(row[37] || row[36]);
-      } else {
-        current = {
+      let proj = byKey.get(key);
+      if (!proj) {
+        proj = {
           sap_project_no:  key,
           name:            row[14] ? String(row[14]).trim() : '',
           responsible_id:  row[21] != null && row[21] !== '' ? Number(row[21]) || null : null,
@@ -93,59 +112,60 @@ function parseWorkbook(buf) {
           customer:        row[26] ? String(row[26]).trim() : null,
           start_date:      parseDdMmYyyy(row[32]),
           end_date:        parseDdMmYyyy(row[37] || row[36]),
-          totals:          null,
+          totals:          emptyTotals(),
           sub_jobs:        [],
-          _seen:           new Set(),
+          _seenSub:        new Set(),
+          _seenTotal:      new Set(),
+          _hasTotal:       false,
         };
-        byKey.set(key, current);
+        byKey.set(key, proj);
+      } else {
+        // Back-fill missing header metadata when later blocks carry it.
+        if (!proj.name && row[14])       proj.name = String(row[14]).trim();
+        if (!proj.responsible && row[22]) proj.responsible = String(row[22]).trim();
+        if (!proj.responsible_id && row[21] != null && row[21] !== '')
+          proj.responsible_id = Number(row[21]) || null;
+        if (!proj.customer && row[26])   proj.customer = String(row[26]).trim();
+        if (!proj.start_date)            proj.start_date = parseDdMmYyyy(row[32]);
+        if (!proj.end_date)              proj.end_date   = parseDdMmYyyy(row[37] || row[36]);
       }
+      current = proj;
       continue;
     }
 
-    // Skip if no active project context
     if (!current) continue;
 
-    // Total row at end of project block (authoritative — always overwrite)
+    // Total row → sum into project totals (deduped by numeric signature)
     if (c0 === 'Total' && row[3] === current.sap_project_no) {
-      current.totals = {
-        lab: num(row[C.LAB]), foh: num(row[C.FOH]), mat: num(row[C.MAT]),
-        doc: num(row[C.DOC]), sco: num(row[C.SCO]),
-        tot_cost: num(row[C.TOT]), com_cst: num(row[C.COM]), plan_cos: num(row[C.PLAN]),
-        quot_pr: num(row[C.QUOT]), rev: num(row[C.REV]), pb: num(row[C.PB]),
-        os_pb: num(row[C.OSPB]), gr_profit: num(row[C.GP]),
-      };
-      current = null;  // end of block
+      const t = readTotals(row);
+      const sig = SUM_KEYS.map(k => t[k]).join('|');
+      if (!current._seenTotal.has(sig)) {
+        current._seenTotal.add(sig);
+        for (const k of SUM_KEYS) current.totals[k] += t[k];
+        current._hasTotal = true;
+      }
+      // Do NOT null `current` — same project may continue with another block.
       continue;
     }
 
-    // Sub-job or project-summary row
-    if (typeof c0 === 'string' && c0.startsWith(current?.sap_project_no || '')) {
+    // Sub-job / WBS row (any code that begins with the project number)
+    if (typeof c0 === 'string' && c0.startsWith(current.sap_project_no)) {
       const wbsCode = c0.trim();
-      const suffixMatch = wbsCode.slice(current.sap_project_no.length);
-      const suffix = suffixMatch.startsWith('-') ? suffixMatch.slice(1) : '';
+      const tail    = wbsCode.slice(current.sap_project_no.length);
+      const suffix  = tail.startsWith('-') ? tail.slice(1) : '';
 
-      // Project-summary row (no suffix) — use as totals fallback
-      if (!suffix) {
-        if (!current.totals) {
-          current.totals = {
-            lab: num(row[C.LAB]), foh: num(row[C.FOH]), mat: num(row[C.MAT]),
-            doc: num(row[C.DOC]), sco: num(row[C.SCO]),
-            tot_cost: num(row[C.TOT]), com_cst: num(row[C.COM]), plan_cos: num(row[C.PLAN]),
-            quot_pr: num(row[C.QUOT]), rev: num(row[C.REV]), pb: num(row[C.PB]),
-            os_pb: num(row[C.OSPB]), gr_profit: num(row[C.GP]),
-          };
-        }
-        continue;
-      }
+      // Bare-project row — skip (Total row already aggregates it).
+      if (!suffix) continue;
 
-      // Sub-job row — dedupe by wbs_code across continuation pages
-      if (current._seen.has(wbsCode)) continue;
-      current._seen.add(wbsCode);
+      // Dedupe by wbs_code across multi-block / continuation pages.
+      if (current._seenSub.has(wbsCode)) continue;
+      current._seenSub.add(wbsCode);
+
       current.sub_jobs.push({
         wbs_code:    wbsCode,
         wbs_suffix:  suffix,
         name:        row[11] ? String(row[11]).trim() : '(unnamed)',
-        is_warranty: suffix === 'W',
+        is_warranty: isWarrantySuffix(suffix),
         lab: num(row[C.LAB]), foh: num(row[C.FOH]), mat: num(row[C.MAT]),
         doc: num(row[C.DOC]), sco: num(row[C.SCO]),
         tot_cost: num(row[C.TOT]), com_cst: num(row[C.COM]), plan_cos: num(row[C.PLAN]),
@@ -153,8 +173,12 @@ function parseWorkbook(buf) {
     }
   }
 
-  // Strip internal _seen before returning
-  return Array.from(byKey.values()).map(({ _seen, ...rest }) => rest);
+  // Strip internal state. Projects that never produced a Total row report null
+  // totals so the commit step counts them as exceptions.
+  return Array.from(byKey.values()).map(({ _seenSub, _seenTotal, _hasTotal, totals, ...rest }) => ({
+    ...rest,
+    totals: _hasTotal ? totals : null,
+  }));
 }
 
 // POST /api/sap/preview  (multipart/form-data, field name 'file')
