@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar.jsx';
+import Login from './screens/Login.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Portfolio from './screens/Portfolio.jsx';
 import Project from './screens/Project.jsx';
@@ -23,9 +24,16 @@ const ROLE_ALLOWED_INIT = {
 };
 
 export default function App() {
-  const [role, setRole]       = useState('PM');
+  const [session, setSession] = useState(() => {
+    try {
+      const raw = localStorage.getItem('pfms-session');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+
+  const [role, setRole]       = useState(() => session?.role || 'PM');
   const [theme, setTheme]     = useState(() => localStorage.getItem('pfms-theme') || 'light');
-  const [screen, setScreen]   = useState('dashboard');
+  const [screen, setScreen]   = useState(() => ROLE_DEFAULTS[session?.role || 'PM']);
   const [projectId, setProjectId] = useState('PR-2025-014');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -36,6 +44,19 @@ export default function App() {
     localStorage.setItem('pfms-theme', theme);
   }, [theme]);
 
+  function handleSignIn(s) {
+    setSession(s);
+    setRole(s.role);
+    setScreen(ROLE_DEFAULTS[s.role]);
+    logAction({ action: 'Sign in', detail: s.full_name, user: s.full_name, role: s.role });
+  }
+
+  function handleSignOut() {
+    logAction({ action: 'Sign out', detail: session?.full_name, user: session?.full_name, role });
+    localStorage.removeItem('pfms-session');
+    setSession(null);
+  }
+
   function navigate(s, pid) {
     if (!(roleAllowed[role] || []).includes(s)) return;
     setScreen(s);
@@ -44,26 +65,28 @@ export default function App() {
   }
 
   function switchRole(newRole) {
-    logAction({ action: 'Switch role', detail: `${role} → ${newRole}`, user: 'System', role: newRole });
+    logAction({ action: 'Switch role', detail: `${role} → ${newRole}`, user: session?.full_name || 'System', role: newRole });
     setRole(newRole);
     setScreen(ROLE_DEFAULTS[newRole]);
     setMobileNavOpen(false);
   }
 
+  if (!session) return <Login onSignIn={handleSignIn} />;
+
   const allowed = roleAllowed[role] || [];
   const activeScreen = allowed.includes(screen) ? screen : ROLE_DEFAULTS[role];
 
   const screens = {
-    dashboard:    <Dashboard navigate={navigate} />,
-    portfolio:    <Portfolio navigate={navigate} role={role} />,
+    dashboard:    <Dashboard navigate={navigate} session={session} />,
+    portfolio:    <Portfolio navigate={navigate} role={role} session={session} />,
     project:      <Project key={projectId} projectId={projectId} navigate={navigate} />,
     eac:          <EacEditor projectId={projectId} navigate={navigate} />,
     resource:     <Resource projectId={projectId} navigate={navigate} />,
     revrec:       <RevRec projectId={projectId} navigate={navigate} />,
-    'sap-import': <SapImport navigate={navigate} />,
+    'sap-import': <SapImport navigate={navigate} session={session} />,
     standards:    <Standards navigate={navigate} />,
     assists:      <Assists navigate={navigate} />,
-    'pd-approvals':      <PdApprovals navigate={navigate} />,
+    'pd-approvals':      <PdApprovals navigate={navigate} session={session} />,
     'admin-pool':        <AdminPanel tab="pool"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
     'admin-permissions': <AdminPanel tab="permissions" roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
     'admin-audit':       <AdminPanel tab="audit"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
@@ -84,6 +107,8 @@ export default function App() {
         mobileOpen={mobileNavOpen}
         roleAllowed={roleAllowed}
         setRoleAllowed={setRoleAllowed}
+        session={session}
+        onSignOut={handleSignOut}
       />
       {mobileNavOpen && (
         <div className="mobile-overlay" onClick={() => setMobileNavOpen(false)} />

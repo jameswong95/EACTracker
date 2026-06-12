@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { getProject, fmt, MONTHS } from '../data/mock.js';
+import { useProject, fmt, MONTHS } from '../data/store.js';
 
 const STANDARD_CATEGORIES = ['Labour', 'Material', 'Sub Contractor', 'Spares'];
 
@@ -59,8 +59,12 @@ function OverTooltip({ x, y, month, colTotal, budgetMonthly, rows, absIdx, viewY
 }
 
 export default function EacEditor({ projectId, navigate }) {
-  const p = getProject(projectId);
+  const { project: p, loading } = useProject(projectId);
+  if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
+  return <EacEditorBody p={p} navigate={navigate} />;
+}
 
+function EacEditorBody({ p, navigate }) {
   // Same span logic as Resource Plan — values arrays are flat, indexed from (startYear, startMonth)
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;

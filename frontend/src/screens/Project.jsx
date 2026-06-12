@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getProject, fmt, fmtPct, statusLabel, MONTHS } from '../data/mock.js';
+import { fmt, fmtPct, statusLabel, MONTHS } from '../data/store.js';
+import { useProject } from '../data/store.js';
 import { LineChart, DonutChart, StackedBar } from '../components/Charts.jsx';
 
 function Badge({ status }) {
@@ -36,11 +37,17 @@ function DownloadIcon() {
 }
 
 export default function Project({ projectId, navigate }) {
-  const p = getProject(projectId);
+  const { project, loading, error } = useProject(projectId);
+  if (loading) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading project…</div></div>;
+  if (error || !project) return <div className="screen"><div style={{ padding: 40, color: 'var(--bad)' }}>Project not found: {projectId}</div></div>;
+  return <ProjectBody p={project} navigate={navigate} />;
+}
+
+function ProjectBody({ p, navigate }) {
   const [tab, setTab] = useState('overview');
   const [milestones, setMilestones] = useState(() => p.milestones.map(m => ({ ...m, _id: nextMid++ })));
   const [risks, setRisks] = useState(() => p.risks.map(r => ({ ...r, _id: nextRid++ })));
-  const variance = (p.eac - p.budget) / p.budget * 100;
+  const variance = p.budget > 0 ? (p.eac - p.budget) / p.budget * 100 : 0;
 
   const tabs = ['Overview', 'Update history', 'Milestones', 'Risks', 'Mitigation'];
 

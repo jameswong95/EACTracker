@@ -1,13 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { projects, fmt, fmtPct, statusLabel, ROLE_USERS } from '../data/mock.js';
+import { useProjects, fmt, fmtPct, statusLabel } from '../data/store.js';
 import { Sparkline } from '../components/Charts.jsx';
 
-export default function Portfolio({ navigate, role }) {
+const ROLE_TITLE = { PM: 'Project Manager', PD: 'Project Director', Finance: 'Finance', Admin: 'Administrator' };
+
+export default function Portfolio({ navigate, role, session }) {
+  const { projects, loading } = useProjects();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sort, setSort] = useState({ key: 'name', dir: 1 });
 
-  const baseList = role === 'PM' ? projects.filter(p => p.pm === ROLE_USERS.PM.name) : projects;
+  const myName = session?.full_name;
+  const baseList = (role === 'PM' && myName)
+    ? projects.filter(p => p.pm === myName)
+    : projects;
 
   const filtered = useMemo(() => {
     let list = [...baseList];
@@ -25,8 +31,9 @@ export default function Portfolio({ navigate, role }) {
   const totalBudget = baseList.reduce((a, p) => a + p.budget, 0);
   const totalEac = baseList.reduce((a, p) => a + p.eac, 0);
   const overdue = baseList.filter(p => {
+    if (!p.lastUpdate || p.lastUpdate === '—') return false;
     const d = new Date(p.lastUpdate);
-    return (new Date('2026-05-26') - d) / 86400000 > 30;
+    return (new Date() - d) / 86400000 > 30;
   }).length;
 
   function toggleSort(key) {
@@ -50,7 +57,10 @@ export default function Portfolio({ navigate, role }) {
       <div className="page-header">
         <div>
           <div className="page-title">Portfolio</div>
-          <div className="page-sub">All projects · K. Rajah (Project Director)</div>
+          <div className="page-sub">
+            {role === 'PM' ? 'My projects' : 'All projects'}
+            {session?.full_name && ` · ${session.full_name}${session.role ? ` (${ROLE_TITLE[session.role] || session.role})` : ''}`}
+          </div>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-ghost btn-sm">⤓ Export</button>

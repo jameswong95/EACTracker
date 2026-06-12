@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getProject } from '../data/mock.js';
+import { useProjects } from '../data/store.js';
 
 const DRAFT_SECTIONS = [
   {
@@ -44,7 +44,8 @@ const DEFAULT_BULLETS = `- test rig: vendor delivered 2/5, rest by 20 May
 - risk: vendor lead time still tight, dual-source in motion`;
 
 export default function Assists({ navigate }) {
-  const p = getProject('PR-2025-014');
+  const { projects } = useProjects();
+  const p = projects[0] || { id: '', name: 'No project', pm: '—' };
   const [bullets, setBullets] = useState(DEFAULT_BULLETS);
   const [generating, setGenerating] = useState(false);
   const [draft, setDraft] = useState(null);
