@@ -28,6 +28,16 @@ export default function SapImport({ navigate, session }) {
     setFile(f);
     setError(null);
     setPreview(null);
+    // Auto-detect period from filename: YYYY-MM, YYYY_MM, YYYYMM, or _MMYYYY
+    const name = f.name || '';
+    let m = name.match(/(20\d{2})[-_.]?(0[1-9]|1[0-2])(?!\d)/);
+    if (!m) m = name.match(/(?<!\d)(0[1-9]|1[0-2])[-_.](20\d{2})/);
+    if (m) {
+      const year  = Number(m[1].length === 4 ? m[1] : m[2]);
+      const month = Number(m[1].length === 4 ? m[2] : m[1]);
+      setPeriodYear(year);
+      setPeriodMonth(month);
+    }
     setParsing(true);
     try {
       const fd = new FormData();
