@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { getProject, fmt, MONTHS } from '../data/mock.js';
+
+const STANDARD_CATEGORIES = ['Labour', 'Material', 'Sub Contractor', 'Spares'];
+
+function matchCategory(label) {
+  const s = String(label || '').toLowerCase();
+  if (/labour|labor/.test(s))               return 'Labour';
+  if (/material|hardware|equipment/.test(s)) return 'Material';
+  if (/sub.?con|subcon/.test(s))            return 'Sub Contractor';
+  if (/spare/.test(s))                      return 'Spares';
+  return null;
+}
 
 function OverTooltip({ x, y, month, colTotal, budgetMonthly, rows, absIdx, viewYear }) {
   const over = colTotal - budgetMonthly;
@@ -74,8 +86,71 @@ export default function EacEditor({ projectId, navigate }) {
       return { ...r, values };
     })
   );
-  const [saved, setSaved] = useState(false);
-  const [tooltip, setTooltip] = useState(null); // { mi, x, y }
+  const [saved, setSaved]         = useState(false);
+  const [tooltip, setTooltip]     = useState(null);
+  const [importErr, setImportErr] = useState(null);
+  const fileRef = useRef(null);
+
+  function downloadEacTemplate() {
+    const header = ['Cost Category', ...MONTHS];
+    const dataRows = STANDARD_CATEGORIES.map(cat => [cat, ...Array(12).fill('')]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+    ws['!cols'] = [{ wch: 20 }, ...Array(12).fill({ wch: 8 })];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'EAC Plan');
+    XLSX.writeFile(wb, `eac_template_${p.id}_${viewYear}.xlsx`);
+  }
+
+  function handleEacImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportErr(null);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const wb   = XLSX.read(ev.target.result, { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const hdrs = (data[0] || []).map(h => String(h).trim());
+        const monthCols = MONTHS.map(m => hdrs.indexOf(m));
+        if (monthCols.every(i => i === -1)) {
+          setImportErr('No month columns found. Expected headers: Jan, Feb, … Dec');
+          return;
+        }
+        const imported = [];
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          const rawLabel = row[0] ? String(row[0]).trim() : '';
+          if (!rawLabel) continue;
+          const matched = matchCategory(rawLabel) || rawLabel;
+          const values = Array(totalMonths).fill(0);
+          monthCols.forEach((col, mi) => {
+            if (col === -1) return;
+            const v = parseFloat(row[col]) || 0;
+            const idx = absIdx(viewYear, mi);
+            if (idx >= 0 && idx < totalMonths) values[idx] = v;
+          });
+          imported.push({ id: matched.toLowerCase().replace(/\s+/g, '-'), label: matched, values });
+        }
+        if (!imported.length) { setImportErr('No data rows found.'); return; }
+        setRows(prev => {
+          const next = prev.map(r => {
+            const match = imported.find(im => matchCategory(im.label) === matchCategory(r.label) || im.label === r.label);
+            if (!match) return r;
+            const merged = [...r.values];
+            match.values.forEach((v, idx) => { if (!isLocked(Math.floor(idx / 12) + startYear, idx % 12)) merged[idx] = v; });
+            return { ...r, values: merged };
+          });
+          const existingLabels = new Set(next.map(r => r.label));
+          imported.forEach(im => { if (!existingLabels.has(im.label)) next.push(im); });
+          return next;
+        });
+        setSaved(false);
+      } catch { setImportErr('Could not parse file. Download the template to see expected format.'); }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  }
 
   function updateCell(rowIdx, year, mi, val) {
     if (isLocked(year, mi) || !inRange(year, mi)) return;
@@ -183,6 +258,7 @@ export default function EacEditor({ projectId, navigate }) {
         <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Monthly cost breakdown · $K</div>
+            {importErr && <div style={{ fontSize: 11, color: 'var(--bad)', marginTop: 3 }}>{importErr}</div>}
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
               {rangeLabel}
               {projectYears.length > 1 && (
@@ -192,6 +268,20 @@ export default function EacEditor({ projectId, navigate }) {
               )}
             </div>
           </div>
+
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleEacImport} />
+          <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => fileRef.current.click()}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 8V2M3 5l3-3 3 3"/><path d="M1 10h10"/>
+            </svg>
+            Import
+          </button>
+          <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={downloadEacTemplate}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 2v6M3 6l3 3 3-3"/><path d="M1 10h10"/>
+            </svg>
+            Template
+          </button>
 
           {projectYears.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--surface-2)', borderRadius: 8, padding: '3px 4px', border: '1px solid var(--border)' }}>

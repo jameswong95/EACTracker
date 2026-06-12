@@ -38,6 +38,7 @@ export const ROLE_USERS = {
   PM:      { name: 'Sara Tan',  initials: 'ST', title: 'Project Manager' },
   PD:      { name: 'K. Rajah', initials: 'KR', title: 'Project Director' },
   Finance: { name: 'L. Cheng', initials: 'LC', title: 'Finance' },
+  Admin:   { name: 'Admin',    initials: 'AD', title: 'System Administrator' },
 };
 
 export const projects = [
