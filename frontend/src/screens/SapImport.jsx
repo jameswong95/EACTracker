@@ -222,6 +222,7 @@ export default function SapImport({ navigate, session }) {
                         <th>SAP no.</th>
                         <th>Name</th>
                         <th>Customer</th>
+                        <th>PM</th>
                         <th className="num">Sub-jobs</th>
                         <th className="num">Plan</th>
                         <th className="num">Actual</th>
@@ -235,6 +236,7 @@ export default function SapImport({ navigate, session }) {
                           <td><code className="mono" style={{ fontSize: 12 }}>{p.sap_project_no}</code></td>
                           <td style={{ fontWeight: 500 }}>{p.name || <em style={{ color: 'var(--warn)' }}>(no name)</em>}</td>
                           <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{p.customer || '—'}</td>
+                          <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{p.responsible || '—'}</td>
                           <td className="num">{p.sub_jobs?.length || 0}</td>
                           <td className="num">{p.totals ? fmt(p.totals.plan_cos) : '—'}</td>
                           <td className="num">{p.totals ? fmt(p.totals.tot_cost) : '—'}</td>

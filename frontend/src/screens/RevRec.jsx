@@ -4,13 +4,14 @@ import { LineChart } from '../components/Charts.jsx';
 
 const NOW_MONTH = new Date().getMonth(); // months 0..NOW_MONTH are locked
 
-export default function RevRec({ projectId, navigate }) {
+export default function RevRec({ projectId, navigate, role }) {
   const { project: p, loading } = useProject(projectId);
   if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
-  return <RevRecBody p={p} navigate={navigate} />;
+  return <RevRecBody p={p} navigate={navigate} role={role} />;
 }
 
-function RevRecBody({ p, navigate }) {
+function RevRecBody({ p, navigate, role }) {
+  const canEdit = role !== 'PD';
   const rr = p.revrec;
   // Build a recognition curve if one isn't provided yet
   const curve = (rr.recognitionCurve && rr.recognitionCurve.length === 12)
@@ -58,16 +59,18 @@ function RevRecBody({ p, navigate }) {
         <span className="breadcrumb-current">Revenue Recognition</span>
         <div className="grow" />
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}>← Back</button>
-        <button className="btn btn-primary btn-sm" onClick={handleSave}>
-          {saved ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1.5 6l3 3 6-6"/>
-              </svg>
-              Saved
-            </span>
-          ) : 'Save RevRec'}
-        </button>
+        {canEdit && (
+          <button className="btn btn-primary btn-sm" onClick={handleSave}>
+            {saved ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1.5 6l3 3 6-6"/>
+                </svg>
+                Saved
+              </span>
+            ) : 'Save RevRec'}
+          </button>
+        )}
       </div>
 
       {/* KPI tiles */}
@@ -192,7 +195,7 @@ function RevRecBody({ p, navigate }) {
                           {isCurrent && <span className="badge badge-accent" style={{ fontSize: 10, marginLeft: 8 }}>Current</span>}
                         </td>
                         <td style={{ textAlign: 'right', padding: '6px 14px' }}>
-                          {isLocked ? (
+                          {isLocked || !canEdit ? (
                             <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--text-3)' }}>
                               {monthly[mi] > 0 ? fmt(monthly[mi]) : '—'}
                             </span>

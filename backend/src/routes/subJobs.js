@@ -66,4 +66,84 @@ r.delete('/:id', ah(async (req, res) => {
   res.status(204).end();
 }));
 
+// ---------- planned items (per sub-job) ----------
+
+// GET /api/sub-jobs/:id/planned-items
+r.get('/:id/planned-items', ah(async (req, res) => {
+  const result = await query(
+    `SELECT pi.*, u.full_name AS created_by_name
+     FROM sub_job_planned_items pi
+     LEFT JOIN users u ON u.id = pi.created_by
+     WHERE pi.sub_job_id = $1
+     ORDER BY pi.created_at DESC, pi.id DESC`,
+    [req.params.id]
+  );
+  res.json(result.rows);
+}));
+
+// POST /api/sub-jobs/:id/planned-items
+r.post('/:id/planned-items', ah(async (req, res) => {
+  const b = req.body;
+  requireFields(b, ['category', 'description']);
+  const ins = await query(
+    `INSERT INTO sub_job_planned_items
+       (sub_job_id, category, description, vendor, amount,
+        period_year, period_month, status, notes, created_by)
+     VALUES ($1,$2,$3,$4,COALESCE($5,0),$6,$7,COALESCE($8,'planned'),$9,$10)
+     RETURNING *`,
+    [req.params.id, b.category, b.description, b.vendor || null, b.amount,
+     b.period_year || null, b.period_month || null, b.status, b.notes || null,
+     b.created_by || null]
+  );
+  res.status(201).json(ins.rows[0]);
+}));
+
+// PATCH /api/sub-jobs/planned-items/:itemId
+r.patch('/planned-items/:itemId', ah(async (req, res) => {
+  const editable = new Set([
+    'category','description','vendor','amount',
+    'period_year','period_month','status','notes'
+  ]);
+  const sets = []; const vals = []; let i = 1;
+  for (const [k, v] of Object.entries(req.body)) {
+    if (editable.has(k)) { sets.push(`${k} = $${i++}`); vals.push(v); }
+  }
+  if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
+  sets.push(`updated_at = NOW()`);
+  vals.push(req.params.itemId);
+  const upd = await query(
+    `UPDATE sub_job_planned_items SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    vals
+  );
+  if (!upd.rows[0]) return res.status(404).json({ error: 'planned item not found' });
+  res.json(upd.rows[0]);
+}));
+
+// DELETE /api/sub-jobs/planned-items/:itemId
+r.delete('/planned-items/:itemId', ah(async (req, res) => {
+  const d = await query(
+    `DELETE FROM sub_job_planned_items WHERE id = $1`,
+    [req.params.itemId]
+  );
+  if (!d.rowCount) return res.status(404).json({ error: 'planned item not found' });
+  res.status(204).end();
+}));
+
+// GET /api/sub-jobs/planned-items/all  (Finance cross-project view)
+r.get('/planned-items/all', ah(async (_req, res) => {
+  const result = await query(
+    `SELECT pi.*,
+            sj.wbs_code, sj.name AS sub_job_name,
+            sj.project_id,
+            p.name AS project_name,
+            u.full_name AS created_by_name
+     FROM sub_job_planned_items pi
+     JOIN sub_jobs sj ON sj.id = pi.sub_job_id
+     JOIN projects p  ON p.id  = sj.project_id
+     LEFT JOIN users u ON u.id = pi.created_by
+     ORDER BY pi.created_at DESC, pi.id DESC`
+  );
+  res.json(result.rows);
+}));
+
 export default r;

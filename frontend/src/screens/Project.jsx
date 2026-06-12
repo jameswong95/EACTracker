@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { fmt, fmtPct, statusLabel, MONTHS } from '../data/store.js';
-import { useProject } from '../data/store.js';
+import { useProject, useUsers } from '../data/store.js';
+import { api } from '../data/api.js';
 import { LineChart, DonutChart, StackedBar } from '../components/Charts.jsx';
 
 function Badge({ status }) {
@@ -36,14 +37,97 @@ function DownloadIcon() {
   );
 }
 
-export default function Project({ projectId, navigate }) {
-  const { project, loading, error } = useProject(projectId);
-  if (loading) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading project…</div></div>;
-  if (error || !project) return <div className="screen"><div style={{ padding: 40, color: 'var(--bad)' }}>Project not found: {projectId}</div></div>;
-  return <ProjectBody p={project} navigate={navigate} />;
+function PdAssign({ p, role, session, reload }) {
+  const users = useUsers();
+  const directors = users.filter(u => u.role === 'PD' && u.is_active);
+  const isPm = session && p.pmUserId != null && session.id === p.pmUserId;
+  const canEdit = role === 'Admin' || (role === 'PM' && isPm);
+  const [editing, setEditing] = useState(false);
+  const [val, setVal]         = useState(p.pdUserId ?? '');
+  const [saving, setSaving]   = useState(false);
+  const [err, setErr]         = useState(null);
+
+  useEffect(() => { setVal(p.pdUserId ?? ''); }, [p.pdUserId]);
+
+  async function save() {
+    setSaving(true); setErr(null);
+    try {
+      const next = val === '' ? null : Number(val);
+      await api.patch(`/api/projects/${encodeURIComponent(p.id)}`, {
+        pd_user_id: next,
+        user_id: session?.id,
+      });
+      setEditing(false);
+      reload && reload();
+    } catch (e) {
+      setErr(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canEdit) {
+    return <> Director: <strong style={{ color: 'var(--text-2)' }}>{p.pd}</strong> &middot; </>;
+  }
+  if (!editing) {
+    return (
+      <>
+        {' '}Director: <strong style={{ color: 'var(--text-2)' }}>{p.pd}</strong>
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ padding: '2px 8px', marginLeft: 6, fontSize: 11 }}
+          onClick={() => setEditing(true)}
+        >
+          Change
+        </button>
+        {' '}&middot;{' '}
+      </>
+    );
+  }
+  return (
+    <>
+      {' '}Director:{' '}
+      <select
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        disabled={saving}
+        style={{ marginLeft: 4, padding: '2px 6px', fontSize: 12 }}
+      >
+        <option value="">(Unassigned)</option>
+        {directors.map(u => (
+          <option key={u.id} value={u.id}>{u.full_name}</option>
+        ))}
+      </select>
+      <button
+        className="btn btn-primary btn-sm"
+        style={{ padding: '2px 8px', marginLeft: 6, fontSize: 11 }}
+        onClick={save}
+        disabled={saving}
+      >
+        {saving ? 'Saving\u2026' : 'Save'}
+      </button>
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ padding: '2px 8px', marginLeft: 4, fontSize: 11 }}
+        onClick={() => { setEditing(false); setVal(p.pdUserId ?? ''); setErr(null); }}
+        disabled={saving}
+      >
+        Cancel
+      </button>
+      {err && <span style={{ color: 'var(--bad)', marginLeft: 8, fontSize: 11 }}>{err}</span>}
+      {' '}&middot;{' '}
+    </>
+  );
 }
 
-function ProjectBody({ p, navigate }) {
+export default function Project({ projectId, navigate, role, session }) {
+  const { project, loading, error, reload } = useProject(projectId);
+  if (loading) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading project…</div></div>;
+  if (error || !project) return <div className="screen"><div style={{ padding: 40, color: 'var(--bad)' }}>Project not found: {projectId}</div></div>;
+  return <ProjectBody p={project} navigate={navigate} role={role} session={session} reload={reload} />;
+}
+
+function ProjectBody({ p, navigate, role, session, reload }) {
   const [tab, setTab] = useState('overview');
   const [milestones, setMilestones] = useState(() => p.milestones.map(m => ({ ...m, _id: nextMid++ })));
   const [risks, setRisks] = useState(() => p.risks.map(r => ({ ...r, _id: nextRid++ })));
@@ -59,13 +143,6 @@ function ProjectBody({ p, navigate }) {
         <span className="breadcrumb-sep">/</span>
         <span className="breadcrumb-current">{p.name}</span>
         <div className="grow" />
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('eac', p.id)}>
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="1" y="1" width="11" height="11" rx="1.5"/>
-            <path d="M1 5h11M5 5v6"/>
-          </svg>
-          EAC Editor
-        </button>
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('resource', p.id)}>
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="5" cy="4" r="2.5"/>
@@ -93,7 +170,7 @@ function ProjectBody({ p, navigate }) {
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
               PM: <strong style={{ color: 'var(--text-2)' }}>{p.pm}</strong> ·
-              Director: <strong style={{ color: 'var(--text-2)' }}>{p.pd}</strong> ·
+              <PdAssign p={p} role={role} session={session} reload={reload} />
               WBS: <code className="mono">{p.wbs}</code> ·
               Last update: {p.lastUpdate}
             </div>
@@ -216,12 +293,15 @@ function ProjectBody({ p, navigate }) {
       <div className="card mt-4">
         <div className="flex items-center justify-between p-5 pb-0 mb-3">
           <h4>WBS / Sub-job breakdown</h4>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('eac', p.id)}>Open EAC editor →</button>
+          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            Click any row to plan purchases & see who's charged to it
+          </div>
         </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
+                <th style={{ width: 24 }}></th>
                 <th>Sub-job WBS</th>
                 <th>Name</th>
                 <th style={{ textAlign: 'right' }}>Budget</th>
@@ -233,25 +313,17 @@ function ProjectBody({ p, navigate }) {
               </tr>
             </thead>
             <tbody>
-              {p.subjobs.map((sj, i) => {
-                const eac = sj.actual + sj.committed + sj.etc;
-                const v   = eac - sj.budget;
-                return (
-                  <tr key={i}>
-                    <td><code className="mono" style={{ fontSize: 11 }}>{sj.wbs}</code></td>
-                    <td style={{ fontWeight: 500 }}>{sj.name}</td>
-                    <td className="num text-right">{fmt(sj.budget)}</td>
-                    <td className="num text-right" style={{ color: 'var(--text-2)' }}>{fmt(sj.actual)}</td>
-                    <td className="num text-right" style={{ color: 'var(--text-2)' }}>{fmt(sj.committed)}</td>
-                    <td className="num text-right" style={{ color: 'var(--text-2)' }}>{fmt(sj.etc)}</td>
-                    <td className="num text-right" style={{ fontWeight: 600 }}>{fmt(eac)}</td>
-                    <td className="num text-right" style={{ color: v > 0 ? 'var(--warn)' : 'var(--ok)', fontWeight: 600 }}>
-                      {v > 0 ? '+' : ''}{fmt(Math.abs(v))}
-                    </td>
-                  </tr>
-                );
-              })}
+              {p.subjobs.map((sj) => (
+                <SubJobRow
+                  key={sj.id}
+                  sj={sj}
+                  canEdit={role === 'PM' || role === 'Admin'}
+                  session={session}
+                  onChange={reload}
+                />
+              ))}
               <tr style={{ background: 'var(--surface-3)', fontWeight: 700 }}>
+                <td />
                 <td colSpan={2} style={{ paddingLeft: 20 }}>Total</td>
                 <td className="num text-right">{fmt(p.budget)}</td>
                 <td className="num text-right">{fmt(p.actual)}</td>
@@ -883,6 +955,257 @@ function KV({ label, val }) {
     <div className="flex items-center">
       <span style={{ width: 140, fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', flexShrink: 0 }}>{label}</span>
       <span style={{ fontSize: 13, color: 'var(--text)' }}>{val}</span>
+    </div>
+  );
+}
+
+// ── Sub-job expandable row + planned-items panel ───────────────────────────
+
+const CATEGORY_LABELS = {
+  hardware:    'Hardware',
+  software:    'Software',
+  licence:     'Licence',
+  subcontract: 'Sub-contract',
+  other:       'Other',
+};
+const CATEGORY_COLOR = {
+  hardware:    '#5088d0',
+  software:    '#6f42c1',
+  licence:     '#28a745',
+  subcontract: '#e8961f',
+  other:       '#909090',
+};
+
+function SubJobRow({ sj, canEdit, session, onChange }) {
+  const [open, setOpen] = useState(false);
+  const eac = sj.actual + sj.committed + sj.etc;
+  const v   = eac - sj.budget;
+
+  return (
+    <>
+      <tr
+        onClick={() => setOpen(o => !o)}
+        style={{ cursor: 'pointer', background: open ? 'var(--surface-2)' : 'transparent' }}
+      >
+        <td style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 11 }}>
+          {open ? '▾' : '▸'}
+        </td>
+        <td><code className="mono" style={{ fontSize: 11 }}>{sj.wbs}</code></td>
+        <td style={{ fontWeight: 500 }}>
+          {sj.name}
+          {(sj.peopleCount > 0 || sj.plannedCount > 0) && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+              {sj.peopleCount > 0 && (
+                <span style={{
+                  fontSize: 10, padding: '2px 6px', borderRadius: 3,
+                  background: 'rgba(80,136,208,.12)', color: 'var(--info-text, #5088d0)', fontWeight: 600,
+                }}>
+                  {sj.peopleCount} {sj.peopleCount === 1 ? 'person' : 'people'} · {Number(sj.totalFte).toFixed(1)} FTE
+                </span>
+              )}
+              {sj.plannedCount > 0 && (
+                <span style={{
+                  fontSize: 10, padding: '2px 6px', borderRadius: 3,
+                  background: 'rgba(111,66,193,.12)', color: '#6f42c1', fontWeight: 600,
+                }}>
+                  {sj.plannedCount} planned · {fmt(sj.plannedTotal)}
+                </span>
+              )}
+            </div>
+          )}
+        </td>
+        <td className="num text-right">{fmt(sj.budget)}</td>
+        <td className="num text-right" style={{ color: 'var(--text-2)' }}>{fmt(sj.actual)}</td>
+        <td className="num text-right" style={{ color: 'var(--text-2)' }}>{fmt(sj.committed)}</td>
+        <td className="num text-right" style={{ color: 'var(--text-2)' }}>{fmt(sj.etc)}</td>
+        <td className="num text-right" style={{ fontWeight: 600 }}>{fmt(eac)}</td>
+        <td className="num text-right" style={{ color: v > 0 ? 'var(--warn)' : 'var(--ok)', fontWeight: 600 }}>
+          {v > 0 ? '+' : ''}{fmt(Math.abs(v))}
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={9} style={{ padding: 0, background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
+            <PlannedItemsPanel sj={sj} canEdit={canEdit} session={session} onChange={onChange} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function PlannedItemsPanel({ sj, canEdit, session, onChange }) {
+  const [items, setItems]     = useState(null);
+  const [loadErr, setLoadErr] = useState(null);
+  const [adding, setAdding]   = useState(false);
+  const [draft, setDraft]     = useState({ category: 'hardware', description: '', vendor: '', amount: '' });
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/api/sub-jobs/${sj.id}/planned-items`)
+      .then(rows => { if (!cancelled) setItems(rows); })
+      .catch(e => { if (!cancelled) { setLoadErr(e); setItems([]); } });
+    return () => { cancelled = true; };
+  }, [sj.id]);
+
+  async function saveDraft() {
+    if (!draft.description.trim()) return;
+    const body = {
+      category: draft.category,
+      description: draft.description.trim(),
+      vendor: draft.vendor.trim() || null,
+      amount: parseFloat(draft.amount) || 0,
+      created_by: session?.id || null,
+    };
+    try {
+      const row = await api.post(`/api/sub-jobs/${sj.id}/planned-items`, body);
+      setItems(prev => [row, ...(prev || [])]);
+      setDraft({ category: 'hardware', description: '', vendor: '', amount: '' });
+      setAdding(false);
+      if (onChange) onChange();
+    } catch (e) {
+      alert('Could not save: ' + e.message);
+    }
+  }
+
+  async function removeItem(id) {
+    if (!confirm('Remove this planned item?')) return;
+    try {
+      await api.del(`/api/sub-jobs/planned-items/${id}`);
+      setItems(prev => (prev || []).filter(x => x.id !== id));
+      if (onChange) onChange();
+    } catch (e) {
+      alert('Could not delete: ' + e.message);
+    }
+  }
+
+  async function updateStatus(id, status) {
+    try {
+      const upd = await api.patch(`/api/sub-jobs/planned-items/${id}`, { status });
+      setItems(prev => (prev || []).map(x => x.id === id ? upd : x));
+    } catch (e) {
+      alert('Could not update status: ' + e.message);
+    }
+  }
+
+  const plannedTotal = (items || []).reduce((s, x) => s + Number(x.amount || 0), 0);
+  const etcSlack = sj.etc - plannedTotal;
+
+  return (
+    <div style={{ padding: '14px 20px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)' }}>
+          Planned items for {sj.wbs}
+        </div>
+        <div style={{ flex: 1 }} />
+        {items && items.length > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            Sum: <strong style={{ color: 'var(--text)' }}>{fmt(plannedTotal)}</strong>
+            {sj.etc > 0 && (
+              <> · vs ETC {fmt(sj.etc)} ·{' '}
+                <span style={{ color: Math.abs(etcSlack) < 1 ? 'var(--ok)' : 'var(--warn)', fontWeight: 600 }}>
+                  {etcSlack >= 0 ? `${fmt(etcSlack)} unallocated` : `${fmt(-etcSlack)} over ETC`}
+                </span>
+              </>
+            )}
+          </span>
+        )}
+        {canEdit && !adding && (
+          <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); setAdding(true); }}>
+            + Plan item
+          </button>
+        )}
+      </div>
+
+      {loadErr && <div style={{ color: 'var(--bad)', fontSize: 12 }}>Failed to load planned items.</div>}
+      {items === null && !loadErr && <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Loading…</div>}
+
+      {items && items.length === 0 && !adding && (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 0' }}>
+          No planned items yet. {canEdit ? 'Click "Plan item" to record an expected hardware/software/licence/sub-con purchase.' : ''}
+        </div>
+      )}
+
+      {adding && (
+        <div onClick={(e) => e.stopPropagation()} style={{
+          display: 'grid',
+          gridTemplateColumns: '140px 1fr 180px 120px auto',
+          gap: 8, marginBottom: 10, padding: 10,
+          background: 'var(--surface)', border: '1px dashed var(--border-2)', borderRadius: 6,
+        }}>
+          <select value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })}
+            style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-2)', fontSize: 12, fontFamily: 'inherit' }}>
+            {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <input placeholder="Description (e.g. ArcGIS Pro Standard, 5 seats)" value={draft.description}
+            onChange={e => setDraft({ ...draft, description: e.target.value })}
+            style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-2)', fontSize: 12, fontFamily: 'inherit' }} />
+          <input placeholder="Vendor (optional)" value={draft.vendor}
+            onChange={e => setDraft({ ...draft, vendor: e.target.value })}
+            style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-2)', fontSize: 12, fontFamily: 'inherit' }} />
+          <input type="number" placeholder="Amount" value={draft.amount}
+            onChange={e => setDraft({ ...draft, amount: e.target.value })}
+            style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-2)', fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-primary btn-sm" onClick={saveDraft}>Save</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setAdding(false); setDraft({ category: 'hardware', description: '', vendor: '', amount: '' }); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {items && items.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }} onClick={(e) => e.stopPropagation()}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <th style={{ textAlign: 'left',  padding: '6px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Category</th>
+              <th style={{ textAlign: 'left',  padding: '6px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Description</th>
+              <th style={{ textAlign: 'left',  padding: '6px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Vendor</th>
+              <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Amount</th>
+              <th style={{ textAlign: 'left',  padding: '6px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Status</th>
+              {canEdit && <th style={{ width: 30 }} />}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(it => (
+              <tr key={it.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '6px 8px' }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 3,
+                    background: CATEGORY_COLOR[it.category] + '22', color: CATEGORY_COLOR[it.category],
+                  }}>{CATEGORY_LABELS[it.category] || it.category}</span>
+                </td>
+                <td style={{ padding: '6px 8px', fontWeight: 500 }}>{it.description}</td>
+                <td style={{ padding: '6px 8px', color: 'var(--text-3)' }}>{it.vendor || '—'}</td>
+                <td className="num text-right" style={{ padding: '6px 8px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                  {fmt(Number(it.amount))}
+                </td>
+                <td style={{ padding: '6px 8px' }}>
+                  {canEdit ? (
+                    <select value={it.status} onChange={e => updateStatus(it.id, e.target.value)}
+                      style={{ padding: '3px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 3, background: 'var(--surface-2)', fontFamily: 'inherit' }}>
+                      <option value="planned">Planned</option>
+                      <option value="committed">Committed</option>
+                      <option value="received">Received</option>
+                    </select>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{it.status}</span>
+                  )}
+                </td>
+                {canEdit && (
+                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                    <button onClick={() => removeItem(it.id)} title="Remove"
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 2 }}>
+                      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M3 3.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8"/>
+                      </svg>
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

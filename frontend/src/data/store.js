@@ -43,6 +43,8 @@ export function adaptProject(p) {
     name: p.name,
     pm: p.pm_name || '(Unassigned)',
     pd: p.pd_name || '(Unassigned)',
+    pmUserId: p.pm_user_id ?? null,
+    pdUserId: p.pd_user_id ?? null,
     department: p.department || '—',
     status: p.status || 'ok',
     wbs: p.wbs_code,
@@ -79,11 +81,16 @@ function adaptSubjob(s) {
   const committed = n(s.com_cst);
   const etc = Math.max(0, budget - actual - committed);
   return {
+    id: s.id,
     wbs: s.wbs_code,
     name: s.name,
     budget, actual, committed, etc,
     isWarranty: !!s.is_warranty,
     suffix: s.wbs_suffix,
+    plannedTotal: n(s.planned_total),
+    plannedCount: Number(s.planned_count) || 0,
+    peopleCount:  Number(s.people_count)  || 0,
+    totalFte:     n(s.total_fte),
   };
 }
 
@@ -122,6 +129,7 @@ function adaptResource(r) {
     fn: r.function_title,
     grade: r.grade,
     fte: Array.isArray(r.fte_allocations) ? r.fte_allocations : (r.fte_allocations || []),
+    subJobId: r.sub_job_id ?? null,
   };
 }
 

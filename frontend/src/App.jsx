@@ -4,7 +4,6 @@ import Login from './screens/Login.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Portfolio from './screens/Portfolio.jsx';
 import Project from './screens/Project.jsx';
-import EacEditor from './screens/EacEditor.jsx';
 import Resource from './screens/Resource.jsx';
 import RevRec from './screens/RevRec.jsx';
 import SapImport from './screens/SapImport.jsx';
@@ -17,9 +16,9 @@ import { logAction } from './data/auditLog.js';
 const ROLE_DEFAULTS = { PM: 'dashboard', PD: 'portfolio', Finance: 'sap-import', Admin: 'admin-pool' };
 
 const ROLE_ALLOWED_INIT = {
-  PM:      ['dashboard', 'portfolio', 'project', 'eac', 'resource', 'revrec', 'assists'],
-  PD:      ['portfolio', 'project', 'eac', 'resource', 'revrec'],
-  Finance: ['sap-import', 'standards', 'portfolio'],
+  PM:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards', 'assists'],
+  PD:      ['portfolio', 'project', 'resource', 'revrec', 'standards'],
+  Finance: ['sap-import', 'standards', 'portfolio', 'project', 'resource', 'revrec'],
   Admin:   ['admin-pool', 'admin-permissions', 'admin-audit'],
 };
 
@@ -79,12 +78,11 @@ export default function App() {
   const screens = {
     dashboard:    <Dashboard navigate={navigate} session={session} />,
     portfolio:    <Portfolio navigate={navigate} role={role} session={session} />,
-    project:      <Project key={projectId} projectId={projectId} navigate={navigate} />,
-    eac:          <EacEditor projectId={projectId} navigate={navigate} />,
-    resource:     <Resource projectId={projectId} navigate={navigate} />,
-    revrec:       <RevRec projectId={projectId} navigate={navigate} />,
+    project:      <Project key={projectId} projectId={projectId} navigate={navigate} role={role} session={session} />,
+    resource:     <Resource projectId={projectId} navigate={navigate} role={role} />,
+    revrec:       <RevRec projectId={projectId} navigate={navigate} role={role} />,
     'sap-import': <SapImport navigate={navigate} session={session} />,
-    standards:    <Standards navigate={navigate} />,
+    standards:    <Standards navigate={navigate} role={role} />,
     assists:      <Assists navigate={navigate} />,
     'pd-approvals':      <PdApprovals navigate={navigate} session={session} />,
     'admin-pool':        <AdminPanel tab="pool"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,

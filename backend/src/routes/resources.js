@@ -38,16 +38,17 @@ r.post('/', ah(async (req, res) => {
   const b = req.body;
   requireFields(b, ['project_id', 'role_name', 'function_title', 'grade']);
   const ins = await query(`
-    INSERT INTO project_resources (project_id, resource_id, role_name, function_title, grade, fte_allocations)
-    VALUES ($1,$2,$3,$4,$5,COALESCE($6,'[]'::jsonb))
+    INSERT INTO project_resources (project_id, resource_id, role_name, function_title, grade, fte_allocations, sub_job_id)
+    VALUES ($1,$2,$3,$4,$5,COALESCE($6,'[]'::jsonb),$7)
     RETURNING *`,
     [b.project_id, b.resource_id || null, b.role_name, b.function_title, b.grade,
-     b.fte_allocations ? JSON.stringify(b.fte_allocations) : null]);
+     b.fte_allocations ? JSON.stringify(b.fte_allocations) : null,
+     b.sub_job_id || null]);
   res.status(201).json(ins.rows[0]);
 }));
 
 r.patch('/:id', ah(async (req, res) => {
-  const editable = new Set(['resource_id', 'role_name', 'function_title', 'grade', 'fte_allocations']);
+  const editable = new Set(['resource_id', 'role_name', 'function_title', 'grade', 'fte_allocations', 'sub_job_id']);
   const sets = []; const vals = []; let i = 1;
   for (const [k, v] of Object.entries(req.body)) {
     if (editable.has(k)) {

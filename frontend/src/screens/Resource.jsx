@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useProject, useResourcePool, useRates, fmt, MONTHS } from '../data/store.js';
+import { api } from '../data/api.js';
 
 let nextId = 100;
 
@@ -143,15 +144,16 @@ function RoleSelect({ roles, value, onChange }) {
   );
 }
 
-export default function Resource({ projectId, navigate }) {
+export default function Resource({ projectId, navigate, role }) {
   const { project: p, loading } = useProject(projectId);
   const RESOURCE_POOL = useResourcePool();
   const RATES = useRates();
   if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
-  return <ResourceBody p={p} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} />;
+  return <ResourceBody p={p} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} role={role} />;
 }
 
-function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
+function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
+  const canEdit = role !== 'PD';
   // Derive project span from resource data. fte arrays are indexed from (startYear, startMonth).
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;    // 0 = January
@@ -175,7 +177,14 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
     p.resources.map(r => {
       const fte = Array(totalMonths).fill(0);
       (r.fte || []).forEach((v, i) => { if (i < totalMonths) fte[i] = v; });
-      return { ...r, id: nextId++, fte, fn: r.fn || '' };
+      return {
+        ...r,
+        id: nextId++,
+        dbId: r.id,                // backend project_resources.id (null for unsaved rows)
+        subJobId: r.subJobId ?? null,
+        fte,
+        fn: r.fn || '',
+      };
     })
   );
   const [adding, setAdding]           = useState(false);
@@ -295,6 +304,17 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
   }
 
   function removeRow(rowId) { setRows(prev => prev.filter(r => r.id !== rowId)); setConfirmingId(null); }
+
+  function updateSubJob(rowId, subJobId) {
+    setRows(prev => prev.map(r =>
+      r.id !== rowId ? r : { ...r, subJobId: subJobId || null }
+    ));
+    const row = rows.find(r => r.id === rowId);
+    if (row && row.dbId) {
+      api.patch(`/api/resources/${row.dbId}`, { sub_job_id: subJobId || null })
+        .catch(err => console.error('Failed to save sub_job_id', err));
+    }
+  }
 
   // View-year monthly aggregates
   const viewMonthlyFte = MONTHS.map((_, mi) =>
@@ -417,19 +437,23 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
           )}
 
           <input ref={importRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleResourceImport} />
-          <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => { setImportErr(null); importRef.current.click(); }}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 8V2M3 5l3-3 3 3"/><path d="M1 10h10"/>
-            </svg>
-            Import
-          </button>
-          <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={downloadResourceTemplate}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 2v6M3 6l3 3 3-3"/><path d="M1 10h10"/>
-            </svg>
-            Template
-          </button>
-          {!adding && (
+          {canEdit && (
+            <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => { setImportErr(null); importRef.current.click(); }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 8V2M3 5l3-3 3 3"/><path d="M1 10h10"/>
+              </svg>
+              Import
+            </button>
+          )}
+          {canEdit && (
+            <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={downloadResourceTemplate}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2v6M3 6l3 3 3-3"/><path d="M1 10h10"/>
+              </svg>
+              Template
+            </button>
+          )}
+          {canEdit && !adding && (
             <button className="btn btn-ghost btn-sm" onClick={() => setAdding(true)}>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M6 1v10M1 6h10" />
@@ -489,6 +513,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
           <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 210 }} />
+              <col style={{ width: 150 }} />
               {MONTHS.map((_, i) => <col key={i} style={{ width: 58 }} />)}
               <col style={{ width: 68 }} />
               <col style={{ width: 44 }} />
@@ -496,6 +521,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
             <thead>
               <tr>
                 <th style={{ padding: '10px 20px', textAlign: 'left' }}>Name</th>
+                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Charged to</th>
                 {MONTHS.map((m, mi) => {
                   const inRng = inRange(viewYear, mi);
                   const locked = isLocked(viewYear, mi);
@@ -542,6 +568,26 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
                           </div>
                         </div>
                       </td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <select
+                          value={row.subJobId || ''}
+                          onChange={e => updateSubJob(row.id, e.target.value ? Number(e.target.value) : null)}
+                          style={{
+                            width: '100%', padding: '5px 6px', fontSize: 12,
+                            border: '1px solid var(--border)', borderRadius: 4,
+                            background: 'var(--surface-2)', color: row.subJobId ? 'var(--text)' : 'var(--text-3)',
+                            fontFamily: 'inherit', cursor: 'pointer',
+                          }}
+                          title={row.subJobId ? 'Charged to a sub-job' : 'Unallocated — pick a sub-job'}
+                        >
+                          <option value="">— Unallocated —</option>
+                          {(p.subjobs || []).map(sj => (
+                            <option key={sj.id} value={sj.id}>
+                              {sj.wbs} · {sj.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       {MONTHS.map((_, mi) => {
                         const inRng = inRange(viewYear, mi);
                         const locked = isLocked(viewYear, mi);
@@ -584,7 +630,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
 
                     {isConfirming && (
                       <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bad-bg)' }}>
-                        <td colSpan={MONTHS.length + 3} style={{ padding: '10px 20px' }}>
+                        <td colSpan={MONTHS.length + 4} style={{ padding: '10px 20px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--bad)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M7 1L13.06 12H.94L7 1Z"/><path d="M7 5v3M7 10v.5"/>
@@ -606,7 +652,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
 
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={MONTHS.length + 3} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+                  <td colSpan={MONTHS.length + 4} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
                     No people added yet — click "Add person" to assign from the pool.
                   </td>
                 </tr>
@@ -615,6 +661,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
               {/* Footer: FTE totals */}
               <tr style={{ background: 'var(--surface-3)', borderTop: '2px solid var(--border-2)', fontWeight: 700 }}>
                 <td style={{ padding: '10px 20px', fontSize: 13 }}>Total FTE</td>
+                <td />
                 {viewMonthlyFte.map((t, mi) => (
                   <td key={mi} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t == null ? 'var(--border-2)' : t === 0 ? 'var(--text-3)' : 'var(--text)' }}>
                     {t == null ? '—' : t > 0 ? t.toFixed(1) : '—'}
@@ -629,6 +676,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES }) {
               {/* Footer: cost totals */}
               <tr style={{ background: 'var(--accent-light)', fontWeight: 600, color: 'var(--accent)' }}>
                 <td style={{ padding: '10px 20px', fontSize: 13 }}>Est. labour cost ($K)</td>
+                <td />
                 {viewMonthlyCost.map((t, mi) => (
                   <td key={mi} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t == null ? 'var(--accent-mid)' : t === 0 ? 'var(--accent-mid)' : 'var(--accent)' }}>
                     {t == null ? '—' : t > 0 ? t.toFixed(0) : '—'}

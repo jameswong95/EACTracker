@@ -5,7 +5,6 @@ const ALL_SCREENS = [
   { id: 'dashboard',    label: 'Dashboard' },
   { id: 'portfolio',    label: 'Portfolio' },
   { id: 'project',      label: 'Project' },
-  { id: 'eac',          label: 'EAC Editor' },
   { id: 'resource',     label: 'Resource Plan' },
   { id: 'revrec',       label: 'Rev. Rec.' },
   { id: 'sap-import',   label: 'SAP Import' },

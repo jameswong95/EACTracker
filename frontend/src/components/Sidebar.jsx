@@ -93,10 +93,12 @@ const NAV = {
   PM: [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
     { id: 'portfolio', label: 'My Projects', icon: 'portfolio' },
+    { id: 'standards', label: 'Standards',  icon: 'standards' },
     { id: 'assists',   label: 'AI Assist',   icon: 'assists' },
   ],
   PD: [
     { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
+    { id: 'standards', label: 'Standards', icon: 'standards' },
   ],
   Finance: [
     { id: 'sap-import', label: 'SAP Import', icon: 'sap' },
@@ -112,17 +114,18 @@ const NAV = {
 
 const PROJECT_SUB = [
   { id: 'project',  label: 'Overview',       icon: 'project' },
-  { id: 'eac',      label: 'EAC Editor',     icon: 'eac' },
   { id: 'resource', label: 'Resource Plan',  icon: 'resource' },
   { id: 'revrec',   label: 'Rev. Rec.',      icon: 'revrec' },
 ];
 
 const ROLES = ['PM', 'PD', 'Finance', 'Admin'];
 
-export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed }) {
+export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed, mobileOpen, session, onSignOut }) {
+  const { projects } = useProjects();
   const activeProject = projects.find(p => p.id === projectId);
   const inProjectView = PROJECT_SUB.map(s => s.id).includes(screen);
-  const navItems = NAV[role] || NAV.PM;
+  const allowed = (roleAllowed && roleAllowed[role]) || null;
+  const navItems = (NAV[role] || NAV.PM).filter(item => !allowed || allowed.includes(item.id));
 
   const iconColor = 'rgba(255,255,255,0.40)';
 
@@ -179,7 +182,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
       </div>
 
       {/* Project context */}
-      {inProjectView && activeProject && (role === 'PM' || role === 'PD') && (
+      {inProjectView && activeProject && (role === 'PM' || role === 'PD' || role === 'Finance') && (
         <>
           {!collapsed && <div className="sidebar-section" style={{ marginTop: 4 }}>Project</div>}
           {!collapsed && (
@@ -198,7 +201,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
               </div>
             </div>
           )}
-          {PROJECT_SUB.map(sub => (
+          {PROJECT_SUB.filter(sub => !allowed || allowed.includes(sub.id)).map(sub => (
             <SubItem
               key={sub.id}
               label={sub.label}
