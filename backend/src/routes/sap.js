@@ -37,6 +37,16 @@ const C = {
 
 const num = (v) => (v == null || v === '' ? 0 : Number(v) || 0);
 
+// Derive a portfolio status code ('ok'|'warn'|'bad') from EAC vs budget variance.
+// Thresholds: |variance%| <= 10% → ok, <= 25% → warn, otherwise bad.
+function deriveStatus(budget, eac) {
+  if (!budget || budget <= 0) return 'ok';
+  const v = Math.abs((eac - budget) / budget);
+  if (v > 0.25) return 'bad';
+  if (v > 0.10) return 'warn';
+  return 'ok';
+}
+
 function parseDdMmYyyy(s) {
   if (!s) return null;
   if (s instanceof Date) return s.toISOString().slice(0, 10);
@@ -52,34 +62,50 @@ function parseWorkbook(buf) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
 
-  const projects = [];
+  // Dedupe project blocks: the SAP report repeats the same project header on
+  // continuation pages. We keep one record per sap_project_no, merge sub-jobs
+  // (dedupe by wbs_code), and prefer the first non-null totals.
+  const byKey = new Map();
   let current = null;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] || [];
     const c0 = row[0];
 
-    // Project header row: col 0 is empty/'Project' label, col 4 has WBS, col 14 has name
+    // Project header row
     if (c0 === 'Project' && row[4]) {
-      current = {
-        sap_project_no:  String(row[4]).trim(),
-        name:            row[14] ? String(row[14]).trim() : '',
-        responsible_id:  row[21] != null && row[21] !== '' ? Number(row[21]) || null : null,
-        responsible:     row[22] ? String(row[22]).trim() : null,
-        customer:        row[26] ? String(row[26]).trim() : null,
-        start_date:      parseDdMmYyyy(row[32]),
-        end_date:        parseDdMmYyyy(row[37] || row[36]),
-        totals:          null,
-        sub_jobs:        [],
-      };
-      projects.push(current);
+      const key = String(row[4]).trim();
+      const existing = byKey.get(key);
+      if (existing) {
+        current = existing;
+        // Back-fill missing header fields from later occurrences if present
+        if (!current.responsible && row[22]) current.responsible = String(row[22]).trim();
+        if (!current.responsible_id && row[21] != null) current.responsible_id = Number(row[21]) || null;
+        if (!current.customer && row[26]) current.customer = String(row[26]).trim();
+        if (!current.start_date) current.start_date = parseDdMmYyyy(row[32]);
+        if (!current.end_date) current.end_date = parseDdMmYyyy(row[37] || row[36]);
+      } else {
+        current = {
+          sap_project_no:  key,
+          name:            row[14] ? String(row[14]).trim() : '',
+          responsible_id:  row[21] != null && row[21] !== '' ? Number(row[21]) || null : null,
+          responsible:     row[22] ? String(row[22]).trim() : null,
+          customer:        row[26] ? String(row[26]).trim() : null,
+          start_date:      parseDdMmYyyy(row[32]),
+          end_date:        parseDdMmYyyy(row[37] || row[36]),
+          totals:          null,
+          sub_jobs:        [],
+          _seen:           new Set(),
+        };
+        byKey.set(key, current);
+      }
       continue;
     }
 
     // Skip if no active project context
     if (!current) continue;
 
-    // Total row at end of project block
+    // Total row at end of project block (authoritative — always overwrite)
     if (c0 === 'Total' && row[3] === current.sap_project_no) {
       current.totals = {
         lab: num(row[C.LAB]), foh: num(row[C.FOH]), mat: num(row[C.MAT]),
@@ -92,13 +118,13 @@ function parseWorkbook(buf) {
       continue;
     }
 
-    // Sub-job or project-summary row: col 0 has WBS like '214687801/035' or '...-N'
+    // Sub-job or project-summary row
     if (typeof c0 === 'string' && c0.startsWith(current?.sap_project_no || '')) {
       const wbsCode = c0.trim();
       const suffixMatch = wbsCode.slice(current.sap_project_no.length);
       const suffix = suffixMatch.startsWith('-') ? suffixMatch.slice(1) : '';
 
-      // Project-summary row (no suffix) — use as totals fallback if 'Total' row missing
+      // Project-summary row (no suffix) — use as totals fallback
       if (!suffix) {
         if (!current.totals) {
           current.totals = {
@@ -112,7 +138,9 @@ function parseWorkbook(buf) {
         continue;
       }
 
-      // Sub-job row
+      // Sub-job row — dedupe by wbs_code across continuation pages
+      if (current._seen.has(wbsCode)) continue;
+      current._seen.add(wbsCode);
       current.sub_jobs.push({
         wbs_code:    wbsCode,
         wbs_suffix:  suffix,
@@ -125,7 +153,8 @@ function parseWorkbook(buf) {
     }
   }
 
-  return projects;
+  // Strip internal _seen before returning
+  return Array.from(byKey.values()).map(({ _seen, ...rest }) => rest);
 }
 
 // POST /api/sap/preview  (multipart/form-data, field name 'file')
@@ -211,6 +240,8 @@ r.post('/commit', upload.single('file'), ah(async (req, res) => {
       const rev  = -t.rev;
       const pb   = -t.pb;
       const osPb = rev - pb;
+      const eacValue = t.tot_cost + t.com_cst;
+      const status   = deriveStatus(t.plan_cos, eacValue);
 
       // Log raw project row
       await c.query(`
@@ -240,16 +271,18 @@ r.post('/commit', upload.single('file'), ah(async (req, res) => {
             budget           = $5,
             actual           = $6,
             committed        = $7,
+            eac              = ($6::numeric + $7::numeric),
             contract_value   = $8,
             rev_recognised   = $9,
             progress_billing = $10,
             gr_profit_sap    = $11,
             pm_user_id       = COALESCE($12, pm_user_id),
+            status           = $13,
             last_sap_import  = NOW(),
             updated_at       = NOW()
           WHERE id = $1`,
           [projectId, p.name, p.customer, p.end_date,
-           t.plan_cos, t.tot_cost, t.com_cst, quot, rev, pb, t.gr_profit, pmUserId]);
+           t.plan_cos, t.tot_cost, t.com_cst, quot, rev, pb, t.gr_profit, pmUserId, status]);
         updated++;
       } else {
         await c.query(`
@@ -258,16 +291,16 @@ r.post('/commit', upload.single('file'), ah(async (req, res) => {
             start_date, end_date,
             contract_value, initial_budget, budget, eac, actual, committed,
             rev_recognised, progress_billing, gr_profit_sap,
-            pm_user_id, last_sap_import
+            pm_user_id, status, last_sap_import
           ) VALUES (
             $1,$2,$3,$4,$5,'(unassigned)',
             COALESCE($6, CURRENT_DATE), COALESCE($7, CURRENT_DATE + INTERVAL '1 year'),
             $8,$9,$10,$11,$12,$13,$14,$15,$16,
-            $17, NOW())`,
+            $17, $18, NOW())`,
           [projectId, p.name || p.sap_project_no, wbsCode, p.sap_project_no, p.customer,
            p.start_date, p.end_date,
-           quot, t.plan_cos, t.plan_cos, t.tot_cost + t.com_cst, t.tot_cost, t.com_cst,
-           rev, pb, t.gr_profit, pmUserId]);
+           quot, t.plan_cos, t.plan_cos, eacValue, t.tot_cost, t.com_cst,
+           rev, pb, t.gr_profit, pmUserId, status]);
         created++;
       }
 

@@ -7,6 +7,7 @@ const ROLE_BADGE = {
   Finance: { color: 'var(--ok-text)',    bg: 'var(--ok-bg)'    },
   Admin:   { color: 'var(--bad-text)',   bg: 'var(--bad-bg)'   },
 };
+const ROLE_ORDER = { Admin: 0, Finance: 1, PD: 2, PM: 3 };
 
 export default function Login({ onSignIn }) {
   const [users, setUsers]       = useState([]);
@@ -16,9 +17,18 @@ export default function Login({ onSignIn }) {
   const [busy, setBusy]         = useState(false);
 
   useEffect(() => {
-    api.get('/api/users')
-      .then(rows => { setUsers(rows); setLoading(false); })
-      .catch(e   => { setError(e.message); setLoading(false); });
+    let alive = true;
+    const load = () => api.get('/api/users')
+      .then(rows => { if (!alive) return;
+        const sorted = [...rows].sort((a, b) =>
+          (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9)
+          || a.full_name.localeCompare(b.full_name));
+        setUsers(sorted); setLoading(false); setError(null); })
+      .catch(e   => { if (!alive) return; setError(e.message); setLoading(false); });
+    load();
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => { alive = false; window.removeEventListener('focus', onFocus); };
   }, []);
 
   async function signIn(u) {

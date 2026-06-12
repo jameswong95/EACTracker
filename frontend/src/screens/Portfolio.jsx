@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useProjects, fmt, fmtPct, statusLabel } from '../data/store.js';
 import { Sparkline } from '../components/Charts.jsx';
 
+const ROLE_TITLE = { PM: 'Project Manager', PD: 'Project Director', Finance: 'Finance', Admin: 'Administrator' };
+
 export default function Portfolio({ navigate, role, session }) {
   const { projects, loading } = useProjects();
   const [search, setSearch] = useState('');
@@ -55,7 +57,10 @@ export default function Portfolio({ navigate, role, session }) {
       <div className="page-header">
         <div>
           <div className="page-title">Portfolio</div>
-          <div className="page-sub">All projects · K. Rajah (Project Director)</div>
+          <div className="page-sub">
+            {role === 'PM' ? 'My projects' : 'All projects'}
+            {session?.full_name && ` · ${session.full_name}${session.role ? ` (${ROLE_TITLE[session.role] || session.role})` : ''}`}
+          </div>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-ghost btn-sm">⤓ Export</button>
