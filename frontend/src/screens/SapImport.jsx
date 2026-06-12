@@ -28,13 +28,26 @@ export default function SapImport({ navigate, session }) {
     setFile(f);
     setError(null);
     setPreview(null);
-    // Auto-detect period from filename: YYYY-MM, YYYY_MM, YYYYMM, or _MMYYYY
-    const name = f.name || '';
-    let m = name.match(/(20\d{2})[-_.]?(0[1-9]|1[0-2])(?!\d)/);
-    if (!m) m = name.match(/(?<!\d)(0[1-9]|1[0-2])[-_.](20\d{2})/);
-    if (m) {
-      const year  = Number(m[1].length === 4 ? m[1] : m[2]);
-      const month = Number(m[1].length === 4 ? m[2] : m[1]);
+    // Auto-detect period from filename. Supported patterns (case-insensitive):
+    //   YYYY-MM / YYYY_MM / YYYYMM         (e.g. 2026-05, 2026_05, 202605)
+    //   MM-YYYY / MM_YYYY                  (e.g. 05-2026)
+    //   MonYY / MonYYYY / YYYY-Mon         (e.g. May26, May2026, 2026-May)
+    const name = (f.name || '').toLowerCase();
+    const MON = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+                  jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+    let year = null, month = null;
+    let m;
+    if ((m = name.match(/(20\d{2})[-_.]?(0[1-9]|1[0-2])(?!\d)/))) {
+      year = +m[1]; month = +m[2];
+    } else if ((m = name.match(/(?<!\d)(0[1-9]|1[0-2])[-_.](20\d{2})/))) {
+      month = +m[1]; year = +m[2];
+    } else if ((m = name.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[-_.]?(\d{2}|\d{4})/))) {
+      month = MON[m[1]];
+      year  = m[2].length === 4 ? +m[2] : 2000 + +m[2];
+    } else if ((m = name.match(/(20\d{2})[-_.]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/))) {
+      year  = +m[1]; month = MON[m[2]];
+    }
+    if (year && month) {
       setPeriodYear(year);
       setPeriodMonth(month);
     }
@@ -43,6 +56,11 @@ export default function SapImport({ navigate, session }) {
       const fd = new FormData();
       fd.append('file', f);
       const result = await api.upload('/api/sap/preview', fd);
+      // If filename had no period clue, fall back to the report date inside the workbook.
+      if (!(year && month) && result?.report_period?.year && result?.report_period?.month) {
+        setPeriodYear(result.report_period.year);
+        setPeriodMonth(result.report_period.month);
+      }
       setPreview(result);
       setStep(1);
     } catch (e) {

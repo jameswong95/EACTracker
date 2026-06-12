@@ -185,10 +185,25 @@ function parseWorkbook(buf) {
 r.post('/preview', upload.single('file'), ah(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required (field name: file)' });
   const projects = parseWorkbook(req.file.buffer);
+  // Detect the report period from the first page-header row (e.g. "04.05.2026").
+  // Scan the first ~10 rows × first ~5 columns for a dd.mm.yyyy string.
+  let reportPeriod = null;
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const head = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false, range: 0 }).slice(0, 10);
+    outer: for (const row of head) {
+      for (const cell of (row || []).slice(0, 8)) {
+        const m = String(cell || '').match(/(\d{1,2})\.(\d{1,2})\.(20\d{2})/);
+        if (m) { reportPeriod = { year: +m[3], month: +m[2], day: +m[1] }; break outer; }
+      }
+    }
+  } catch { /* ignore */ }
   res.json({
     filename: req.file.originalname,
     project_count: projects.length,
     sub_job_count: projects.reduce((s, p) => s + p.sub_jobs.length, 0),
+    report_period: reportPeriod,
     projects,
   });
 }));
