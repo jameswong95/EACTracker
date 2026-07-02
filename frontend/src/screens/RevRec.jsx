@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useProject, fmt, MONTHS } from '../data/store.js';
 import { LineChart } from '../components/Charts.jsx';
+import { api } from '../data/api.js';
 
 const NOW_MONTH = new Date().getMonth(); // months 0..NOW_MONTH are locked
 
 export default function RevRec({ projectId, navigate, role }) {
-  const { project: p, loading } = useProject(projectId);
+  const { project: p, loading, reload } = useProject(projectId);
   if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
-  return <RevRecBody p={p} navigate={navigate} role={role} />;
+  return <RevRecBody p={p} navigate={navigate} role={role} reload={reload} />;
 }
 
-function RevRecBody({ p, navigate, role }) {
+function RevRecBody({ p, navigate, role, reload }) {
   const canEdit = role !== 'PD';
   const rr = p.revrec;
   // Build a recognition curve if one isn't provided yet
@@ -27,6 +28,8 @@ function RevRecBody({ p, navigate, role }) {
 
   const [monthly, setMonthly] = useState(initMonthly);
   const [saved,   setSaved]   = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [saveErr, setSaveErr] = useState(null);
 
   function update(mi, val) {
     const num = Math.max(0, parseFloat(val) || 0);
@@ -41,7 +44,34 @@ function RevRecBody({ p, navigate, role }) {
   const remaining        = rr.forecastFull - totalForecast;
   const recognisedPct    = (recognisedToDate / rr.forecastFull * 100).toFixed(1);
 
-  function handleSave() { setSaved(true); setTimeout(() => setSaved(false), 3000); }
+  async function handleSave() {
+    setSaving(true); setSaveErr(null);
+    const YEAR = 2026;
+    try {
+      const calls = [];
+      for (let mi = NOW_MONTH + 1; mi < 12; mi++) {
+        const amount  = monthly[mi];
+        const existing = (rr.entries || []).find(
+          e => Number(e.period_year) === YEAR && Number(e.period_month) === mi + 1
+        );
+        if (existing) {
+          calls.push(api.patch(`/api/revrec/${existing.id}`, { amount }));
+        } else if (amount > 0) {
+          calls.push(api.post('/api/revrec', {
+            project_id: p.id, period_year: YEAR, period_month: mi + 1, amount,
+          }));
+        }
+      }
+      await Promise.all(calls);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      reload();
+    } catch (e) {
+      setSaveErr(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const guardrails = [
     { ok: true,                             text: 'Monthly reconciliation active' },
@@ -60,7 +90,7 @@ function RevRecBody({ p, navigate, role }) {
         <div className="grow" />
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}>← Back</button>
         {canEdit && (
-          <button className="btn btn-primary btn-sm" onClick={handleSave}>
+          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
             {saved ? (
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -68,8 +98,11 @@ function RevRecBody({ p, navigate, role }) {
                 </svg>
                 Saved
               </span>
-            ) : 'Save RevRec'}
+            ) : saving ? 'Saving…' : 'Save RevRec'}
           </button>
+        )}
+        {saveErr && (
+          <span style={{ fontSize: 12, color: 'var(--bad)', marginLeft: 8 }}>{saveErr}</span>
         )}
       </div>
 

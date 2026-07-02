@@ -38,6 +38,33 @@ function Icon({ name, size = 16 }) {
         <circle cx="8" cy="8" r="7" /><path d="M8 4v4l3 2" />
       </svg>
     ),
+    alerts: (
+      <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 1a5 5 0 0 1 5 5v2l1.5 2.5H1.5L3 8V6a5 5 0 0 1 5-5Z" />
+        <path d="M6.5 13a1.5 1.5 0 0 0 3 0" />
+      </svg>
+    ),
+    financials: (
+      <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 13L5 8l3 3 4-5 3 2" /><rect x="1" y="1" width="14" height="14" rx="1.5" />
+      </svg>
+    ),
+    reconciliation: (
+      <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 8A6 6 0 1 1 8 2M14 2v4h-4" />
+      </svg>
+    ),
+    reports: (
+      <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="1" width="12" height="14" rx="1.5" /><path d="M5 5h6M5 8h6M5 11h4" />
+      </svg>
+    ),
+    settings: (
+      <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="8" cy="8" r="2" />
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.41 1.41M11.37 11.37l1.41 1.41M3.22 12.78l1.41-1.41M11.37 4.63l1.41-1.41" />
+      </svg>
+    ),
     approvals: (
       <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M13 6l-6 6-3-3" /><rect x="1" y="1" width="14" height="14" rx="2" />
@@ -89,26 +116,24 @@ function Icon({ name, size = 16 }) {
   return icons[name] || null;
 }
 
+// PRD §3.1 navigation model
 const NAV = {
   PM: [
-    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { id: 'portfolio', label: 'My Projects', icon: 'portfolio' },
-    { id: 'standards', label: 'Standards',  icon: 'standards' },
-    { id: 'assists',   label: 'AI Assist',   icon: 'assists' },
+    { id: 'portfolio', label: 'Portfolio',         icon: 'portfolio'  },
   ],
   PD: [
-    { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
-    { id: 'standards', label: 'Standards', icon: 'standards' },
+    { id: 'portfolio', label: 'Portfolio',          icon: 'portfolio'  },
   ],
   Finance: [
-    { id: 'sap-import', label: 'SAP Import', icon: 'sap' },
-    { id: 'standards',  label: 'Standards',  icon: 'standards' },
-    { id: 'portfolio',  label: 'Projects',   icon: 'project' },
+    { id: 'portfolio',  label: 'Portfolio',         icon: 'portfolio'       },
+    { id: 'sap-import', label: 'SAP Import',        icon: 'sap'             },
+    { id: 'standards',  label: 'Reconciliation',    icon: 'reconciliation'  },
   ],
   Admin: [
-    { id: 'admin-pool',        label: 'Resource Pool', icon: 'resource'  },
-    { id: 'admin-permissions', label: 'Permissions',   icon: 'shield'    },
-    { id: 'admin-audit',       label: 'Audit Trail',   icon: 'standards' },
+    { id: 'portfolio',         label: 'Portfolio',    icon: 'portfolio' },
+    { id: 'admin-pool',        label: 'Settings',    icon: 'settings'  },
+    { id: 'admin-permissions', label: 'Permissions', icon: 'shield'    },
+    { id: 'admin-audit',       label: 'Audit Trail', icon: 'standards' },
   ],
 };
 

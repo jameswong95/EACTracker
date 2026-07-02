@@ -157,7 +157,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
   // Derive project span from resource data. fte arrays are indexed from (startYear, startMonth).
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;    // 0 = January
-  const totalMonths = Math.max(12, ...p.resources.map(r => (r.fte || []).length));
+  const totalMonths = Math.max(12, ...(p.resources || []).map(r => (r.fte || []).length));
   const endYear  = startYear + Math.floor((startMonth + totalMonths - 1) / 12);
   const endMonth = (startMonth + totalMonths - 1) % 12;
   const projectYears = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
@@ -176,7 +176,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
   const [rows, setRows] = useState(() =>
     p.resources.map(r => {
       const fte = Array(totalMonths).fill(0);
-      (r.fte || []).forEach((v, i) => { if (i < totalMonths) fte[i] = v; });
+      (r.fte || []).forEach((v, i) => { if (i < totalMonths) fte[i] = parseFloat(v) || 0; });
       return {
         ...r,
         id: nextId++,
@@ -272,9 +272,17 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
 
   useEffect(() => {
     if (firstRender.current) { firstRender.current = false; return; }
-    setSaveStatus('saved');
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => setSaveStatus(null), 2000);
+    saveTimer.current = setTimeout(() => {
+      const toSave = rows.filter(r => r.dbId);
+      if (!toSave.length) return;
+      setSaveStatus('saving');
+      Promise.all(toSave.map(r =>
+        api.patch(`/api/resources/${r.dbId}`, { fte_allocations: r.fte })
+      ))
+        .then(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus(null), 2000); })
+        .catch(() => { setSaveStatus('error'); setTimeout(() => setSaveStatus(null), 3000); });
+    }, 600);
     return () => clearTimeout(saveTimer.current);
   }, [rows]);
 
@@ -283,11 +291,25 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
     setPendingFn(person.roles?.[0] || '');
   }
 
-  function confirmAdd() {
+  async function confirmAdd() {
     if (!pendingPerson) return;
+    const fte = Array(totalMonths).fill(0);
+    const poolEntry = RESOURCE_POOL.find(r => r.name === pendingPerson.name);
+    let dbId = null;
+    try {
+      const created = await api.post('/api/resources', {
+        project_id: p.id,
+        resource_id: poolEntry?.id || null,
+        role_name: pendingPerson.name,
+        function_title: pendingFn.trim() || '',
+        grade: pendingPerson.grade,
+        fte_allocations: fte,
+      });
+      dbId = created.id;
+    } catch (e) { console.error('Failed to create resource', e); }
     setRows(prev => [...prev, {
-      id: nextId++, role: pendingPerson.name, grade: pendingPerson.grade,
-      fn: pendingFn.trim(), fte: Array(totalMonths).fill(0),
+      id: nextId++, dbId, role: pendingPerson.name,
+      grade: pendingPerson.grade, fn: pendingFn.trim(), fte,
     }]);
     setPendingPerson(null); setPendingFn(''); setAdding(false);
   }
@@ -303,7 +325,12 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
     ));
   }
 
-  function removeRow(rowId) { setRows(prev => prev.filter(r => r.id !== rowId)); setConfirmingId(null); }
+  function removeRow(rowId) {
+    const row = rows.find(r => r.id === rowId);
+    if (row?.dbId) api.del(`/api/resources/${row.dbId}`).catch(console.error);
+    setRows(prev => prev.filter(r => r.id !== rowId));
+    setConfirmingId(null);
+  }
 
   function updateSubJob(rowId, subJobId) {
     setRows(prev => prev.map(r =>
@@ -355,13 +382,19 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
         <span className="breadcrumb-sep">/</span>
         <span className="breadcrumb-current">Resource Plan</span>
         <div className="grow" />
+        {saveStatus === 'saving' && (
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Saving…</span>
+        )}
         {saveStatus === 'saved' && (
-          <span style={{ fontSize: 12, color: 'var(--ok)', display: 'flex', alignItems: 'center', gap: 5, animation: 'fadeIn .2s ease' }}>
+          <span style={{ fontSize: 12, color: 'var(--ok)', display: 'flex', alignItems: 'center', gap: 5 }}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1.5 6l3 3 6-6"/>
             </svg>
             Saved
           </span>
+        )}
+        {saveStatus === 'error' && (
+          <span style={{ fontSize: 12, color: 'var(--bad)' }}>Save failed</span>
         )}
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}>← Back</button>
       </div>

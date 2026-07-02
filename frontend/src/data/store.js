@@ -58,9 +58,8 @@ export function adaptProject(p) {
     revRecognised: n(p.rev_recognised),
     progressBilling: n(p.progress_billing),
     osPb: n(p.os_pb),
-    gpDisplay: n(p.gp_display),
-    initialGp: n(p.initial_gp),
-    gpAfterEac: n(p.gp_after_eac),
+    budgetGpPct:   n(p.budget_gp_pct),
+    forecastGpPct: n(p.forecast_gp_pct),
     variance: n(p.variance),
     // derived placeholders (until module-level data lands)
     labourEtc: Math.max(0, eac - actual - committed) * 0.6,
@@ -79,7 +78,10 @@ function adaptSubjob(s) {
   const budget = n(s.plan_cos);
   const actual = n(s.tot_cost);
   const committed = n(s.com_cst);
-  const etc = Math.max(0, budget - actual - committed);
+  // Use PM-entered ETC from DB (etc_lab+etc_foh+etc_mat+etc_doc+etc_sco via v_sub_job_summary).
+  // Fall back to budget-based formula only if no ETC has been entered yet.
+  const etcDb = n(s.etc_total);
+  const etc = etcDb > 0 ? etcDb : Math.max(0, budget - actual - committed);
   return {
     id: s.id,
     wbs: s.wbs_code,
@@ -118,7 +120,7 @@ function adaptUpdate(u) {
   return {
     month: `${MONTHS[(u.period_month || 1) - 1] || ''} ${u.period_year || ''}`.trim(),
     status: u.status || 'ok',
-    text: u.text || '',
+    text: u.narrative || '',
   };
 }
 
@@ -128,7 +130,7 @@ function adaptResource(r) {
     role: r.resource_name || r.role_name,
     fn: r.function_title,
     grade: r.grade,
-    fte: Array.isArray(r.fte_allocations) ? r.fte_allocations : (r.fte_allocations || []),
+    fte: (Array.isArray(r.fte_allocations) ? r.fte_allocations : (r.fte_allocations || [])).map(v => parseFloat(v) || 0),
     subJobId: r.sub_job_id ?? null,
   };
 }

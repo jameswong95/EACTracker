@@ -314,14 +314,15 @@ r.post('/commit', upload.single('file'), ah(async (req, res) => {
             contract_value   = $8,
             rev_recognised   = $9,
             progress_billing = $10,
-            gr_profit_sap    = $11,
-            pm_user_id       = COALESCE($12, pm_user_id),
-            status           = $13,
+            os_pb            = $11,
+            gr_profit_sap    = $12,
+            pm_user_id       = COALESCE($13, pm_user_id),
+            status           = $14,
             last_sap_import  = NOW(),
             updated_at       = NOW()
           WHERE id = $1`,
           [projectId, p.name, p.customer, p.end_date,
-           t.plan_cos, t.tot_cost, t.com_cst, quot, rev, pb, t.gr_profit, pmUserId, status]);
+           t.plan_cos, t.tot_cost, t.com_cst, quot, rev, pb, osPb, t.gr_profit, pmUserId, status]);
         updated++;
       } else {
         await c.query(`

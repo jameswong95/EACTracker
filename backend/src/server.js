@@ -16,6 +16,7 @@ import periodsRouter    from './routes/periods.js';
 import usersRouter      from './routes/users.js';
 import sapRouter        from './routes/sap.js';
 import auditRouter      from './routes/audit.js';
+import alertsRouter     from './routes/alerts.js';
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use('/api/periods',    periodsRouter);
 app.use('/api/users',      usersRouter);
 app.use('/api/sap',        sapRouter);
 app.use('/api/audit',      auditRouter);
+app.use('/api/alerts',     alertsRouter);
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'not found', path: req.path }));

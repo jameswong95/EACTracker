@@ -13,13 +13,14 @@ import PdApprovals from './screens/PdApprovals.jsx';
 import AdminPanel from './screens/AdminPanel.jsx';
 import { logAction } from './data/auditLog.js';
 
-const ROLE_DEFAULTS = { PM: 'dashboard', PD: 'portfolio', Finance: 'sap-import', Admin: 'admin-pool' };
+const ROLE_DEFAULTS = { PM: 'portfolio', PD: 'portfolio', Finance: 'portfolio', Admin: 'portfolio' };
 
+// PRD §10: roles and minimum access
 const ROLE_ALLOWED_INIT = {
-  PM:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards', 'assists'],
-  PD:      ['portfolio', 'project', 'resource', 'revrec', 'standards'],
-  Finance: ['sap-import', 'standards', 'portfolio', 'project', 'resource', 'revrec'],
-  Admin:   ['admin-pool', 'admin-permissions', 'admin-audit'],
+  PM:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
+  PD:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
+  Finance: ['portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists'],
+  Admin:   ['dashboard', 'portfolio', 'project', 'admin-pool', 'admin-permissions', 'admin-audit'],
 };
 
 export default function App() {
@@ -32,8 +33,16 @@ export default function App() {
 
   const [role, setRole]       = useState(() => session?.role || 'PM');
   const [theme, setTheme]     = useState(() => localStorage.getItem('pfms-theme') || 'light');
-  const [screen, setScreen]   = useState(() => ROLE_DEFAULTS[session?.role || 'PM']);
-  const [projectId, setProjectId] = useState('PR-2025-014');
+  const [screen, setScreen]   = useState(() => {
+    const saved = localStorage.getItem('pfms-screen');
+    const role  = session?.role || 'PM';
+    const allowed = ROLE_ALLOWED_INIT[role] || [];
+    if (saved && allowed.includes(saved)) return saved;
+    return ROLE_DEFAULTS[role];
+  });
+  const [projectId, setProjectId] = useState(
+    () => localStorage.getItem('pfms-project') || 'PR-2025-014'
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [roleAllowed, setRoleAllowed] = useState(ROLE_ALLOWED_INIT);
@@ -46,27 +55,37 @@ export default function App() {
   function handleSignIn(s) {
     setSession(s);
     setRole(s.role);
-    setScreen(ROLE_DEFAULTS[s.role]);
+    const savedScreen = localStorage.getItem('pfms-screen');
+    const allowed = ROLE_ALLOWED_INIT[s.role] || [];
+    setScreen(savedScreen && allowed.includes(savedScreen) ? savedScreen : ROLE_DEFAULTS[s.role]);
     logAction({ action: 'Sign in', detail: s.full_name, user: s.full_name, role: s.role });
   }
 
   function handleSignOut() {
     logAction({ action: 'Sign out', detail: session?.full_name, user: session?.full_name, role });
     localStorage.removeItem('pfms-session');
+    localStorage.removeItem('pfms-screen');
+    localStorage.removeItem('pfms-project');
     setSession(null);
   }
 
   function navigate(s, pid) {
     if (!(roleAllowed[role] || []).includes(s)) return;
     setScreen(s);
-    if (pid) setProjectId(pid);
+    localStorage.setItem('pfms-screen', s);
+    if (pid) {
+      setProjectId(pid);
+      localStorage.setItem('pfms-project', pid);
+    }
     setMobileNavOpen(false);
   }
 
   function switchRole(newRole) {
     logAction({ action: 'Switch role', detail: `${role} → ${newRole}`, user: session?.full_name || 'System', role: newRole });
     setRole(newRole);
-    setScreen(ROLE_DEFAULTS[newRole]);
+    const def = ROLE_DEFAULTS[newRole];
+    setScreen(def);
+    localStorage.setItem('pfms-screen', def);
     setMobileNavOpen(false);
   }
 

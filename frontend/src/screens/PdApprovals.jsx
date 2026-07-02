@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { api } from '../data/api.js';
 
 const QUEUE = [
   {
@@ -55,16 +56,59 @@ const QUEUE = [
 
 const TONE_LABEL = { warn: 'At risk', bad: 'Urgent', info: 'Info', ok: 'On track' };
 
-export default function PdApprovals({ navigate }) {
+// Map API approval to display shape
+function adaptApproval(a) {
+  const variance = Number(a.variance) || 0;
+  return {
+    id:       a.id,
+    type:     variance > 0 ? 'Re-baseline' : variance < 0 ? 'Variance ack' : 'EAC update',
+    tone:     variance > 500 ? 'bad' : variance > 0 ? 'warn' : variance < 0 ? 'ok' : 'info',
+    project:  a.project_name || a.wbs_code || '—',
+    pm:       a.submitter_name || '—',
+    age:      a.submitted_at ? `${Math.max(1, Math.round((Date.now() - new Date(a.submitted_at)) / 86400000))} day${Math.round((Date.now() - new Date(a.submitted_at)) / 86400000) === 1 ? '' : 's'}` : '—',
+    summary:  a.notes || 'Approval requested.',
+    original: `Period ${a.period_month}/${a.period_year}`,
+    proposed: a.eac_amount != null ? `EAC $${(Number(a.eac_amount) / 1000).toFixed(0)}K` : '—',
+    impact:   variance !== 0 ? `${variance > 0 ? '+' : ''}$${(variance / 1000).toFixed(0)}K variance` : 'No change',
+    note:     a.notes || 'No PM note provided.',
+    evidence: [],
+    status:   a.status,
+  };
+}
+
+export default function PdApprovals({ navigate, session }) {
+  const [queue, setQueue] = useState(QUEUE);
   const [selected, setSelected] = useState(QUEUE[0].id);
   const [decisions, setDecisions] = useState({});
 
-  const item = QUEUE.find(q => q.id === selected);
-  const pending = QUEUE.filter(q => !decisions[q.id]);
+  useEffect(() => {
+    api.get('/api/approvals?status=pending')
+      .then(rows => {
+        if (rows.length > 0) {
+          const adapted = rows.map(adaptApproval);
+          setQueue(adapted);
+          setSelected(adapted[0].id);
+        }
+      })
+      .catch(() => {}); // keep mock queue on error
+  }, []);
 
-  function decide(id, verdict) {
+  const item = queue.find(q => q.id === selected);
+  const pending = queue.filter(q => !decisions[q.id]);
+
+  async function decide(id, verdict) {
+    const apiStatus = verdict === 'approved' ? 'approved' : verdict === 'rejected' ? 'rejected' : 'pending';
+    // Only PATCH numeric IDs (real DB rows); QUEUE mock items have small integers too, so check queue source
+    const item = queue.find(q => q.id === id);
+    if (item && !QUEUE.find(q => q.id === id)) {
+      // Real API item
+      await api.patch(`/api/approvals/${id}`, {
+        status: apiStatus,
+        reviewed_by: session?.id || null,
+      }).catch(console.error);
+    }
     setDecisions(prev => ({ ...prev, [id]: verdict }));
-    const next = QUEUE.find(q => q.id !== id && !decisions[q.id] && q.id !== selected);
+    const next = queue.find(q => q.id !== id && !decisions[q.id] && q.id !== selected);
     if (next) setSelected(next.id);
   }
 
@@ -84,7 +128,7 @@ export default function PdApprovals({ navigate }) {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Queue list */}
         <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--border)', overflowY: 'auto', background: 'var(--surface-2)', padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {QUEUE.map(q => {
+          {queue.map(q => {
             const verdict = decisions[q.id];
             return (
               <button
