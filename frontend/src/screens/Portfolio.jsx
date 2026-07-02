@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useProjects, fmt } from '../data/store.js';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useProjects, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
 import { Sparkline, MultiSeriesLineChart, HorizontalBarChart, SegmentedRing, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 
 // PRD Section 4: Portfolio Financial Health Dashboard
@@ -68,12 +68,59 @@ function KpiCard({ label, value, sub, subColor, delta, tooltip }) {
   );
 }
 
+function useDebounce(value, delay = 220) {
+  const [debounced, setDebounced] = useState(value);
+  const timer = useRef();
+  useEffect(() => {
+    timer.current = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer.current);
+  }, [value, delay]);
+  return debounced;
+}
+
+// ── Portfolio skeleton ────────────────────────────────────────────────────
+function PortfolioSkeleton() {
+  return (
+    <div className="screen" style={{ padding: '24px 28px' }}>
+      {/* header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="skel skel-title" style={{ width: 280 }} />
+          <div className="skel skel-text" style={{ width: 340 }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div className="skel" style={{ width: 100, height: 30, borderRadius: 6 }} />
+          <div className="skel" style={{ width: 100, height: 30, borderRadius: 6 }} />
+        </div>
+      </div>
+      {/* KPI row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10, marginBottom: 24 }}>
+        {Array(7).fill(0).map((_, i) => <div key={i} className="skel skel-kpi" />)}
+      </div>
+      {/* charts row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+        {Array(3).fill(0).map((_, i) => <div key={i} className="skel skel-card" />)}
+      </div>
+      {/* table area */}
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
+        <div className="skel" style={{ height: 320, borderRadius: 'var(--r)' }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="skel" style={{ height: 44, borderRadius: 'var(--r)' }} />
+          {Array(6).fill(0).map((_, i) => <div key={i} className="skel skel-row" />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Portfolio({ navigate, role, session }) {
   const { projects, loading } = useProjects();
-  const [search, setSearch]           = useState('');
+  const [search, setSearch]             = useState('');
   const [healthFilter, setHealthFilter] = useState('all');
-  const [sort, setSort]               = useState({ key: 'eacVariance', dir: 1 });
-  const [varMode, setVarMode]         = useState('amount');
+  const [sort, setSort]                 = useState({ key: 'eacVariance', dir: 1 });
+  const [varMode, setVarMode]           = useState('amount');
+
+  const debouncedSearch = useDebounce(search);
 
   const myName   = session?.full_name;
   const baseList = (role === 'PM' && myName)
@@ -84,8 +131,8 @@ export default function Portfolio({ navigate, role, session }) {
 
   const filtered = useMemo(() => {
     let list = [...baseList];
-    if (search) {
-      const q = search.toLowerCase();
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       list = list.filter(p =>
         p.name.toLowerCase().includes(q) ||
         (p.id || '').toLowerCase().includes(q) ||
@@ -102,7 +149,7 @@ export default function Portfolio({ navigate, role, session }) {
       return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
     });
     return list;
-  }, [baseList, search, healthFilter, sort]);
+  }, [baseList, debouncedSearch, healthFilter, sort]);
 
   function toggleSort(key) {
     setSort(s => s.key === key ? { key, dir: s.dir * -1 } : { key, dir: 1 });
@@ -146,11 +193,17 @@ export default function Portfolio({ navigate, role, session }) {
   const varBars = [...baseList]
     .sort((a, b) => (a.budget - a.eac) - (b.budget - b.eac))
     .slice(0, 10)
-    .map(p => ({
-      label: p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name,
-      value: p.budget - p.eac,
-      pct:   p.budget > 0 ? ((p.budget - p.eac) / p.budget) * 100 : 0,
-    }));
+    .map(p => {
+      const variance = p.budget - p.eac;
+      const pct = p.budget > 0 ? (variance / p.budget) * 100 : 0;
+      const col = pct >= 0 ? C.fav : pct > -10 ? C.fav : pct > -25 ? C.attn : C.adverse;
+      return {
+        label: p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name,
+        value: variance,
+        pct,
+        color: col,
+      };
+    });
 
   // Portfolio trend (PRD §4.4)
   const { labels: trendLabels, eacTrend, budgetLine } = buildPortfolioTrend(baseList);
@@ -159,13 +212,17 @@ export default function Portfolio({ navigate, role, session }) {
   const categories  = buildCategoryBreakdown(baseList);
   const catEacTotal = categories.reduce((a, c) => a + c.eac, 0) || 1;
 
-  const portHealth = hCounts.bad > 0 ? 'bad' : hCounts.warn > 0 ? 'warn' : 'ok';
+  const total = baseList.length || 1;
+  const badPct  = hCounts.bad  / total;
+  const warnPct = hCounts.warn / total;
+  const eacOverBudget = totalEac > totalBudget;
+  const portHealth = (badPct > 0.25 || (hCounts.bad > 0 && eacOverBudget))
+    ? 'bad'
+    : (warnPct > 0.25 || eacOverBudget)
+    ? 'warn'
+    : 'ok';
 
-  if (loading) return (
-    <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--text-3)' }}>Loading portfolio…</div>
-    </div>
-  );
+  if (loading) return <PortfolioSkeleton />;
 
   return (
     <div className="screen" style={{ padding: '24px 28px' }}>
@@ -175,9 +232,14 @@ export default function Portfolio({ navigate, role, session }) {
         <div>
           <div className="page-title">Portfolio Financial Health</div>
           <div className="page-sub" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
-            <span>As at <strong>2 Jul 2026</strong></span>
+            <span>As at <strong>{fmtAsAt()}</strong></span>
             <span style={{ color: 'var(--border-2)' }}>·</span>
-            <span className="data-freshness">● SAP sync: today 06:30</span>
+            <span className="data-freshness">● SAP sync: {fmtSapSync(
+              baseList.reduce((latest, p) => {
+                if (!p.lastSapImport) return latest;
+                return !latest || p.lastSapImport > latest ? p.lastSapImport : latest;
+              }, null)
+            )}</span>
             <HealthBadge status={portHealth} />
           </div>
         </div>
@@ -395,9 +457,27 @@ export default function Portfolio({ navigate, role, session }) {
                     );
                   })}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 32 }}>
-                      No projects match the selected filters.
-                    </td></tr>
+                    <tr>
+                      <td colSpan={10}>
+                        <div className="empty-state">
+                          <div className="empty-state-icon">🔍</div>
+                          <div className="empty-state-title">
+                            {baseList.length === 0 ? 'No projects found' : 'No projects match these filters'}
+                          </div>
+                          <div className="empty-state-sub">
+                            {baseList.length === 0
+                              ? 'There are no projects assigned to your account yet.'
+                              : 'Try adjusting the search or health filter above.'}
+                          </div>
+                          {(search || healthFilter !== 'all') && (
+                            <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
+                              onClick={() => { setSearch(''); setHealthFilter('all'); }}>
+                              Clear filters
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

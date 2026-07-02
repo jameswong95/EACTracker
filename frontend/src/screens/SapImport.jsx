@@ -171,7 +171,9 @@ export default function SapImport({ navigate, session }) {
               {parsing ? (
                 <>
                   <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--accent)' }}>{file?.name}</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 6 }}>Parsing…</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="spinner" />Parsing…
+                  </div>
                 </>
               ) : (
                 <>
@@ -267,7 +269,9 @@ export default function SapImport({ navigate, session }) {
                     </label>
                     <div className="grow" />
                     <button className="btn btn-ghost" onClick={reset} disabled={committing}>Cancel</button>
-                    <button className="btn btn-primary btn-lg" onClick={handleCommit} disabled={committing}>
+                    <button className="btn btn-primary btn-lg" onClick={handleCommit} disabled={committing}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {committing && <span className="spinner spinner-sm" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.35)' }} />}
                       {committing ? 'Committing…' : 'Commit import →'}
                     </button>
                   </div>
@@ -310,7 +314,11 @@ export default function SapImport({ navigate, session }) {
             </div>
             <div>
               {history.length === 0 ? (
-                <div style={{ padding: 20, fontSize: 12, color: 'var(--text-3)' }}>No imports yet.</div>
+                <div className="empty-state" style={{ padding: '32px 16px' }}>
+                  <div className="empty-state-icon">📂</div>
+                  <div className="empty-state-title">No imports yet</div>
+                  <div className="empty-state-sub">Completed imports will appear here.</div>
+                </div>
               ) : history.map((imp, i) => (
                 <div key={imp.id} style={{ padding: '12px 20px', borderBottom: i < history.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span className={`dot dot-${imp.status}`} />

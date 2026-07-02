@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useProject, fmt } from '../data/store.js';
+import { useProject, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
 import { api } from '../data/api.js';
 import { MultiSeriesLineChart, SegmentedRing, GroupedBarChart, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 
 // PRD Section 5: Project Financial Health Dashboard
 
 const CATEGORIES = ['PM/MISC', 'Material', 'Subcon', 'Spares', 'Others'];
+
+// Live health, same thresholds as Portfolio
+function liveHealth(p) {
+  if (!p.budget || p.budget <= 0) return 'ok';
+  const v = (p.eac - p.budget) / p.budget;
+  if (v > 0.25) return 'bad';
+  if (v > 0.10) return 'warn';
+  return 'ok';
+}
 
 // Map wbs_suffix to category (PRD §4.6)
 function suffixToCategory(suffix) {
@@ -105,7 +114,7 @@ function buildCategories(subjobs) {
     totals[cat].actual    += s.actual || 0;
     totals[cat].committed += s.committed || 0;
     totals[cat].etc       += s.etc || 0;
-    totals[cat].eac       += (s.actual || 0) + (s.etc || 0);
+    totals[cat].eac       += (s.actual || 0) + (s.committed || 0) + (s.etc || 0);
   });
 
   return CATEGORIES.map(c => totals[c]);
@@ -196,7 +205,11 @@ function TabOverview({ p, navigate }) {
 
       {/* Alerts */}
       {alertsLoading ? (
-        <div style={{ marginBottom: 24, color: 'var(--text-3)', fontSize: 12 }}>Loading alerts…</div>
+        <div style={{ marginBottom: 24 }}>
+          <div className="skel skel-text" style={{ width: 80, marginBottom: 8 }} />
+          <div className="skel skel-row" style={{ marginBottom: 6 }} />
+          <div className="skel skel-row" style={{ width: '80%' }} />
+        </div>
       ) : alerts.length > 0 ? (
         <div style={{ marginBottom: 24 }}>
           <div className="section-label">
@@ -353,8 +366,10 @@ function TabCost({ p }) {
 
   const totalBudget = cats.reduce((a, c) => a + c.budget, 0) || p.budget;
   const totalActual = cats.reduce((a, c) => a + c.actual, 0) || p.actual;
-  const totalEac    = cats.reduce((a, c) => a + c.eac,    0) || p.eac;
   const totalEtc    = cats.reduce((a, c) => a + c.etc,    0) || Math.max(0, p.eac - p.actual - p.committed);
+  // Use project-level EAC for the header KPI (approved top-down figure)
+  // Sub-job EAC is shown in the table as the bottom-up view
+  const subJobEac   = cats.reduce((a, c) => a + c.eac,    0);
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -365,7 +380,7 @@ function TabCost({ p }) {
           { label: 'Actual',     value: fmtShort(totalActual),  color: C.actual    },
           { label: 'Committed',  value: fmtShort(p.committed),  color: C.committed },
           { label: 'ETC',        value: fmtShort(totalEtc),     color: C.forecast  },
-          { label: 'EAC',        value: fmtShort(totalEac),     color: C.forecast  },
+          { label: 'EAC',        value: fmtShort(p.eac),        color: C.forecast  },
         ].map(k => (
           <div key={k.label} className="kpi-tile">
             <div className="kpi-label">{k.label}</div>
@@ -478,13 +493,22 @@ function TabCost({ p }) {
                 <td className="num" style={{ color: C.actual }}>{fmt(totalActual)}</td>
                 <td className="num" style={{ color: C.committed }}>{fmt(p.committed)}</td>
                 <td className="num" style={{ color: C.forecast }}>{fmt(totalEtc)}</td>
-                <td className="num">{fmt(totalEac)}</td>
+                <td className="num">{fmt(subJobEac)}</td>
                 <td>
-                  <span style={{ color: totalBudget >= totalEac ? C.fav : C.adverse, fontWeight: 700 }}>
-                    {totalBudget >= totalEac ? '+' : ''}{fmtShort(totalBudget - totalEac)}
+                  <span style={{ color: totalBudget >= subJobEac ? C.fav : C.adverse, fontWeight: 700 }}>
+                    {totalBudget >= subJobEac ? '+' : ''}{fmtShort(totalBudget - subJobEac)}
                   </span>
                 </td>
               </tr>
+              {subJobEac > 0 && Math.abs(subJobEac - p.eac) > 1 && (
+                <tr>
+                  <td colSpan={7} style={{ paddingTop: 8, paddingBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: C.attn }}>
+                      ⚠ Sub-job bottom-up EAC ({fmtShort(subJobEac)}) differs from approved project EAC ({fmtShort(p.eac)}) by {fmtShort(Math.abs(subJobEac - p.eac))}. Update sub-job ETCs or re-baseline.
+                    </span>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -503,9 +527,8 @@ function TabForecast({ p, reload }) {
 
   const subjobs = p.subjobs || [];
   const totalEtc = Object.values(etcVals).reduce((a, v) => a + (Number(v) || 0), 0);
-  const totalActual = subjobs.reduce((a, s) => a + s.actual, 0) || p.actual;
-  const totalCommitted = subjobs.reduce((a, s) => a + s.committed, 0) || p.committed;
-  const forecastEac = totalActual + totalCommitted + totalEtc;
+  // Use SAP-validated project-level actual & committed; ETCs are PM-entered from sub-jobs
+  const forecastEac = p.actual + p.committed + totalEtc;
 
   async function handleSave() {
     setSaving(true); setSaveErr(null);
@@ -594,7 +617,7 @@ function TabForecast({ p, reload }) {
                 <th style={{ color: C.budget }}>Budget</th>
                 <th style={{ color: C.actual }}>Actual</th>
                 <th style={{ color: C.committed }}>Committed</th>
-                <th style={{ color: C.forecast }}>ETC (editable)</th>
+                <th style={{ color: C.forecast, minWidth: 140 }}>ETC (editable)</th>
                 <th>Forecast EAC</th>
                 <th>Variance</th>
               </tr>
@@ -638,21 +661,27 @@ function TabForecast({ p, reload }) {
                 );
               })}
               {subjobs.length === 0 && (
-                <tr><td colSpan={8} style={{ color: 'var(--text-3)', textAlign: 'center', padding: '20px 0' }}>
-                  No sub-jobs found for this project.
-                </td></tr>
+                <tr>
+                  <td colSpan={8}>
+                    <div className="empty-state" style={{ padding: '40px 24px' }}>
+                      <div className="empty-state-icon">📋</div>
+                      <div className="empty-state-title">No sub-jobs</div>
+                      <div className="empty-state-sub">No WBS sub-jobs have been set up for this project yet.</div>
+                    </div>
+                  </td>
+                </tr>
               )}
             </tbody>
             {subjobs.length > 0 && (
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
-                  <td colSpan={2}>Total</td>
-                  <td className="num">{fmt(subjobs.reduce((a, s) => a + s.budget, 0))}</td>
-                  <td className="num" style={{ color: C.actual }}>{fmt(totalActual)}</td>
-                  <td className="num" style={{ color: C.committed }}>{fmt(totalCommitted)}</td>
-                  <td className="num" style={{ color: C.forecast }}>{fmt(totalEtc)}</td>
-                  <td className="num">{fmt(forecastEac)}</td>
-                  <td>
+                  <td colSpan={2} style={{ fontSize: 12, paddingLeft: 20 }}>Total</td>
+                  <td className="num" style={{ paddingLeft: 16 }}>{fmt(subjobs.reduce((a, s) => a + s.budget, 0))}</td>
+                  <td className="num" style={{ color: C.actual, paddingLeft: 16 }}>{fmt(p.actual)}</td>
+                  <td className="num" style={{ color: C.committed, paddingLeft: 16 }}>{fmt(p.committed)}</td>
+                  <td className="num" style={{ color: C.forecast, minWidth: 140, paddingLeft: 16 }}>{fmt(totalEtc)}</td>
+                  <td className="num" style={{ paddingLeft: 16 }}>{fmt(forecastEac)}</td>
+                  <td style={{ paddingLeft: 16 }}>
                     <span style={{ color: p.budget >= forecastEac ? C.fav : C.adverse, fontWeight: 700 }}>
                       {p.budget >= forecastEac ? '+' : ''}{fmtShort(p.budget - forecastEac)}
                     </span>
@@ -674,7 +703,7 @@ function TabRecon({ p }) {
       <div className="card card-p">
         <div className="section-label" style={{ marginBottom: 12 }}>SAP Reconciliation</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="data-freshness">● SAP sync: today 06:30</span>
+          <span className="data-freshness">● SAP sync: {fmtSapSync(p.lastSapImport)}</span>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>WBS: {p.wbs || '—'}</span>
         </div>
         <div style={{ marginTop: 16, color: 'var(--text-3)', fontSize: 13 }}>
@@ -691,13 +720,50 @@ export default function Project({ projectId, navigate, role, session }) {
   const [tab, setTab] = useState('overview');
 
   if (loading) return (
-    <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--text-3)' }}>Loading project…</div>
+    <div className="screen" style={{ padding: 0 }}>
+      {/* skeleton header */}
+      <div style={{ padding: '16px 28px 0', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ marginBottom: 14 }}>
+          <div className="skel" style={{ width: 90, height: 26, borderRadius: 6, marginBottom: 12 }} />
+          <div className="skel skel-title" style={{ width: 320, marginBottom: 8 }} />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {Array(4).fill(0).map((_, i) => (
+              <div key={i} className="skel skel-text" style={{ width: [80, 110, 100, 90][i] }} />
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 24, paddingBottom: 12 }}>
+          {Array(4).fill(0).map((_, i) => (
+            <div key={i} className="skel skel-text" style={{ width: [140, 60, 130, 160][i] }} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 0, borderTop: '1px solid var(--border)', paddingTop: 2 }}>
+          {Array(5).fill(0).map((_, i) => (
+            <div key={i} className="skel" style={{ width: 110, height: 36, borderRadius: 0, margin: '0 2px' }} />
+          ))}
+        </div>
+      </div>
+      {/* skeleton body */}
+      <div style={{ padding: '24px 28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 24 }}>
+          {Array(6).fill(0).map((_, i) => <div key={i} className="skel skel-kpi" />)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="skel skel-card" />
+          <div className="skel skel-card" />
+        </div>
+      </div>
     </div>
   );
   if (error || !p) return (
     <div className="screen" style={{ padding: 32 }}>
-      <div style={{ color: 'var(--bad)' }}>Failed to load project. {error?.message}</div>
+      <div className="empty-state">
+        <div className="empty-state-icon">⚠️</div>
+        <div className="empty-state-title">Failed to load project</div>
+        <div className="empty-state-sub">{error?.message || 'The project could not be found or an error occurred.'}</div>
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
+          onClick={() => navigate('portfolio')}>← Back to Portfolio</button>
+      </div>
     </div>
   );
 
@@ -732,19 +798,19 @@ export default function Project({ projectId, navigate, role, session }) {
             </div>
           </div>
           <div className="proj-badges">
-            <HealthBadge status={p.status} />
+            <HealthBadge status={liveHealth(p)} />
             <ForecastBadge status="approved" />
           </div>
         </div>
 
         {/* Reporting context */}
         <div className="proj-context">
-          <span className="proj-context-item">📅 As at: <strong>2 Jul 2026</strong></span>
+          <span className="proj-context-item">📅 As at: <strong>{fmtAsAt()}</strong></span>
           <span className="proj-context-item">💱 SGD</span>
-          <span className="proj-context-item data-freshness">● SAP sync: today 06:30</span>
+          <span className="proj-context-item data-freshness">● SAP sync: {fmtSapSync(p.lastSapImport)}</span>
           <span className="proj-context-item">
             GP: <strong style={{ color: gp.gpStatus === 'ok' ? C.fav : gp.gpStatus === 'warn' ? C.attn : C.adverse }}>
-              {gp.actualGp}%
+              {gp.forecastGp}%
             </strong>
             <span style={{ color: 'var(--text-3)', marginLeft: 4 }}>
               (budget: {gp.budgetGp}%, var: {Number(gp.variance) >= 0 ? '+' : ''}{gp.variance}pp)

@@ -7,7 +7,29 @@ const NOW_MONTH = new Date().getMonth(); // months 0..NOW_MONTH are locked
 
 export default function RevRec({ projectId, navigate, role }) {
   const { project: p, loading, reload } = useProject(projectId);
-  if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
+  if (loading) return (
+    <div className="screen" style={{ padding: '24px 28px' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+        <div className="skel" style={{ width: 100, height: 28, borderRadius: 6 }} />
+      </div>
+      <div className="skel skel-title" style={{ width: 260, marginBottom: 24 }} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
+        {Array(4).fill(0).map((_, i) => <div key={i} className="skel skel-kpi" />)}
+      </div>
+      <div className="skel skel-card" style={{ marginBottom: 16 }} />
+      <div className="skel" style={{ height: 320, borderRadius: 'var(--r)' }} />
+    </div>
+  );
+  if (!p) return (
+    <div className="screen" style={{ padding: 32 }}>
+      <div className="empty-state">
+        <div className="empty-state-icon">⚠️</div>
+        <div className="empty-state-title">Project not found</div>
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
+          onClick={() => navigate('portfolio')}>← Back to Portfolio</button>
+      </div>
+    </div>
+  );
   return <RevRecBody p={p} navigate={navigate} role={role} reload={reload} />;
 }
 

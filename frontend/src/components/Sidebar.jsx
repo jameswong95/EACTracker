@@ -131,7 +131,7 @@ const NAV = {
   ],
   Admin: [
     { id: 'portfolio',         label: 'Portfolio',    icon: 'portfolio' },
-    { id: 'admin-pool',        label: 'Settings',    icon: 'settings'  },
+    { id: 'admin-pool',        label: 'Resource Pool', icon: 'settings'  },
     { id: 'admin-permissions', label: 'Permissions', icon: 'shield'    },
     { id: 'admin-audit',       label: 'Audit Trail', icon: 'standards' },
   ],

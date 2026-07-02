@@ -67,6 +67,7 @@ export function adaptProject(p) {
     percentComplete: pct,
     monthsLeft: monthsBetween(new Date(), p.end_date),
     lastUpdate: fmtDate(p.last_update || p.last_sap_import),
+    lastSapImport: p.last_sap_import || null,
     trend: makeTrend(actual + committed),
     startDate: p.start_date,
     endDate: p.end_date,
@@ -286,6 +287,22 @@ export function useSapImports() {
 
 // Re-export formatting helpers that screens still pull from mock.js
 export { MONTHS };
+
+export function fmtSapSync(ts) {
+  if (!ts) return 'not synced';
+  const d = new Date(ts);
+  if (isNaN(d)) return 'not synced';
+  const now = new Date();
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `today ${time}`;
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `yesterday ${time}`;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + time;
+}
+
+export function fmtAsAt() {
+  return new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 export function fmt(n) {
   const v = Number(n) || 0;
