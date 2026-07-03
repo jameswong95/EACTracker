@@ -174,6 +174,9 @@ export default function Portfolio({ navigate, role, session }) {
   const totalCommitted = baseList.reduce((a, p) => a + p.committed, 0);
   const totalEtc       = baseList.reduce((a, p) => a + Math.max(0, p.eac - p.actual - p.committed), 0);
   const totalVariance  = totalBudget - totalEac;
+  const totalRevRec    = baseList.reduce((a, p) => a + p.revRecognised,   0);
+  const totalCash      = baseList.reduce((a, p) => a + p.progressBilling, 0);
+  const totalCV        = baseList.reduce((a, p) => a + (p.contractValue || p.budget), 0);
 
   // Health distribution (PRD §4.5) — computed live, not from stored status
   const hCounts = {
@@ -196,7 +199,8 @@ export default function Portfolio({ navigate, role, session }) {
     .map(p => {
       const variance = p.budget - p.eac;
       const pct = p.budget > 0 ? (variance / p.budget) * 100 : 0;
-      const col = pct >= 0 ? C.fav : pct > -10 ? C.fav : pct > -25 ? C.attn : C.adverse;
+      // Positive = under budget (green). Negative = overrun — amber <25%, red ≥25%.
+      const col = pct >= 0 ? C.fav : pct > -25 ? C.attn : C.adverse;
       return {
         label: p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name,
         value: variance,
@@ -280,8 +284,8 @@ export default function Portfolio({ navigate, role, session }) {
           tooltip="PORT-KPI-07: Overall portfolio health from project RAG statuses." />
       </div>
 
-      {/* Charts row (PRD §4.3–4.6) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+      {/* Charts: EAC Variance (left, full height) + 2×2 grid (right) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 2fr', gap: 16, marginBottom: 24 }}>
 
         {/* EAC Variance by Project (PRD §4.3) */}
         <div className="card card-p">
@@ -295,7 +299,7 @@ export default function Portfolio({ navigate, role, session }) {
             </div>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>
-            Largest adverse first · Red = adverse · Green = favourable
+            Largest adverse first · Green = under budget · Amber = &lt;25% over · Red = ≥25% over
           </div>
           {varBars.length
             ? <HorizontalBarChart
@@ -305,57 +309,147 @@ export default function Portfolio({ navigate, role, session }) {
           }
         </div>
 
-        {/* Portfolio Trend (PRD §4.4) */}
-        <div className="card card-p">
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Portfolio Trend</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>Budget vs EAC by period</div>
-          <MultiSeriesLineChart
-            series={[
-              { label: 'Budget', values: budgetLine, color: C.budget, dashed: true, strokeWidth: 1.5 },
-              { label: 'EAC',    values: eacTrend,   color: C.forecast, area: true },
-            ]}
-            labels={trendLabels}
-            asAtIndex={6}
-            height={150}
-          />
-          <div className="chart-legend" style={{ marginTop: 8 }}>
-            <div className="legend-item">
-              <div className="legend-swatch" style={{ background: C.budget }} />
-              <span>Budget (dashed)</span>
-            </div>
-            <div className="legend-item">
-              <div className="legend-swatch" style={{ background: C.forecast }} />
-              <span>EAC</span>
-            </div>
-          </div>
-        </div>
+        {/* 2×2 grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 16 }}>
 
-        {/* Portfolio Health Distribution (PRD §4.5) */}
-        <div className="card card-p">
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Portfolio Health</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>By project count</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <SegmentedRing segments={healthSegs} size={110} stroke={16}
-              centerLabel={String(baseList.length)} centerSub="projects" />
-            <div className="ring-legend">
-              {healthSegs.map(s => (
-                <div key={s.label} className="ring-legend-row" style={{ cursor: 'pointer' }}
-                  onClick={() => setHealthFilter(
-                    s.label === 'On Track' ? 'ok'
-                      : s.label === 'At Risk' ? 'warn'
-                      : s.label === 'Off Track' ? 'bad'
-                      : 'all'
-                  )}>
-                  <div className="ring-legend-dot" style={{ background: s.color }} />
-                  <div className="ring-legend-label">{s.label}</div>
-                  <div className="ring-legend-val">{s.value}</div>
-                  <div className="ring-legend-pct">({((s.value / (baseList.length || 1)) * 100).toFixed(0)}%)</div>
-                </div>
-              ))}
+          {/* Portfolio Trend (PRD §4.4) */}
+          <div className="card card-p">
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Portfolio Trend</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>Budget vs EAC by period</div>
+            <MultiSeriesLineChart
+              series={[
+                { label: 'Budget', values: budgetLine, color: C.budget, dashed: true, strokeWidth: 1.5 },
+                { label: 'EAC',    values: eacTrend,   color: C.forecast, area: true },
+              ]}
+              labels={trendLabels}
+              asAtIndex={6}
+              height={110}
+            />
+            <div className="chart-legend" style={{ marginTop: 6 }}>
+              <div className="legend-item">
+                <div className="legend-swatch" style={{ background: C.budget }} />
+                <span>Budget (dashed)</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-swatch" style={{ background: C.forecast }} />
+                <span>EAC</span>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+
+          {/* Portfolio Health Distribution (PRD §4.5) */}
+          <div className="card card-p">
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Portfolio Health</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>By project count</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <SegmentedRing segments={healthSegs} size={90} stroke={14}
+                centerLabel={String(baseList.length)} centerSub="projects" />
+              <div className="ring-legend">
+                {healthSegs.map(s => (
+                  <div key={s.label} className="ring-legend-row" style={{ cursor: 'pointer' }}
+                    onClick={() => setHealthFilter(
+                      s.label === 'On Track' ? 'ok'
+                        : s.label === 'At Risk' ? 'warn'
+                        : s.label === 'Off Track' ? 'bad'
+                        : 'all'
+                    )}>
+                    <div className="ring-legend-dot" style={{ background: s.color }} />
+                    <div className="ring-legend-label">{s.label}</div>
+                    <div className="ring-legend-val">{s.value}</div>
+                    <div className="ring-legend-pct">({((s.value / (baseList.length || 1)) * 100).toFixed(0)}%)</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Cost Burn */}
+          {(() => {
+            const incurred   = totalActual + totalCommitted;
+            const eacBase    = totalEac || 1;
+            const actPct     = Math.min(100, (totalActual    / eacBase) * 100);
+            const comPct     = Math.min(100 - actPct, (totalCommitted / eacBase) * 100);
+            const etcPct     = Math.min(100 - actPct - comPct, (totalEtc / eacBase) * 100);
+            const incurredPct = (incurred / eacBase) * 100;
+            return (
+              <div className="card card-p">
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Cost Burn</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>
+                  Actual + Committed + ETC vs approved EAC
+                </div>
+                {/* Stacked bar */}
+                <div style={{ height: 12, borderRadius: 6, background: 'var(--border)', overflow: 'hidden',
+                  display: 'flex', marginBottom: 14 }}>
+                  <div style={{ width: `${actPct}%`, background: C.actual, transition: 'width 0.4s' }} />
+                  <div style={{ width: `${comPct}%`, background: C.committed, transition: 'width 0.4s' }} />
+                  <div style={{ width: `${etcPct}%`, background: C.forecast, opacity: 0.55, transition: 'width 0.4s' }} />
+                </div>
+                {/* Stat row */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, textAlign: 'center' }}>
+                  {[
+                    { label: 'Actual',     value: actPct,      color: C.actual,    amt: totalActual    },
+                    { label: 'Committed',  value: comPct,      color: C.committed, amt: totalCommitted },
+                    { label: 'ETC (rem.)', value: etcPct,      color: C.forecast,  amt: totalEtc       },
+                  ].map(s => (
+                    <div key={s.label} style={{ padding: '6px 4px', borderRadius: 6, background: 'var(--surface-2)' }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: s.color }}>{s.value.toFixed(0)}%</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>{s.label}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-2)', marginTop: 1 }}>{fmtShort(s.amt)}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>
+                  {incurredPct.toFixed(0)}% of EAC incurred &nbsp;·&nbsp; {fmtShort(totalEtc)} remaining
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Revenue & Cash */}
+          {(() => {
+            const cvBase   = totalCV || 1;
+            const revPct   = Math.min(100, (totalRevRec / cvBase) * 100);
+            const cashPct  = Math.min(100, (totalCash   / cvBase) * 100);
+            const gap      = totalCash - totalRevRec;
+            const gapColor = gap >= 0 ? C.fav : C.attn;
+            return (
+              <div className="card card-p">
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Revenue & Cash</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>
+                  % of total contract value ({fmtShort(totalCV)})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    { label: 'Revenue Recognised', pct: revPct,  amt: totalRevRec, color: C.actual },
+                    { label: 'Cash Collected',      pct: cashPct, amt: totalCash,   color: C.cash   },
+                  ].map(row => (
+                    <div key={row.label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: row.color, fontWeight: 600 }}>{row.label}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
+                          {fmtShort(row.amt)} <span style={{ color: 'var(--text-3)' }}>({row.pct.toFixed(0)}%)</span>
+                        </span>
+                      </div>
+                      <div style={{ height: 10, borderRadius: 5, background: 'var(--border)', overflow: 'hidden' }}>
+                        <div style={{ width: `${row.pct}%`, height: '100%', background: row.color,
+                          borderRadius: 5, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '7px 10px', borderRadius: 6, background: 'var(--surface-2)', marginTop: 2 }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Cash vs Rev gap</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: gapColor }}>
+                      {gap >= 0 ? '+' : ''}{fmtShort(gap)} {gap >= 0 ? '▲ ahead' : '▼ behind'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+        </div>{/* end 2×2 */}
+      </div>{/* end charts row */}
 
       {/* Cost Breakdown + Project Table (PRD §4.6–4.8) */}
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
@@ -422,7 +516,7 @@ export default function Portfolio({ navigate, role, session }) {
                     const eacVarPct = p.budget > 0 ? (eacVar / p.budget) * 100 : 0;
                     const etc       = Math.max(0, p.eac - p.actual - p.committed);
                     // Match health thresholds: green <10% over, amber 10-25%, red >25%
-                    const varCol    = eacVarPct >= 0 ? C.fav : eacVarPct > -10 ? C.fav : eacVarPct > -25 ? C.attn : C.adverse;
+                    const varCol    = eacVarPct >= 0 ? C.fav : eacVarPct > -25 ? C.attn : C.adverse;
                     return (
                       <tr key={p.id} onClick={() => navigate('project', p.id)}
                         className={health === 'bad' ? 'row-bad' : health === 'warn' ? 'row-warn' : ''}>
