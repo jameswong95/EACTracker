@@ -5,7 +5,7 @@ export const PMDashboard = () => (
   <div className="wf pov-only pov-pm">
     <SVGFilters />
     <div className="row full" style={{ alignItems: 'stretch' }}>
-      <Sidebar active="Dashboard" user="Sara" role="PM" />
+      <Sidebar active="Dashboard" user="Sara" role="Project Manager" />
       <div className="col grow">
         <div className="row p-3 gap-3" style={{ borderBottom: '1.5px solid var(--ink)' }}>
           <span className="t-xs">Dashboard</span>
@@ -113,7 +113,7 @@ export const PMUpdatesList = () => (
   <div className="wf pov-only pov-pm">
     <SVGFilters />
     <div className="row full" style={{ alignItems: 'stretch' }}>
-      <Sidebar active="Updates" user="Sara" role="PM" />
+      <Sidebar active="Updates" user="Sara" role="Project Manager" />
       <div className="col grow">
         <div className="row p-3 gap-3" style={{ borderBottom: '1.5px solid var(--ink)' }}>
           <span className="t-xs">Updates /</span>
@@ -160,7 +160,7 @@ export const PDApprovals = () => (
   <div className="wf pov-only pov-pd">
     <SVGFilters />
     <div className="row full" style={{ alignItems: 'stretch' }}>
-      <Sidebar active="Approvals" user="K. Rajah" role="PD" />
+      <Sidebar active="Approvals" user="K. Rajah" role="Project Director" />
       <div className="col grow">
         <div className="row p-3 gap-3" style={{ borderBottom: '1.5px solid var(--ink)' }}>
           <span className="t-xs">Approvals /</span>
@@ -246,7 +246,7 @@ export const PDUpdatesFeed = () => (
   <div className="wf pov-only pov-pd">
     <SVGFilters />
     <div className="row full" style={{ alignItems: 'stretch' }}>
-      <Sidebar active="Updates" user="K. Rajah" role="PD" />
+      <Sidebar active="Updates" user="K. Rajah" role="Project Director" />
       <div className="col grow">
         <div className="row p-3 gap-3" style={{ borderBottom: '1.5px solid var(--ink)' }}>
           <span className="t-xs">Updates /</span>

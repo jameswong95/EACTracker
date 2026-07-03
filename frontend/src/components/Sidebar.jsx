@@ -143,7 +143,7 @@ const PROJECT_SUB = [
   { id: 'revrec',   label: 'Rev. Rec.',      icon: 'revrec' },
 ];
 
-const ROLES = ['PM', 'PD', 'Finance', 'Admin'];
+const ROLES = ['Project Manager', 'Project Director', 'Finance', 'Admin'];
 
 export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed, mobileOpen, session, onSignOut }) {
   const { projects } = useProjects();
@@ -207,7 +207,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
       </div>
 
       {/* Project context */}
-      {inProjectView && activeProject && (role === 'PM' || role === 'PD' || role === 'Finance') && (
+      {inProjectView && activeProject && (role === 'Project Manager' || role === 'Project Director' || role === 'Finance') && (
         <>
           {!collapsed && <div className="sidebar-section" style={{ marginTop: 4 }}>Project</div>}
           {!collapsed && (

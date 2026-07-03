@@ -14,12 +14,12 @@ ON CONFLICT (grade) DO NOTHING;
 
 -- -- users --
 INSERT INTO users (username, full_name, initials, role) VALUES
-  ('sara.tan',     'Sara Tan',          'ST', 'PM'),
-  ('a.kumar',      'Amara Kumar',       'AK', 'PM'),
-  ('nadia.hassan', 'Nadia Hassan',      'NH', 'PM'),
-  ('sam.okonkwo',  'Sam Okonkwo',       'SO', 'PM'),
-  ('k.rajah',      'K. Rajah',          'KR', 'PD'),
-  ('marcus.tan',   'Marcus Tan',        'MT', 'PD'),
+  ('sara.tan',     'Sara Tan',          'ST', 'Project Manager'),
+  ('a.kumar',      'Amara Kumar',       'AK', 'Project Manager'),
+  ('nadia.hassan', 'Nadia Hassan',      'NH', 'Project Manager'),
+  ('sam.okonkwo',  'Sam Okonkwo',       'SO', 'Project Manager'),
+  ('k.rajah',      'K. Rajah',          'KR', 'Project Director'),
+  ('marcus.tan',   'Marcus Tan',        'MT', 'Project Director'),
   ('j.chen',       'Jennifer Chen',     'JC', 'Leader'),
   ('l.cheng',      'L. Cheng',          'LC', 'Finance'),
   ('admin',        'System Admin',      'AD', 'Admin')

@@ -76,7 +76,7 @@ export const ShellSidebar = () => (
   <div className="wf">
     <SVGFilters />
     <div className="row full" style={{ alignItems: 'stretch' }}>
-      <Sidebar active="Dashboard" user="Sara" role="PM" />
+      <Sidebar active="Dashboard" user="Sara" role="Project Manager" />
       <div className="col grow">
         <div className="row p-3 gap-4" style={{ borderBottom: '1.5px solid var(--ink)' }}>
           <div className="row gap-2">

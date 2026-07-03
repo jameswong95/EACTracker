@@ -153,7 +153,7 @@ export default function Resource({ projectId, navigate, role }) {
 }
 
 function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
-  const canEdit = role !== 'PD';
+  const canEdit = role !== 'Project Director';
   // Derive project span from resource data. fte arrays are indexed from (startYear, startMonth).
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;    // 0 = January

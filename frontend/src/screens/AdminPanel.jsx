@@ -13,7 +13,7 @@ const ALL_SCREENS = [
   { id: 'pd-approvals', label: 'PD Approvals' },
 ];
 
-const ROLE_LABELS = ['PM', 'PD', 'Finance', 'Leader'];
+const ROLE_LABELS = ['Project Manager', 'Project Director', 'Finance', 'Leader'];
 
 function gradeColor(g) {
   if (g === 'E5') return 'var(--bad)';

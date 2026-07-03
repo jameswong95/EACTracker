@@ -13,15 +13,15 @@ import PdApprovals from './screens/PdApprovals.jsx';
 import AdminPanel from './screens/AdminPanel.jsx';
 import { logAction } from './data/auditLog.js';
 
-const ROLE_DEFAULTS = { PM: 'portfolio', PD: 'portfolio', Finance: 'portfolio', Leader: 'portfolio', Admin: 'portfolio' };
+const ROLE_DEFAULTS = { 'Project Manager': 'portfolio', 'Project Director': 'portfolio', Finance: 'portfolio', Leader: 'portfolio', Admin: 'portfolio' };
 
 // PRD §10: roles and minimum access
 const ROLE_ALLOWED_INIT = {
-  PM:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
-  PD:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards', 'pd-approvals'],
-  Finance: ['portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists'],
-  Leader:  ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
-  Admin:   ['dashboard', 'portfolio', 'project', 'admin-pool', 'admin-permissions', 'admin-audit'],
+  'Project Manager':  ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
+  'Project Director': ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards', 'pd-approvals'],
+  Finance:            ['portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists'],
+  Leader:             ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
+  Admin:              ['dashboard', 'portfolio', 'project', 'admin-pool', 'admin-permissions', 'admin-audit'],
 };
 
 export default function App() {
@@ -32,11 +32,11 @@ export default function App() {
     } catch { return null; }
   });
 
-  const [role, setRole]       = useState(() => session?.role || 'PM');
+  const [role, setRole]       = useState(() => session?.role || 'Project Manager');
   const [theme, setTheme]     = useState(() => localStorage.getItem('pfms-theme') || 'light');
   const [screen, setScreen]   = useState(() => {
     const saved = localStorage.getItem('pfms-screen');
-    const role  = session?.role || 'PM';
+    const role  = session?.role || 'Project Manager';
     const allowed = ROLE_ALLOWED_INIT[role] || [];
     if (saved && allowed.includes(saved)) return saved;
     return ROLE_DEFAULTS[role];

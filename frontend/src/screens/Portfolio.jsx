@@ -123,9 +123,9 @@ export default function Portfolio({ navigate, role, session }) {
   const debouncedSearch = useDebounce(search);
 
   const myName   = session?.full_name;
-  const baseList = (role === 'PM' && myName)
+  const baseList = (role === 'Project Manager' && myName)
     ? projects.filter(p => p.pm === myName)
-    : (role === 'PD' && myName)
+    : (role === 'Project Director' && myName)
     ? projects.filter(p => p.pd === myName)
     : projects;
 

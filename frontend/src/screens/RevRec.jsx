@@ -34,7 +34,7 @@ export default function RevRec({ projectId, navigate, role }) {
 }
 
 function RevRecBody({ p, navigate, role, reload }) {
-  const canEdit = role !== 'PD';
+  const canEdit = role !== 'Project Director';
   const rr = p.revrec;
   // Build a recognition curve if one isn't provided yet
   const curve = (rr.recognitionCurve && rr.recognitionCurve.length === 12)

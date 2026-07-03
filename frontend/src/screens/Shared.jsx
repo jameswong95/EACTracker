@@ -210,7 +210,7 @@ export const NAV_BY_ROLE = {
   ],
 };
 
-export const Sidebar = ({ active = 'Dashboard', collapsed = false, items, user = 'Sara', role = 'PM' }) => {
+export const Sidebar = ({ active = 'Dashboard', collapsed = false, items, user = 'Sara', role = 'Project Manager' }) => {
   const defaultItems = items || NAV_BY_ROLE[role] || NAV_BY_ROLE.PM;
   return (
     <div className="col" style={{

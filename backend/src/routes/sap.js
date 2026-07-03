@@ -262,7 +262,7 @@ r.post('/commit', upload.single('file'), ah(async (req, res) => {
       }
       const ins = await c.query(
         `INSERT INTO users (username, full_name, initials, role, sap_employee_id)
-         VALUES ($1,$2,$3,'PM',$4) RETURNING id`,
+         VALUES ($1,$2,$3,'Project Manager',$4) RETURNING id`,
         [username, fullName, initials.toUpperCase(), sapId]);
       return ins.rows[0].id;
     };
