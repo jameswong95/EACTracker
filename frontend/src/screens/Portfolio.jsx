@@ -199,8 +199,9 @@ export default function Portfolio({ navigate, role, session }) {
     .map(p => {
       const variance = p.budget - p.eac;
       const pct = p.budget > 0 ? (variance / p.budget) * 100 : 0;
-      // Positive = under budget (green). Negative = overrun — amber <25%, red ≥25%.
-      const col = pct >= 0 ? C.fav : pct > -25 ? C.attn : C.adverse;
+      // Positive = under budget (green). Negative overrun uses same health thresholds as dot:
+      // < 10% over → ok/green, 10-25% → warn/amber, > 25% → bad/red.
+      const col = pct >= 0 ? C.fav : pct > -10 ? C.fav : pct > -25 ? C.attn : C.adverse;
       return {
         label: p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name,
         value: variance,
@@ -299,7 +300,7 @@ export default function Portfolio({ navigate, role, session }) {
             </div>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>
-            Largest adverse first · Green = under budget · Amber = &lt;25% over · Red = ≥25% over
+            Largest adverse first · Green = on track (&lt;10% over) · Amber = at risk · Red = off track
           </div>
           {varBars.length
             ? <HorizontalBarChart
@@ -454,27 +455,109 @@ export default function Portfolio({ navigate, role, session }) {
       {/* Cost Breakdown + Project Table (PRD §4.6–4.8) */}
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
 
-        {/* Cost by Category */}
-        <div className="card card-p">
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Cost by Category</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 16 }}>EAC composition</div>
-          <SegmentedRing
-            segments={categories.map(c => ({ label: c.name, value: c.eac, color: c.color }))}
-            size={110} stroke={16}
-            centerLabel={fmtShort(catEacTotal)}
-            centerSub="EAC"
-          />
-          <div className="ring-legend" style={{ marginTop: 16 }}>
-            {categories.map(c => (
-              <div key={c.name} className="ring-legend-row">
-                <div className="ring-legend-dot" style={{ background: c.color, borderRadius: 2 }} />
-                <div className="ring-legend-label">{c.name}</div>
-                <div className="ring-legend-val">{fmtShort(c.eac)}</div>
-                <div className="ring-legend-pct">({((c.eac / catEacTotal) * 100).toFixed(0)}%)</div>
-              </div>
-            ))}
+        {/* Left column: 3 stacked cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Cost by Category */}
+          <div className="card card-p">
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Cost by Category</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 16 }}>EAC composition</div>
+            <SegmentedRing
+              segments={categories.map(c => ({ label: c.name, value: c.eac, color: c.color }))}
+              size={110} stroke={16}
+              centerLabel={fmtShort(catEacTotal)}
+              centerSub="EAC"
+            />
+            <div className="ring-legend" style={{ marginTop: 16 }}>
+              {categories.map(c => (
+                <div key={c.name} className="ring-legend-row">
+                  <div className="ring-legend-dot" style={{ background: c.color, borderRadius: 2 }} />
+                  <div className="ring-legend-label">{c.name}</div>
+                  <div className="ring-legend-val">{fmtShort(c.eac)}</div>
+                  <div className="ring-legend-pct">({((c.eac / catEacTotal) * 100).toFixed(0)}%)</div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+
+          {/* Top Projects by EAC */}
+          {(() => {
+            const top = [...baseList]
+              .sort((a, b) => b.eac - a.eac)
+              .slice(0, 5);
+            return (
+              <div className="card card-p">
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Top 5 by EAC</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>Largest · actual burn shown</div>
+                {top.map(p => {
+                  const actPct = p.eac > 0 ? Math.min(100, (p.actual / p.eac) * 100) : 0;
+                  const comPct = p.eac > 0 ? Math.min(100 - actPct, (p.committed / p.eac) * 100) : 0;
+                  const h = liveHealth(p);
+                  const hCol = h === 'ok' ? C.fav : h === 'warn' ? C.attn : C.adverse;
+                  return (
+                    <div key={p.id} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden',
+                          textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 132,
+                          color: 'var(--text)' }} title={p.name}>{p.name}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)',
+                          flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{fmtShort(p.eac)}</span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 3, background: 'var(--border)',
+                        overflow: 'hidden', display: 'flex' }}>
+                        <div style={{ width: `${actPct}%`, background: C.actual, transition: 'width 0.4s' }} />
+                        <div style={{ width: `${comPct}%`, background: C.committed, opacity: 0.8 }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{actPct.toFixed(0)}% actual</span>
+                        <span style={{ color: hCol }}>●</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Portfolio Margin */}
+          {(() => {
+            const portBudgetGp  = totalCV > 0 ? ((totalCV - totalBudget) / totalCV) * 100 : 0;
+            const portForecastGp = totalCV > 0 ? ((totalCV - totalEac) / totalCV) * 100 : 0;
+            const delta = portForecastGp - portBudgetGp;
+            const deltaCol = delta >= 0 ? C.fav : delta > -5 ? C.attn : C.adverse;
+            const maxGp = Math.max(portBudgetGp, portForecastGp, 1);
+            return (
+              <div className="card card-p">
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Portfolio Margin</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>Budget GP% vs Forecast GP%</div>
+                {[
+                  { label: 'Budget GP%',   value: portBudgetGp,   color: C.budget   },
+                  { label: 'Forecast GP%', value: portForecastGp, color: C.forecast },
+                ].map(row => (
+                  <div key={row.label} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: row.color, fontWeight: 600 }}>{row.label}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: row.color,
+                        fontVariantNumeric: 'tabular-nums' }}>{row.value.toFixed(1)}%</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.max(0, (row.value / maxGp) * 100)}%`, height: '100%',
+                        background: row.color, opacity: 0.85, borderRadius: 4, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '7px 10px', borderRadius: 6, background: 'var(--surface-2)', marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>GP erosion</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: deltaCol }}>
+                    {delta >= 0 ? '+' : ''}{delta.toFixed(1)}pp
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+        </div>{/* end left column */}
 
         {/* Filters + Project Summary Table (PRD §4.7–4.8) */}
         <div>
@@ -516,7 +599,8 @@ export default function Portfolio({ navigate, role, session }) {
                     const eacVarPct = p.budget > 0 ? (eacVar / p.budget) * 100 : 0;
                     const etc       = Math.max(0, p.eac - p.actual - p.committed);
                     // Match health thresholds: green <10% over, amber 10-25%, red >25%
-                    const varCol    = eacVarPct >= 0 ? C.fav : eacVarPct > -25 ? C.attn : C.adverse;
+                    // Same health thresholds as the dot — consistent coloring everywhere
+                    const varCol = health === 'ok' ? C.fav : health === 'warn' ? C.attn : C.adverse;
                     return (
                       <tr key={p.id} onClick={() => navigate('project', p.id)}
                         className={health === 'bad' ? 'row-bad' : health === 'warn' ? 'row-warn' : ''}>
