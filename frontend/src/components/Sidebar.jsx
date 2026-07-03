@@ -243,8 +243,8 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
 
       <div style={{ flex: 1 }} />
 
-      {/* Collapse toggle */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: collapsed ? '8px 0' : '8px 10px' }}>
+      {/* Collapse toggle — hidden on mobile (overlay drawer handles navigation) */}
+      <div className="sidebar-collapse-btn" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: collapsed ? '8px 0' : '8px 10px' }}>
         <button
           onClick={onToggle}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

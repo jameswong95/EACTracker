@@ -286,7 +286,7 @@ export default function Portfolio({ navigate, role, session }) {
       </div>
 
       {/* Charts: EAC Variance (left, full height) + 2×2 grid (right) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 2fr', gap: 16, marginBottom: 24 }}>
+      <div className="port-charts-row" style={{ display: 'grid', gridTemplateColumns: '1.3fr 2fr', gap: 16, marginBottom: 24 }}>
 
         {/* EAC Variance by Project (PRD §4.3) */}
         <div className="card card-p">
@@ -311,7 +311,7 @@ export default function Portfolio({ navigate, role, session }) {
         </div>
 
         {/* 2×2 grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 16 }}>
+        <div className="port-chart-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 16 }}>
 
           {/* Portfolio Trend (PRD §4.4) */}
           <div className="card card-p">
@@ -453,7 +453,7 @@ export default function Portfolio({ navigate, role, session }) {
       </div>{/* end charts row */}
 
       {/* Cost Breakdown + Project Table (PRD §4.6–4.8) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
+      <div className="port-bottom-row" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
 
         {/* Left column: 3 stacked cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

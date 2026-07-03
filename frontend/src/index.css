@@ -736,4 +736,60 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   /* Minimum tap target size for interactive elements */
   .btn { min-height: 40px; }
   .sidebar-item, .sidebar-sub { min-height: 44px; }
+
+  /* Portfolio responsive grids */
+  .port-charts-row  { grid-template-columns: 1fr !important; }
+  .port-chart-grid  { grid-template-columns: 1fr 1fr !important; grid-template-rows: auto !important; }
+  .port-bottom-row  { grid-template-columns: 1fr !important; }
+  .proj-2col-grid   { grid-template-columns: 1fr !important; }
+
+  /* Narrow h-bar labels */
+  .hbar-label  { width: 80px !important; font-size: 10px; }
+  .hbar-amount { width: 54px; font-size: 10px; }
+
+  /* KPI grid: always 2 columns on mobile */
+  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Reduce KPI value size */
+  .kpi-value { font-size: 22px !important; }
+
+  /* Project header compact */
+  .proj-header { padding: 10px 14px 0 !important; }
+  .proj-title  { font-size: 17px !important; }
+
+  /* Tab bar scrollable */
+  .tab-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn  { padding: 9px 12px; font-size: 12px; }
+
+  /* Hide sidebar collapse toggle (mobile uses overlay drawer) */
+  .sidebar .sidebar-collapse-btn { display: none !important; }
+
+  /* Filter bar wrap */
+  .filter-bar { padding: 10px 12px; }
+}
+
+/* ── Tablet (769 px – 1024 px) ──────────────────────────────────────── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .screen { padding: 18px 20px; }
+
+  /* Charts row: stack vertically */
+  .port-charts-row { grid-template-columns: 1fr !important; }
+
+  /* 2×2 grid: keep 2 columns but drop fixed row heights */
+  .port-chart-grid { grid-template-rows: auto !important; }
+
+  /* Bottom section: sidebar cards go above the table */
+  .port-bottom-row { grid-template-columns: 1fr !important; }
+
+  /* Project cost 2-col grid: keep on tablet */
+  .proj-2col-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* Narrower h-bar label */
+  .hbar-label { width: 110px !important; }
+
+  /* KPI grid: 4 columns on tablet */
+  .kpi-grid { grid-template-columns: repeat(4, 1fr) !important; }
+
+  /* Project header: slightly more compact */
+  .proj-header { padding: 14px 20px 0 !important; }
 }

@@ -389,7 +389,7 @@ function TabCost({ p }) {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+      <div className="proj-2col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
 
         {/* Visualisation 1: Budget Utilisation per category */}
         <div className="card card-p">
