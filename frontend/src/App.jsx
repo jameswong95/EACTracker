@@ -13,13 +13,14 @@ import PdApprovals from './screens/PdApprovals.jsx';
 import AdminPanel from './screens/AdminPanel.jsx';
 import { logAction } from './data/auditLog.js';
 
-const ROLE_DEFAULTS = { PM: 'portfolio', PD: 'portfolio', Finance: 'portfolio', Admin: 'portfolio' };
+const ROLE_DEFAULTS = { PM: 'portfolio', PD: 'portfolio', Finance: 'portfolio', Leader: 'portfolio', Admin: 'portfolio' };
 
 // PRD §10: roles and minimum access
 const ROLE_ALLOWED_INIT = {
   PM:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
-  PD:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
+  PD:      ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards', 'pd-approvals'],
   Finance: ['portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists'],
+  Leader:  ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
   Admin:   ['dashboard', 'portfolio', 'project', 'admin-pool', 'admin-permissions', 'admin-audit'],
 };
 

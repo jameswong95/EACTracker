@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   username    TEXT NOT NULL UNIQUE,
   full_name   TEXT NOT NULL,
   initials    TEXT NOT NULL,
-  role        TEXT NOT NULL CHECK (role IN ('PM','PD','Finance','Admin')),
+  role        TEXT NOT NULL CHECK (role IN ('PM','PD','Finance','Admin','Leader')),
   is_active   BOOLEAN NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

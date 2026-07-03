@@ -20,6 +20,7 @@ INSERT INTO users (username, full_name, initials, role) VALUES
   ('sam.okonkwo',  'Sam Okonkwo',       'SO', 'PM'),
   ('k.rajah',      'K. Rajah',          'KR', 'PD'),
   ('marcus.tan',   'Marcus Tan',        'MT', 'PD'),
+  ('j.chen',       'Jennifer Chen',     'JC', 'Leader'),
   ('l.cheng',      'L. Cheng',          'LC', 'Finance'),
   ('admin',        'System Admin',      'AD', 'Admin')
 ON CONFLICT (username) DO NOTHING;

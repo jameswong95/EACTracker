@@ -5,9 +5,10 @@ const ROLE_BADGE = {
   PM:      { color: 'var(--info-text)',  bg: 'var(--info-bg)'  },
   PD:      { color: 'var(--accent)',     bg: 'var(--accent-light)' },
   Finance: { color: 'var(--ok-text)',    bg: 'var(--ok-bg)'    },
+  Leader:  { color: '#7030A0',           bg: 'rgba(112,48,160,0.12)' },
   Admin:   { color: 'var(--bad-text)',   bg: 'var(--bad-bg)'   },
 };
-const ROLE_ORDER = { Admin: 0, Finance: 1, PD: 2, PM: 3 };
+const ROLE_ORDER = { Admin: 0, Leader: 1, Finance: 2, PD: 3, PM: 4 };
 
 export default function Login({ onSignIn }) {
   const [users, setUsers]       = useState([]);

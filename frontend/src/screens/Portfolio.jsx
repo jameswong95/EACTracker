@@ -339,10 +339,10 @@ export default function Portfolio({ navigate, role, session }) {
           </div>
 
           {/* Portfolio Health Distribution (PRD §4.5) */}
-          <div className="card card-p">
+          <div className="card card-p" style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Portfolio Health</div>
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>By project count</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 16 }}>
               <SegmentedRing segments={healthSegs} size={90} stroke={14}
                 centerLabel={String(baseList.length)} centerSub="projects" />
               <div className="ring-legend">
