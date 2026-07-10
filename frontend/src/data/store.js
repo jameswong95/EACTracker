@@ -32,6 +32,17 @@ function makeTrend(actual) {
 // ── Adapter: project list row → screen shape ─────────────────────────────
 export function adaptProject(p) {
   if (!p) return p;
+  const rawPmIds = Array.isArray(p.pm_user_ids)
+    ? p.pm_user_ids
+    : (typeof p.pm_user_ids === 'string'
+      ? (() => { try { return JSON.parse(p.pm_user_ids); } catch { return []; } })()
+      : []);
+  const pmUserIds = rawPmIds.map(v => Number(v)).filter(Number.isInteger);
+  if (!pmUserIds.length && p.pm_user_id != null) pmUserIds.push(Number(p.pm_user_id));
+  const pmNames = String(p.pm_names || p.pm_name || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
   const budget = n(p.budget);
   const eac    = n(p.eac);
   const actual = n(p.actual);
@@ -41,9 +52,12 @@ export function adaptProject(p) {
     // identity
     id: p.id,
     name: p.name,
-    pm: p.pm_name || '(Unassigned)',
+    pm: p.pm_names || p.pm_name || '(Unassigned)',
+    leadPm: p.pm_name || (pmNames[0] || '(Unassigned)'),
+    pmNames,
     pd: p.pd_name || '(Unassigned)',
     pmUserId: p.pm_user_id ?? null,
+    pmUserIds,
     pdUserId: p.pd_user_id ?? null,
     department: p.department || '—',
     status: p.status || 'ok',
@@ -187,7 +201,279 @@ export function useProject(projectId) {
       .catch(e => setError(e));
   }, [projectId]);
   useEffect(() => { reload(); }, [reload]);
-  return { project: data, loading: data === null && !error, error, reload };
+  const updateProject = useCallback((patch) => {
+    setData(prev => prev ? { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) } : prev);
+  }, []);
+  return { project: data, loading: data === null && !error, error, reload, updateProject };
+}
+
+// ── Hook: read-only ETC (derived, by sub-job × Category) ─────────────────
+export function useEtc(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/etc/${encodeURIComponent(projectId)}`)
+      .then(setData)
+      .catch(e => { setError(e); setData({ byCategory: [], bySubJob: [], totals: {} }); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { etc: data, loading: data === null && !error, error, reload };
+}
+
+// ── Hook: monthly EAC grid (cost-category × month) ───────────────────────
+// Used by the Overview cross-module rollup (Labour + Material + Sub-Con).
+export function useEacMonthly(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/eac/${encodeURIComponent(projectId)}`)
+      .then(d => setData({ rows: d.rows || [], values: d.values || [] }))
+      .catch(e => { setError(e); setData({ rows: [], values: [] }); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { data, loading: data === null && !error, error, reload };
+}
+
+// ── Hook: placeholder headcount requests (resource asks) ─────────────────
+export function useResourceRequests(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/resource-requests?project_id=${encodeURIComponent(projectId)}`)
+      .then(rows => setData(rows || []))
+      .catch(e => { setError(e); setData([]); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { requests: data || [], loading: data === null && !error, error, reload };
+}
+
+// ── Hook: project initiation handover copy from awarded tender ───────────
+export function useProjectInitiation(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/project-initiation?project_id=${encodeURIComponent(projectId)}`)
+      .then(setData)
+      .catch(e => { setError(e); setData({ items: [], totals: {}, tender: null }); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return {
+    items: data?.items || [],
+    totals: data?.totals || { total: 0, resource: 0, material: 0, subcon: 0, others: 0, count: 0 },
+    tender: data?.tender || null,
+    loading: data === null && !error,
+    error,
+    reload,
+  };
+}
+
+// ── Hook: tender (auto-creates a draft) ──────────────────────────────────
+export function useTender(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/tender/${encodeURIComponent(projectId)}`)
+      .then(setData)
+      .catch(e => { setError(e); setData(null); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { data, loading: data === null && !error, error, reload };
+}
+
+// ── Hook: portfolio-level tender list (all projects) ─────────────────────
+// PM/PD sessions only receive projects they are assigned to (backend-filtered).
+export function useTenderList(userId, role) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    setError(null);
+    const qs = new URLSearchParams();
+    if (userId) qs.set('user_id', userId);
+    if (role) qs.set('role', role);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    api.get(`/api/tender${suffix}`)
+      .then(setRows)
+      .catch(e => { setError(e); setRows([]); });
+  }, [userId, role]);
+  useEffect(() => { reload(); }, [reload]);
+  return { rows: rows || [], loading: rows === null && !error, error, reload };
+}
+
+// ── Hook: tender FAD / FX rates (per tender) ─────────────────────────────
+export function useTenderFx(tenderId) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!tenderId) return;
+    setError(null);
+    api.get(`/api/tender/${tenderId}/fx`)
+      .then(setRows)
+      .catch(e => { setError(e); setRows([]); });
+  }, [tenderId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { rows: rows || [], loading: rows === null && !error, error, reload };
+}
+
+// ── Hook: ST Labour plan (phases, functions, years, allocations) ─────────
+export function useTenderLabour(tenderId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!tenderId) return;
+    setError(null);
+    api.get(`/api/tender/${tenderId}/labour`)
+      .then(setData)
+      .catch(e => { setError(e); setData(null); });
+  }, [tenderId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { data, loading: data === null && !error, error, reload };
+}
+
+// ── Hook: tender preliminaries ───────────────────────────────────────────
+export function useTenderPrelim(tenderId) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!tenderId) return;
+    setError(null);
+    api.get(`/api/tender/${tenderId}/prelim`)
+      .then(setRows)
+      .catch(e => { setError(e); setRows([]); });
+  }, [tenderId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { rows: rows || [], loading: rows === null && !error, error, reload };
+}
+
+// ── Hook: cost module line items (materials | sub-con) ───────────────────
+export function useCostModule(module, projectId) {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/${module}?project_id=${encodeURIComponent(projectId)}`)
+      .then(setItems)
+      .catch(e => { setError(e); setItems([]); });
+  }, [module, projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { items: items || [], loading: items === null && !error, error, reload };
+}
+
+// ── Hook: material asset list (live document) ────────────────────────────
+export function useMaterialAssets(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/material-assets?project_id=${encodeURIComponent(projectId)}`)
+      .then(setData)
+      .catch(e => { setError(e); setData(null); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return {
+    assets: data?.assets || [],
+    schedule: data?.schedule || [],
+    totals: data?.totals || { committed_amount: 0, forecast_amount: 0, asset_count: 0 },
+    loading: data === null && !error, error, reload,
+  };
+}
+
+// ── Hook: fixed-rate admin table ─────────────────────────────────────────
+export function useFixedRates() {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    setError(null);
+    api.get('/api/fixed-rates')
+      .then(setRows)
+      .catch(e => { setError(e); setRows([]); });
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  return { rows: rows || [], loading: rows === null && !error, error, reload };
+}
+
+// ── Hook: global FAD / FX rates ──────────────────────────────────────────
+export function useFxRates() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    setError(null);
+    api.get('/api/fx-rates').then(setData).catch(e => { setError(e); setData({ rows: [], settlement: {} }); });
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  return {
+    rows: data?.rows || [],
+    settlement: data?.settlement || { settled_at: null, settled_by: null },
+    loading: data === null && !error, error, reload,
+  };
+}
+
+// ── Hook: monthly cost timeline for a cost-item register ─────────────────
+export function useCostSchedule(module, projectId) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/${module}/schedule?project_id=${encodeURIComponent(projectId)}`)
+      .then(setRows)
+      .catch(e => { setError(e); setRows([]); });
+  }, [module, projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { schedule: rows || [], loading: rows === null && !error, error, reload };
+}
+
+// ── Hook: misc materials (per-project sub-threshold lines) ───────────────
+export function useMaterialMisc(projectId) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setError(null);
+    api.get(`/api/material-misc?project_id=${encodeURIComponent(projectId)}`)
+      .then(setData)
+      .catch(e => { setError(e); setData(null); });
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { misc: data?.misc || [], total: Number(data?.total) || 0, loading: data === null && !error, error, reload };
+}
+
+// ── Hook: global app settings (key/value) ────────────────────────────────
+export function useSettings() {
+  const [settings, setSettings] = useState(null);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    setError(null);
+    api.get('/api/settings').then(setSettings).catch(e => { setError(e); setSettings({}); });
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  return { settings: settings || {}, loading: settings === null && !error, error, reload };
+}
+
+// ── Hook: sub-jobs for a project (raw, for module dropdowns) ─────────────
+export function useSubJobs(projectId) {
+  const [subJobs, setSubJobs] = useState([]);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    api.get(`/api/sub-jobs?project_id=${encodeURIComponent(projectId)}`)
+      .then(rows => setSubJobs(rows.map(s => ({
+        id: s.id, name: s.name, wbs: s.wbs_code, suffix: s.wbs_suffix,
+      }))))
+      .catch(() => setSubJobs([]));
+  }, [projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  return { subJobs, reload };
 }
 
 // ── Hook: users ──────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import React from 'react';
 import { SVGFilters, Anno, Ph, Logo, Sidebar } from './Shared.jsx';
+import Icon from '../components/Icon.jsx';
 
 export const LoginA = () => (
   <div className="wf">
@@ -84,8 +85,12 @@ export const ShellSidebar = () => (
             <span className="b" style={{ fontSize: 13 }}>My Dashboard</span>
           </div>
           <div className="grow" />
-          <div className="input" style={{ minWidth: 140, color: 'var(--ink-3)' }}>🔍 search</div>
-          <div className="pill tiny">🔔 3</div>
+          <div className="input" style={{ minWidth: 140, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="search" size={13} /> search
+          </div>
+          <div className="pill tiny" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="bell" size={11} /> 3
+          </div>
           <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--ink-3)', color: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>ST</div>
         </div>
         <div className="p-5 col gap-4 grow">

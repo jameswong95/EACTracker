@@ -1,5 +1,6 @@
 import React from 'react';
 import { SVGFilters, Anno, Status, Table, Sidebar } from './Shared.jsx';
+import Icon from '../components/Icon.jsx';
 
 export const PMDashboard = () => (
   <div className="wf pov-only pov-pm">
@@ -51,7 +52,7 @@ export const PMDashboard = () => (
                     <span className="t-sm b">{t.what}</span>
                     <span className="t-xs t-mute">due {t.due}</span>
                   </div>
-                  <div className="btn sm ghost">{t.cta} →</div>
+                  <div className="btn sm ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{t.cta} <Icon name="arrowRight" size={10} /></div>
                 </div>
               ))}
             </div>
@@ -281,7 +282,7 @@ export const PDUpdatesFeed = () => (
                   <span className="t-xs t-mute">{u.pm} · {u.when}</span>
                 </div>
                 <span className="t-xs" style={{ color: u.tone === 'bad' ? 'var(--bad)' : u.tone === 'warn' ? 'var(--warn)' : 'var(--ink-3)' }}>{u.drift}</span>
-                <div className="btn sm ghost">read →</div>
+                <div className="btn sm ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>read <Icon name="arrowRight" size={10} /></div>
               </div>
             ))}
           </div>

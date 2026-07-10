@@ -1,5 +1,6 @@
 import React from 'react';
 import { SVGFilters, Arrow } from './Shared.jsx';
+import Icon from '../components/Icon.jsx';
 
 const MiniHeader = ({ title, sub }) => (
   <div className="col" style={{ gap: 2 }}>
@@ -19,7 +20,9 @@ const MiniRow = ({ children, hi }) => (
 
 const MiniBtn = ({ primary, children }) => (
   <span style={{
-    display: 'inline-block',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 3,
     padding: '1px 6px',
     fontSize: 8,
     borderRadius: 4,
@@ -71,7 +74,7 @@ export const FlowPmMonthly = () => (
           <MiniRow>Issue: <span className="b">Vendor delay ▾</span></MiniRow>
           <div className="t-xs" style={{ fontSize: 8, color: 'var(--ink-3)' }}>+ optional context — 500ch</div>
           <div className="grow" />
-          <MiniBtn primary>generate ✨</MiniBtn>
+          <MiniBtn primary>generate <Icon name="sparkles" size={9} /></MiniBtn>
         </MiniFrame>
 
         <Arrow length={40} label="click generate" />
@@ -82,7 +85,7 @@ export const FlowPmMonthly = () => (
             "Wave 2 cutover is at risk due to a vendor lead-time slip on switch hardware. 2 of 5 units have arrived; remainder expected by 20 May. Project is 62% complete; revised milestone date 25 May.<span style={{ background: '#1a1815', color: '#fdfcf8', padding: '0 2px', marginLeft: 2 }}>▍</span>"
           </div>
           <div className="row gap-2 mt-2">
-            <MiniBtn>↻ regenerate</MiniBtn>
+            <MiniBtn><Icon name="refresh" size={9} /> regenerate</MiniBtn>
             <MiniBtn>edit</MiniBtn>
           </div>
           <div className="t-xs" style={{ fontSize: 8, color: 'var(--ink-3)' }}>regenerations: 1 / 3 tracked</div>
@@ -98,10 +101,10 @@ export const FlowPmMonthly = () => (
           <MiniRow>Status: <span className="pill warn tiny">At Risk</span></MiniRow>
           <MiniRow>Locked once confirmed</MiniRow>
           <div className="grow" />
-          <div className="row gap-2"><MiniBtn>back</MiniBtn><MiniBtn primary>confirm ✓</MiniBtn></div>
+          <div className="row gap-2"><MiniBtn>back</MiniBtn><MiniBtn primary>confirm <Icon name="check" size={9} /></MiniBtn></div>
         </MiniFrame>
 
-        <Arrow length={40} label="✓ saved" />
+        <Arrow length={40} label="saved" />
 
         <MiniFrame n="5" cap="Done · 8m elapsed">
           <MiniHeader title="Dashboard updated" sub="" />
@@ -110,7 +113,9 @@ export const FlowPmMonthly = () => (
           <MiniRow><span className="dot ok" />Asset Refresh · 9 May</MiniRow>
           <div className="grow" />
           <div className="t-xs" style={{ fontSize: 9, color: 'var(--ink-3)' }}>monthly compliance: 100%</div>
-          <div className="t-xs" style={{ fontSize: 9, color: 'var(--ok)' }}>✓ visible to PD &amp; Dept Leader</div>
+          <div className="t-xs" style={{ fontSize: 9, color: 'var(--ok)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="check" size={10} /> visible to PD &amp; Dept Leader
+          </div>
         </MiniFrame>
       </div>
 
@@ -147,7 +152,7 @@ export const FlowFinanceImport = () => (
       <div className="row gap-3" style={{ alignItems: 'stretch', padding: '24px 0 14px' }}>
         <MiniFrame n="1" cap="Export from SAP">
           <MiniHeader title="SAP system" sub="(out of app)" />
-          <div style={{ fontSize: 24, textAlign: 'center', padding: 6 }}>📊</div>
+          <div style={{ fontSize: 24, textAlign: 'center', padding: 6 }}><Icon name="chartBar" size={24} /></div>
           <div className="t-xs" style={{ fontSize: 9 }}>Cost report → Excel</div>
           <MiniRow>142 rows · 3 sheets</MiniRow>
           <div className="grow" />
@@ -159,13 +164,13 @@ export const FlowFinanceImport = () => (
         <MiniFrame n="2" cap="Upload">
           <MiniHeader title="SAP import" sub="Finance only" />
           <div className="box dash p-3" style={{ textAlign: 'center', fontSize: 9, borderColor: 'var(--ink-3)' }}>
-            <div style={{ fontSize: 18 }}>⤓</div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><Icon name="download" size={18} /></div>
             <div>drop here</div>
             <div className="t-xs" style={{ fontSize: 8 }}>or browse</div>
           </div>
           <MiniRow>sap_apr26.xlsx · 142 KB</MiniRow>
           <div className="grow" />
-          <MiniBtn primary>parse →</MiniBtn>
+          <MiniBtn primary>parse <Icon name="arrowRight" size={9} /></MiniBtn>
         </MiniFrame>
 
         <Arrow length={40} label="auto-parse" />
@@ -173,8 +178,8 @@ export const FlowFinanceImport = () => (
         <MiniFrame n="3" cap="Auto-map by WBS">
           <MiniHeader title="Parse complete" sub="138 / 142 mapped" />
           <div className="row gap-1 t-xs" style={{ fontSize: 9 }}>
-            <span className="pill ok tiny" style={{ fontSize: 8 }}>138 ✓</span>
-            <span className="pill warn tiny" style={{ fontSize: 8 }}>4 ⚠</span>
+            <span className="pill ok tiny" style={{ fontSize: 8, display: 'inline-flex', alignItems: 'center', gap: 2 }}>138 <Icon name="check" size={8} /></span>
+            <span className="pill warn tiny" style={{ fontSize: 8, display: 'inline-flex', alignItems: 'center', gap: 2 }}>4 <Icon name="alertTriangle" size={8} /></span>
             <span className="pill tiny" style={{ fontSize: 8, color: 'var(--ink-3)', borderColor: 'var(--ink-3)' }}>3 dup</span>
           </div>
           <div className="status-bar mt-2"><i style={{ width: '97%' }} /></div>
@@ -190,7 +195,7 @@ export const FlowFinanceImport = () => (
           <div style={{ border: '1.5px dashed var(--info)', borderRadius: 3, padding: 3, fontSize: 9, background: 'rgba(58,94,140,.05)' }}>
             → Network Modernisation <span className="b">97%</span><br />
             → Wireless Refresh 74%<br />
-            <span style={{ color: 'var(--ink-3)' }}>☐ remember</span>
+            <span style={{ color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="square" size={9} /> remember</span>
           </div>
           <div className="grow" />
           <div className="row gap-1"><MiniBtn>skip</MiniBtn><MiniBtn primary>confirm</MiniBtn></div>
@@ -199,8 +204,8 @@ export const FlowFinanceImport = () => (
         <Arrow length={40} label="finalise" />
 
         <MiniFrame n="5" cap="Locked &amp; logged">
-          <MiniHeader title="Apr '26 imported" sub="142 / 142 ✓" />
-          <MiniRow hi="ok">✓ EAC actuals refreshed for 7 projects</MiniRow>
+          <MiniHeader title="Apr '26 imported" sub="142 / 142" />
+          <MiniRow hi="ok"><Icon name="check" size={10} /> EAC actuals refreshed for 7 projects</MiniRow>
           <MiniRow>WBS table: +1 saved mapping</MiniRow>
           <div className="hr thin" />
           <div className="t-xs" style={{ fontSize: 9, color: 'var(--ink-3)' }}>logged: L.Cheng · 8 May 09:12</div>
@@ -270,7 +275,9 @@ export const FlowPdReview = () => (
             <div><span className="b">Jan</span> · "kickoff complete"</div>
           </div>
           <div className="hr dash" />
-          <div className="t-xs" style={{ fontSize: 9, color: 'var(--bad)' }}>⚠ pattern: 3 amber months in a row</div>
+          <div className="t-xs" style={{ fontSize: 9, color: 'var(--bad)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="alertTriangle" size={10} /> pattern: 3 amber months in a row
+          </div>
         </MiniFrame>
 
         <Arrow length={40} label="flag PM" />
@@ -280,7 +287,7 @@ export const FlowPdReview = () => (
           <div style={{ fontSize: 9, padding: 4, background: 'var(--paper-2)', borderRadius: 3 }}>
             "EAC trending +7.7%. Can you walk me through the mitigation plan in our 1:1 Thu?"
           </div>
-          <MiniRow>☐ require response by: <span className="b">22 May</span></MiniRow>
+          <MiniRow><Icon name="square" size={10} /> require response by: <span className="b">22 May</span></MiniRow>
           <div className="grow" />
           <div className="row gap-1"><MiniBtn>cancel</MiniBtn><MiniBtn primary>send</MiniBtn></div>
         </MiniFrame>
@@ -290,9 +297,9 @@ export const FlowPdReview = () => (
         <MiniFrame n="5" cap="Compliance view">
           <MiniHeader title="Team compliance" sub="May '26" />
           <MiniRow>L. Wong · <span className="pill warn tiny">flagged · 0d</span></MiniRow>
-          <MiniRow>S. Tan · ✓ updated</MiniRow>
-          <MiniRow>A. Kumar · ✓ updated</MiniRow>
-          <MiniRow>R. Patel · ✓ updated</MiniRow>
+          <MiniRow>S. Tan · <Icon name="check" size={10} /> updated</MiniRow>
+          <MiniRow>A. Kumar · <Icon name="check" size={10} /> updated</MiniRow>
+          <MiniRow>R. Patel · <Icon name="check" size={10} /> updated</MiniRow>
           <div className="grow" />
           <div className="t-xs" style={{ fontSize: 9, color: 'var(--ok)' }}>92% on-time rate (target 90%)</div>
         </MiniFrame>

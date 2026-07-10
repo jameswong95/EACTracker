@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { useProject, useResourcePool, useRates, fmt, MONTHS } from '../data/store.js';
+import { useProject, useResourcePool, useRates, useResourceRequests, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
+import { CAT_COLORS } from '../components/Charts.jsx';
+import Icon from '../components/Icon.jsx';
 
 let nextId = 100;
 
@@ -144,47 +146,67 @@ function RoleSelect({ roles, value, onChange }) {
   );
 }
 
-export default function Resource({ projectId, navigate, role }) {
+export default function Resource({ projectId, navigate, role, session }) {
   const { project: p, loading } = useProject(projectId);
   const RESOURCE_POOL = useResourcePool();
   const RATES = useRates();
   if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
-  return <ResourceBody p={p} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} role={role} />;
+  return <ResourceBody p={p} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} role={role} session={session} />;
 }
 
-function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
+function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const canEdit = role !== 'Project Director';
-  // Derive project span from resource data. fte arrays are indexed from (startYear, startMonth).
+  const { requests, reload: reloadRequests } = useResourceRequests(p.id);
+  // Plan starts at (startYear, startMonth); the timeline extends indefinitely to the
+  // right. All labour is parked under the PM/MISC category (shown in the breadcrumb).
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;    // 0 = January
-  const totalMonths = Math.max(12, ...(p.resources || []).map(r => (r.fte || []).length));
-  const endYear  = startYear + Math.floor((startMonth + totalMonths - 1) / 12);
-  const endMonth = (startMonth + totalMonths - 1) % 12;
-  const projectYears = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
+  const startAbs   = startYear * 12 + startMonth;
 
   const nowYear  = new Date().getFullYear();
   const nowMonth = new Date().getMonth(); // 0-indexed
+  const nowAbs   = nowYear * 12 + nowMonth;
 
-  // Month helpers
-  function absIdx(year, mi) { return (year - startYear) * 12 + mi - startMonth; }
-  function inRange(year, mi) { const i = absIdx(year, mi); return i >= 0 && i < totalMonths; }
-  function isLocked(year, mi) { return year < nowYear || (year === nowYear && mi < nowMonth); }
+  const dataMonths = Math.max(12, ...(p.resources || []).map(r => (r.fte || []).length));
 
-  const [viewYear, setViewYear] = useState(() =>
-    Math.max(startYear, Math.min(endYear, nowYear))
+  // Horizon = number of months rendered; grows as you scroll right ("infinite").
+  const [horizon, setHorizon] = useState(() =>
+    Math.max(24, dataMonths, nowAbs - startAbs + 10)
   );
+
+  // Metadata for display month index i (0-based from plan start).
+  function monthMeta(i) {
+    const abs = startAbs + i;
+    const year = Math.floor(abs / 12);
+    const m = ((abs % 12) + 12) % 12;
+    return { abs, year, m, absQuarter: Math.floor(abs / 3), q: Math.floor(m / 3) + 1 };
+  }
+
+  // Locked quarters → Actual cost; unlocked quarters → ETC. Locking granularity is a quarter.
+  const [lockedQuarters, setLockedQuarters] = useState(() => {
+    const s = new Set();
+    const scan = Math.max(24, dataMonths, nowAbs - startAbs + 10);
+    for (let i = 0; i < scan; i++) {
+      const q = Math.floor((startAbs + i) / 3);
+      if (q * 3 + 2 < nowAbs) s.add(q); // whole quarter has elapsed → actuals
+    }
+    return s;
+  });
+  function isLocked(i) { return lockedQuarters.has(monthMeta(i).absQuarter); }
+  function toggleQuarter(absQuarter) {
+    if (!canEdit) return;
+    setLockedQuarters(prev => {
+      const n = new Set(prev);
+      if (n.has(absQuarter)) n.delete(absQuarter); else n.add(absQuarter);
+      return n;
+    });
+  }
+
   const [rows, setRows] = useState(() =>
     p.resources.map(r => {
-      const fte = Array(totalMonths).fill(0);
-      (r.fte || []).forEach((v, i) => { if (i < totalMonths) fte[i] = parseFloat(v) || 0; });
-      return {
-        ...r,
-        id: nextId++,
-        dbId: r.id,                // backend project_resources.id (null for unsaved rows)
-        subJobId: r.subJobId ?? null,
-        fte,
-        fn: r.fn || '',
-      };
+      const fte = Array(dataMonths).fill(0);
+      (r.fte || []).forEach((v, i) => { if (i < dataMonths) fte[i] = parseFloat(v) || 0; });
+      return { ...r, id: nextId++, dbId: r.id, fte, fn: r.fn || '' };
     })
   );
   const [adding, setAdding]           = useState(false);
@@ -197,21 +219,26 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
   const firstRender  = useRef(true);
   const importRef    = useRef(null);
 
+  function monthLabel(i) { const mm = monthMeta(i); return `${MONTHS[mm.m]}-${String(mm.year).slice(2)}`; }
+
+  function isPmCategorySubjob(s) {
+    const suffix = String(s?.suffix || '');
+    if (!suffix) return false;
+    const parts = suffix.split('-');
+    return (parts.slice(-2).join('-') || suffix) === '1-1';
+  }
+
   function downloadResourceTemplate() {
-    const header = ['Name', 'Grade', 'Function', ...MONTHS];
-    const dataRows = rows.map(r => {
-      const fteVals = MONTHS.map((_, mi) => {
-        if (!inRange(viewYear, mi)) return '';
-        return r.fte[absIdx(viewYear, mi)] || '';
-      });
-      return [r.role, r.grade, r.fn, ...fteVals];
-    });
-    const blankRows = Array(3).fill(['', '', '', ...Array(12).fill('')]);
+    const cols = Array.from({ length: horizon }, (_, i) => monthLabel(i));
+    const header = ['Name', 'Grade', 'Function', ...cols];
+    const dataRows = rows.map(r =>
+      [r.role, r.grade, r.fn, ...cols.map((_, i) => r.fte[i] || '')]);
+    const blankRows = Array(3).fill(['', '', '', ...cols.map(() => '')]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows, ...blankRows]);
-    ws['!cols'] = [{ wch: 22 }, { wch: 7 }, { wch: 24 }, ...Array(12).fill({ wch: 7 })];
+    ws['!cols'] = [{ wch: 22 }, { wch: 7 }, { wch: 24 }, ...cols.map(() => ({ wch: 8 }))];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resource Plan');
-    XLSX.writeFile(wb, `resource_plan_${p.id}_${viewYear}.xlsx`);
+    XLSX.writeFile(wb, `resource_plan_${p.id}.xlsx`);
   }
 
   function handleResourceImport(e) {
@@ -228,35 +255,26 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
         const nameCol  = hdrs.findIndex(h => /name/i.test(h));
         const gradeCol = hdrs.findIndex(h => /grade/i.test(h));
         const fnCol    = hdrs.findIndex(h => /function|role/i.test(h));
-        const monthCols = MONTHS.map(m => hdrs.indexOf(m));
+        const monthCols = Array.from({ length: horizon }, (_, i) => hdrs.indexOf(monthLabel(i)));
         if (nameCol === -1) { setImportErr('No "Name" column found.'); return; }
         let added = 0, updated = 0;
         setRows(prev => {
           const next = [...prev];
-          for (let i = 1; i < data.length; i++) {
-            const row  = data[i];
+          for (let ri = 1; ri < data.length; ri++) {
+            const row  = data[ri];
             const name = row[nameCol] ? String(row[nameCol]).trim() : '';
             if (!name) continue;
             const grade = gradeCol >= 0 && row[gradeCol] ? String(row[gradeCol]).trim() : 'E2';
             const fn    = fnCol    >= 0 && row[fnCol]    ? String(row[fnCol]).trim()    : '';
             const existing = next.find(r => r.role === name);
-            if (existing) {
-              monthCols.forEach((col, mi) => {
-                if (col === -1 || isLocked(viewYear, mi) || !inRange(viewYear, mi)) return;
-                const v = parseFloat(row[col]);
-                if (!isNaN(v)) existing.fte[absIdx(viewYear, mi)] = Math.max(0, v);
-              });
-              updated++;
-            } else {
-              const fte = Array(totalMonths).fill(0);
-              monthCols.forEach((col, mi) => {
-                if (col === -1 || !inRange(viewYear, mi)) return;
-                const v = parseFloat(row[col]);
-                if (!isNaN(v)) fte[absIdx(viewYear, mi)] = Math.max(0, v);
-              });
-              next.push({ id: nextId++, role: name, grade, fn, fte });
-              added++;
-            }
+            const target = existing || { id: nextId++, role: name, grade, fn, fte: Array(dataMonths).fill(0) };
+            monthCols.forEach((col, i) => {
+              if (col === -1) return;
+              if (existing && isLocked(i)) return; // don't overwrite locked actuals
+              const v = parseFloat(row[col]);
+              if (!isNaN(v)) { while (target.fte.length <= i) target.fte.push(0); target.fte[i] = Math.max(0, v); }
+            });
+            if (existing) updated++; else { next.push(target); added++; }
           }
           if (updated + added === 0) { setImportErr('No valid rows found.'); return prev; }
           return next.map(r => ({ ...r }));
@@ -293,7 +311,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
 
   async function confirmAdd() {
     if (!pendingPerson) return;
-    const fte = Array(totalMonths).fill(0);
+    const fte = Array(dataMonths).fill(0);
     const poolEntry = RESOURCE_POOL.find(r => r.name === pendingPerson.name);
     let dbId = null;
     try {
@@ -316,13 +334,16 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
 
   function cancelAdd() { setAdding(false); setPendingPerson(null); setPendingFn(''); }
 
-  function updateFte(rowId, year, mi, val) {
-    if (isLocked(year, mi) || !inRange(year, mi)) return;
-    const idx = absIdx(year, mi);
+  function updateFte(rowId, i, val) {
+    if (isLocked(i)) return;
     const num = Math.max(0, parseFloat(val) || 0);
-    setRows(prev => prev.map(r =>
-      r.id !== rowId ? r : { ...r, fte: r.fte.map((v, i) => i !== idx ? v : num) }
-    ));
+    setRows(prev => prev.map(r => {
+      if (r.id !== rowId) return r;
+      const fte = r.fte.slice();
+      while (fte.length <= i) fte.push(0);
+      fte[i] = num;
+      return { ...r, fte };
+    }));
   }
 
   function removeRow(rowId) {
@@ -332,55 +353,88 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
     setConfirmingId(null);
   }
 
-  function updateSubJob(rowId, subJobId) {
-    setRows(prev => prev.map(r =>
-      r.id !== rowId ? r : { ...r, subJobId: subJobId || null }
-    ));
-    const row = rows.find(r => r.id === rowId);
-    if (row && row.dbId) {
-      api.patch(`/api/resources/${row.dbId}`, { sub_job_id: subJobId || null })
-        .catch(err => console.error('Failed to save sub_job_id', err));
+  const rateOf = (grade) => { const rt = RATES.find(x => x.grade === grade); return rt ? rt.monthly : 0; };
+
+  // Continuous months in view + per-month aggregates.
+  const months  = Array.from({ length: horizon }, (_, i) => monthMeta(i));
+  const colFte  = months.map((_, i) => rows.reduce((s, r) => s + (r.fte[i] || 0), 0));
+  const colCost = months.map((_, i) => rows.reduce((s, r) => s + (r.fte[i] || 0) * rateOf(r.grade) / 1000, 0));
+
+  // Open placeholder resource requests -> forecast rows in the timeline. Each
+  // request contributes its headcount FTE for every month in its need window
+  // (from need_year/need_month to need_end_year/need_end_month, inclusive). If
+  // no end is set it runs to the end of the visible horizon. Requested cost is
+  // always treated as ETC (forecast), never committed.
+  const openReqs = (requests || []).filter(r => r.status === 'open');
+  const reqRows = openReqs.map(rq => {
+    const hc = Number(rq.headcount) || 1;
+    const fromAbs = (Number(rq.need_year) || startYear) * 12 + ((Number(rq.need_month) || 1) - 1);
+    const startI = Math.max(0, fromAbs - startAbs);
+    let endI = months.length - 1;
+    if (rq.need_end_year && rq.need_end_month) {
+      endI = Number(rq.need_end_year) * 12 + (Number(rq.need_end_month) - 1) - startAbs;
     }
-  }
-
-  // View-year monthly aggregates
-  const viewMonthlyFte = MONTHS.map((_, mi) =>
-    inRange(viewYear, mi) ? rows.reduce((s, r) => s + (r.fte[absIdx(viewYear, mi)] || 0), 0) : null
-  );
-  const viewMonthlyCost = MONTHS.map((_, mi) => {
-    if (!inRange(viewYear, mi)) return null;
-    return rows.reduce((s, r) => {
-      const rate = RATES.find(rt => rt.grade === r.grade);
-      return s + (r.fte[absIdx(viewYear, mi)] || 0) * (rate ? rate.monthly : 0) / 1000;
-    }, 0);
+    const fte = months.map((_, i) => (i >= startI && i <= endI ? hc : 0));
+    return { ...rq, fte, hc };
   });
-  const viewYearTotalFte  = viewMonthlyFte.reduce((s, v)  => v != null ? s + v  : s, 0);
-  const viewYearTotalCost = viewMonthlyCost.reduce((s, v) => v != null ? s + v : s, 0);
+  const reqColFte   = months.map((_, i) => reqRows.reduce((s, r) => s + (r.fte[i] || 0), 0));
+  const reqColCost  = months.map((_, i) => reqRows.reduce((s, r) => s + (r.fte[i] || 0) * rateOf(r.grade) / 1000, 0));
+  const reqCostK    = reqColCost.reduce((a, b) => a + b, 0);
+  const reqFteTotal = reqColFte.reduce((a, b) => a + b, 0);
 
-  // All-project KPI totals
-  const totalFteAllYears = rows.reduce((s, r) => s + r.fte.reduce((a, v) => a + v, 0), 0);
-  const totalCostAllYears = rows.reduce((s, r) => {
-    const rate = RATES.find(rt => rt.grade === r.grade);
-    return s + r.fte.reduce((a, v) => a + v * (rate ? rate.monthly : 0) / 1000, 0);
-  }, 0);
-  const allMonthlyTotals = Array.from({ length: totalMonths }, (_, i) =>
-    rows.reduce((s, r) => s + (r.fte[i] || 0), 0)
-  );
-  const peakFte = Math.max(0, ...allMonthlyTotals);
+  // SAP COM_CST is the committed/actual commitment source. Resource-plan
+  // locked quarters only control editability; unlocked quarters remain ETC.
+  const committedCostK = (p.subjobs || [])
+    .filter(isPmCategorySubjob)
+    .reduce((sum, s) => sum + (Number(s.committed) || 0), 0) / 1000;
+  let etcCostK = 0;
+  months.forEach((mm, i) => {
+    if (!lockedQuarters.has(mm.absQuarter)) etcCostK += colCost[i];
+  });
+  etcCostK += reqCostK; // requested headcount is forecast -> ETC
+  const totalCostK = committedCostK + etcCostK;
+  const totalFte   = colFte.reduce((a, b) => a + b, 0);
+  const peakFte    = Math.max(0, ...colFte);
+  const nameColW = 240;
+  const monthColW = 72;
+  const totalColW = 76;
+  const tableW = nameColW + months.length * monthColW + totalColW;
+  const stickyL = {
+    position: 'sticky',
+    left: 0,
+    zIndex: 3,
+    overflow: 'hidden',
+    boxShadow: '1px 0 0 var(--border)',
+  };
+  const stickyR = {
+    position: 'sticky',
+    right: 0,
+    zIndex: 3,
+    boxShadow: '-1px 0 0 var(--border)',
+  };
 
-  // Year range label for subtitle
-  const rangeLabel = totalMonths <= 12
-    ? `Jan–Dec ${startYear}`
-    : `${MONTHS[startMonth]} ${startYear} – ${MONTHS[endMonth]} ${endYear}`;
+  // Contiguous quarter groups for the header lock toggles.
+  const qGroups = [];
+  months.forEach((mm, i) => {
+    const last = qGroups[qGroups.length - 1];
+    if (last && last.absQuarter === mm.absQuarter) last.span++;
+    else qGroups.push({ absQuarter: mm.absQuarter, start: i, span: 1, year: mm.year, q: mm.q });
+  });
 
   return (
     <div className="screen">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="breadcrumb-link" onClick={() => navigate('portfolio')}>Portfolio</span>
-        <span className="breadcrumb-sep">/</span>
-        <span className="breadcrumb-link" onClick={() => navigate('project', p.id)}>{p.name}</span>
-        <span className="breadcrumb-sep">/</span>
-        <span className="breadcrumb-current">Resource Plan</span>
+      <div className="module-inline-header">
+        <div className="module-inline-crumbs">
+          <button type="button" onClick={() => navigate('portfolio')}>Portfolio</button>
+          <span>/</span>
+          <button type="button" onClick={() => navigate('project', p.id)}>{p.name}</button>
+          <span>/</span>
+          <span className="module-inline-current">Resource Plan</span>
+          <span className="material-category-badge" style={{ '--category-color': CAT_COLORS['PM'] }}>
+            <span className="material-category-dot" />
+            <span className="material-category-text">PM category</span>
+          </span>
+        </div>
         <div className="grow" />
         {saveStatus === 'saving' && (
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Saving…</span>
@@ -396,30 +450,30 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
         {saveStatus === 'error' && (
           <span style={{ fontSize: 12, color: 'var(--bad)' }}>Save failed</span>
         )}
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}>← Back</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}><Icon name="arrowLeft" size={13} /> Back</button>
       </div>
 
       {/* KPI tiles — all-project totals so they stay stable as you navigate years */}
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }}>
         <div className="kpi-tile">
-          <div className="kpi-label">Total labour cost</div>
-          <div className="kpi-value num">{fmt(totalCostAllYears * 1000)}</div>
-          <div className="kpi-sub">{projectYears.length > 1 ? `across ${projectYears.length} years` : 'full year estimate'}</div>
+          <div className="kpi-label">Committed labour cost</div>
+          <div className="kpi-value num">{fmt(committedCostK * 1000)}</div>
+          <div className="kpi-sub">SAP COM_CST · PM category</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">People on project</div>
-          <div className="kpi-value num">{rows.length}</div>
-          <div className="kpi-sub">resource lines</div>
+          <div className="kpi-label">ETC labour cost</div>
+          <div className="kpi-value num" style={{ color: 'var(--accent)' }}>{fmt(etcCostK * 1000)}</div>
+          <div className="kpi-sub">unlocked quarters + requests · forecast</div>
+        </div>
+        <div className="kpi-tile">
+          <div className="kpi-label">Total labour cost</div>
+          <div className="kpi-value num">{fmt(totalCostK * 1000)}</div>
+          <div className="kpi-sub">committed + ETC · {rows.length} people</div>
         </div>
         <div className="kpi-tile">
           <div className="kpi-label">Peak FTE month</div>
           <div className="kpi-value num">{peakFte.toFixed(1)}</div>
-          <div className="kpi-sub">{projectYears.length > 1 ? 'across full project' : 'this year'}</div>
-        </div>
-        <div className="kpi-tile">
-          <div className="kpi-label">Total FTE·months</div>
-          <div className="kpi-value num">{totalFteAllYears.toFixed(1)}</div>
-          <div className="kpi-sub">full project span</div>
+          <div className="kpi-sub">across timeline</div>
         </div>
       </div>
 
@@ -430,43 +484,17 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
             <h4>FTE plan by person</h4>
             {importErr && <div style={{ fontSize: 11, color: 'var(--bad)', marginTop: 3 }}>{importErr}</div>}
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-              {rangeLabel}
-              {projectYears.length > 1 && (
-                <span style={{ color: 'var(--accent)', fontWeight: 600, marginLeft: 6 }}>
-                  · Year {viewYear - startYear + 1} of {projectYears.length}
-                </span>
-              )}
-              <span style={{ marginLeft: 6 }}>· Past months locked · actuals from SAP</span>
+              PM category · scroll right for more months ·
+              <span style={{ color: 'var(--text-2)', fontWeight: 600, marginLeft: 4 }}>Locked = Committed</span>
+              <span style={{ marginLeft: 4 }}>·</span>
+              <span style={{ color: 'var(--accent)', fontWeight: 600, marginLeft: 4 }}>Unlocked = ETC</span>
             </div>
           </div>
 
-          {/* Year navigator — only shown for multi-year projects */}
-          {projectYears.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--surface-2)', borderRadius: 8, padding: '3px 4px', border: '1px solid var(--border)' }}>
-              <button
-                onClick={() => setViewYear(y => y - 1)}
-                disabled={viewYear <= startYear}
-                className="btn btn-icon"
-                style={{ padding: '5px 8px', opacity: viewYear <= startYear ? 0.3 : 1, borderRadius: 5 }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8 10L4 6l4-4"/>
-                </svg>
-              </button>
-              <span style={{ fontSize: 14, fontWeight: 700, minWidth: 44, textAlign: 'center', color: 'var(--text)', letterSpacing: '0.01em' }}>
-                {viewYear}
-              </span>
-              <button
-                onClick={() => setViewYear(y => y + 1)}
-                disabled={viewYear >= endYear}
-                className="btn btn-icon"
-                style={{ padding: '5px 8px', opacity: viewYear >= endYear ? 0.3 : 1, borderRadius: 5 }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 10l4-4-4-4"/>
-                </svg>
-              </button>
-            </div>
+          {canEdit && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setHorizon(h => h + 12)} title="Show more months">
+              + Months
+            </button>
           )}
 
           <input ref={importRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleResourceImport} />
@@ -542,43 +570,80 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
         )}
 
         {/* Table */}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+        <div
+          style={{ overflowX: 'auto' }}
+          onScroll={e => {
+            const el = e.currentTarget;
+            if (el.scrollWidth - el.scrollLeft - el.clientWidth < 240) setHorizon(h => h + 6);
+          }}
+        >
+          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: tableW }}>
             <colgroup>
-              <col style={{ width: 210 }} />
-              <col style={{ width: 150 }} />
-              {MONTHS.map((_, i) => <col key={i} style={{ width: 58 }} />)}
-              <col style={{ width: 68 }} />
-              <col style={{ width: 44 }} />
+              <col style={{ width: nameColW }} />
+              {months.map((_, i) => <col key={i} style={{ width: monthColW }} />)}
+              <col style={{ width: totalColW }} />
             </colgroup>
             <thead>
+              {/* Quarter lock row */}
               <tr>
-                <th style={{ padding: '10px 20px', textAlign: 'left' }}>Name</th>
-                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Charged to</th>
-                {MONTHS.map((m, mi) => {
-                  const inRng = inRange(viewYear, mi);
-                  const locked = isLocked(viewYear, mi);
+                <th rowSpan={2} style={{ padding: '10px 20px', textAlign: 'left', verticalAlign: 'bottom', background: 'var(--surface)', ...stickyL, zIndex: 2 }}>Name</th>
+                {qGroups.map(g => {
+                  const locked = lockedQuarters.has(g.absQuarter);
                   return (
-                    <th key={m} style={{
-                      padding: '10px 4px', textAlign: 'center', fontSize: 11,
-                      color: !inRng ? 'var(--border-2)' : locked ? 'var(--text-3)' : 'var(--accent)',
-                    }}>{m}</th>
+                    <th key={g.absQuarter} colSpan={g.span} style={{
+                      padding: '6px 4px', textAlign: 'center',
+                      background: locked ? 'var(--surface-3)' : 'transparent',
+                      borderLeft: '1px solid var(--border)',
+                    }}>
+                      <button
+                        onClick={() => toggleQuarter(g.absQuarter)}
+                        disabled={!canEdit}
+                        title={locked ? 'Locked (Actual) — click to unlock (ETC)' : 'Unlocked (ETC) — click to lock (Actual)'}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          cursor: canEdit ? 'pointer' : 'default',
+                          fontSize: 10.5, fontWeight: 700, letterSpacing: '.03em',
+                          padding: '2px 8px', borderRadius: 20,
+                          border: `1px solid ${locked ? 'var(--border-2)' : 'var(--accent)'}`,
+                          background: locked ? 'var(--surface)' : 'var(--accent-light)',
+                          color: locked ? 'var(--text-2)' : 'var(--accent)', fontFamily: 'inherit',
+                        }}
+                      >
+                        <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2.5" y="5.5" width="7" height="5" rx="1" />
+                          {locked
+                            ? <path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" />
+                            : <path d="M4 5.5V4a2 2 0 0 1 3.8-.8" />}
+                        </svg>
+                        Q{g.q} {g.year}
+                      </button>
+                    </th>
                   );
                 })}
-                <th style={{ padding: '10px 8px', textAlign: 'right', background: 'var(--surface-3)' }}>
-                  {viewYear}
-                </th>
-                <th style={{ padding: '10px 8px' }} />
+                <th rowSpan={2} style={{ padding: '10px 8px', textAlign: 'right', background: 'var(--surface-3)', verticalAlign: 'bottom', ...stickyR, zIndex: 2 }}>Total</th>
+              </tr>
+              {/* Month row */}
+              <tr>
+                {months.map((mm, i) => {
+                  const locked = lockedQuarters.has(mm.absQuarter);
+                  return (
+                    <th key={i} style={{
+                      padding: '6px 4px', textAlign: 'center', fontSize: 10.5, lineHeight: 1.2,
+                      color: locked ? 'var(--text-3)' : 'var(--accent)',
+                      background: locked ? 'var(--surface-3)' : 'transparent',
+                    }}>
+                      {MONTHS[mm.m]}<br />
+                      <span style={{ fontSize: 9, color: 'var(--text-3)' }}>{String(mm.year).slice(2)}</span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {rows.map(row => {
                 const initials = row.role.split(' ').map(n => n[0]).join('').slice(0, 2);
                 const isConfirming = confirmingId === row.id;
-                const viewFteValues = MONTHS.map((_, mi) =>
-                  inRange(viewYear, mi) ? (row.fte[absIdx(viewYear, mi)] || 0) : null
-                );
-                const rowYearTotal = viewFteValues.reduce((s, v) => v != null ? s + v : s, 0);
+                const rowTotal = months.reduce((s, _, i) => s + (row.fte[i] || 0), 0);
 
                 return (
                   <React.Fragment key={row.id}>
@@ -587,7 +652,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
                       background: isConfirming ? 'rgba(240,88,88,0.04)' : '',
                       transition: 'background .15s',
                     }}>
-                      <td style={{ padding: '8px 20px' }}>
+                      <td style={{ padding: '8px 12px 8px 20px', background: 'var(--surface)', ...stickyL }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{
                             width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
@@ -595,42 +660,27 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 9, fontWeight: 800, color: 'var(--accent)',
                           }}>{initials}</div>
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{row.role}</div>
-                            {row.fn && <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, marginTop: 1 }}>{row.fn}</div>}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.role}</div>
+                            {row.fn && <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.fn}</div>}
                           </div>
+                          {canEdit && !isConfirming && (
+                            <button className="btn btn-icon" onClick={() => setConfirmingId(row.id)}
+                              title={`Remove ${row.role}`} style={{ color: 'var(--text-3)', padding: '4px', flexShrink: 0 }}>
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M3 3.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8"/>
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <select
-                          value={row.subJobId || ''}
-                          onChange={e => updateSubJob(row.id, e.target.value ? Number(e.target.value) : null)}
-                          style={{
-                            width: '100%', padding: '5px 6px', fontSize: 12,
-                            border: '1px solid var(--border)', borderRadius: 4,
-                            background: 'var(--surface-2)', color: row.subJobId ? 'var(--text)' : 'var(--text-3)',
-                            fontFamily: 'inherit', cursor: 'pointer',
-                          }}
-                          title={row.subJobId ? 'Charged to a sub-job' : 'Unallocated — pick a sub-job'}
-                        >
-                          <option value="">— Unallocated —</option>
-                          {(p.subjobs || []).map(sj => (
-                            <option key={sj.id} value={sj.id}>
-                              {sj.wbs} · {sj.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      {MONTHS.map((_, mi) => {
-                        const inRng = inRange(viewYear, mi);
-                        const locked = isLocked(viewYear, mi);
-                        const val = inRng ? (row.fte[absIdx(viewYear, mi)] || 0) : null;
+                      {months.map((mm, i) => {
+                        const locked = lockedQuarters.has(mm.absQuarter);
+                        const val = row.fte[i] || 0;
                         return (
-                          <td key={mi} style={{ padding: '4px 3px' }}>
-                            {!inRng ? (
-                              <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--border-2)', padding: '7px 0' }}>—</div>
-                            ) : locked ? (
-                              <div className="eac-cell eac-locked" style={{ display: 'block', width: '100%', textAlign: 'right' }}>
+                          <td key={i} style={{ padding: '4px 5px', background: locked ? 'var(--surface-3)' : 'transparent' }}>
+                            {locked ? (
+                              <div className="eac-cell eac-locked" style={{ display: 'block', width: '100%', minWidth: 0, textAlign: 'center' }}>
                                 {val > 0 ? val.toFixed(1) : '—'}
                               </div>
                             ) : (
@@ -639,39 +689,32 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
                                 className="eac-cell eac-editable"
                                 value={val || ''}
                                 placeholder="0"
-                                onChange={e => updateFte(row.id, viewYear, mi, e.target.value)}
-                                style={{ display: 'block', width: '100%' }}
+                                onChange={e => updateFte(row.id, i, e.target.value)}
+                                style={{ display: 'block', width: '100%', minWidth: 0, textAlign: 'center' }}
                               />
                             )}
                           </td>
                         );
                       })}
-                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', background: 'var(--surface-3)' }}>
-                        {rowYearTotal > 0 ? rowYearTotal.toFixed(1) : '—'}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>
-                        {!isConfirming && (
-                          <button className="btn btn-icon" onClick={() => setConfirmingId(row.id)}
-                            title={`Remove ${row.role}`} style={{ color: 'var(--text-3)', padding: '4px' }}>
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M3 3.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8"/>
-                            </svg>
-                          </button>
-                        )}
+                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', background: 'var(--surface-3)', ...stickyR }}>
+                        {rowTotal > 0 ? rowTotal.toFixed(1) : '—'}
                       </td>
                     </tr>
 
                     {isConfirming && (
                       <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bad-bg)' }}>
-                        <td colSpan={MONTHS.length + 4} style={{ padding: '10px 20px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <td colSpan={months.length + 2} style={{ padding: 0, background: 'var(--bad-bg)' }}>
+                          <div style={{
+                            position: 'sticky', left: 0, zIndex: 1, width: 'fit-content', maxWidth: '100%',
+                            padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12,
+                          }}>
                             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--bad)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M7 1L13.06 12H.94L7 1Z"/><path d="M7 5v3M7 10v.5"/>
                             </svg>
-                            <span style={{ fontSize: 13, color: 'var(--bad-text)', fontWeight: 500 }}>
+                            <span style={{ fontSize: 13, color: 'var(--bad-text)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                               Remove <strong>{row.role}</strong> from this project?
                             </span>
-                            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 8 }}>
                               <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingId(null)}>Cancel</button>
                               <button className="btn btn-danger btn-sm" onClick={() => removeRow(row.id)}>Remove</button>
                             </div>
@@ -685,47 +728,362 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role }) {
 
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={MONTHS.length + 4} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+                  <td colSpan={months.length + 2} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13, position: 'sticky', left: 0, background: 'var(--surface)' }}>
                     No people added yet — click "Add person" to assign from the pool.
                   </td>
                 </tr>
               )}
 
+              {/* Open placeholder resource requests — read-only forecast rows */}
+              {reqRows.map(rq => {
+                const rangeLabel = reqRangeLabel(rq);
+                const rowTotal = rq.fte.reduce((s, v) => s + (v || 0), 0);
+                return (
+                  <tr key={`req-${rq.id}`} style={{ borderBottom: '1px dashed var(--border-2)', background: 'var(--accent-light)' }}>
+                    <td style={{ padding: '8px 12px 8px 20px', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', color: 'var(--accent)', border: '1px dashed var(--accent)', borderRadius: 4, padding: '2px 5px' }}>REQ</span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {rq.function_title}{rq.grade ? ` · ${rq.grade}` : ''}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, marginTop: 1 }}>
+                            Requested{rangeLabel ? ` · ${rangeLabel}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    {months.map((mm, i) => {
+                      const val = rq.fte[i] || 0;
+                      return (
+                        <td key={i} style={{ padding: '4px 5px' }}>
+                          <div className="eac-cell" style={{ display: 'block', width: '100%', minWidth: 0, textAlign: 'center', fontStyle: 'italic', color: val > 0 ? 'var(--accent)' : 'var(--text-3)' }}>
+                            {val > 0 ? val.toFixed(1) : '—'}
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyR }}>
+                      {rowTotal > 0 ? rowTotal.toFixed(1) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+
               {/* Footer: FTE totals */}
               <tr style={{ background: 'var(--surface-3)', borderTop: '2px solid var(--border-2)', fontWeight: 700 }}>
-                <td style={{ padding: '10px 20px', fontSize: 13 }}>Total FTE</td>
-                <td />
-                {viewMonthlyFte.map((t, mi) => (
-                  <td key={mi} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t == null ? 'var(--border-2)' : t === 0 ? 'var(--text-3)' : 'var(--text)' }}>
-                    {t == null ? '—' : t > 0 ? t.toFixed(1) : '—'}
+                <td style={{ padding: '10px 20px', fontSize: 13, background: 'var(--surface-3)', ...stickyL }}>Total FTE</td>
+                {colFte.map((t, i) => (
+                  <td key={i} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t === 0 ? 'var(--text-3)' : 'var(--text)' }}>
+                    {t > 0 ? t.toFixed(1) : '—'}
                   </td>
                 ))}
-                <td style={{ padding: '10px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                  {viewYearTotalFte.toFixed(1)}
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', background: 'var(--surface-3)', ...stickyR }}>
+                  {totalFte.toFixed(1)}
                 </td>
-                <td />
               </tr>
 
               {/* Footer: cost totals */}
               <tr style={{ background: 'var(--accent-light)', fontWeight: 600, color: 'var(--accent)' }}>
-                <td style={{ padding: '10px 20px', fontSize: 13 }}>Est. labour cost ($K)</td>
-                <td />
-                {viewMonthlyCost.map((t, mi) => (
-                  <td key={mi} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t == null ? 'var(--accent-mid)' : t === 0 ? 'var(--accent-mid)' : 'var(--accent)' }}>
-                    {t == null ? '—' : t > 0 ? t.toFixed(0) : '—'}
+                <td style={{ padding: '10px 20px', fontSize: 13, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>Est. labour cost ($K)</td>
+                {colCost.map((t, i) => (
+                  <td key={i} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t === 0 ? 'var(--accent-mid)' : 'var(--accent)' }}>
+                    {t > 0 ? t.toFixed(0) : '—'}
                   </td>
                 ))}
-                <td style={{ padding: '10px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 14 }}>
-                  {viewYearTotalCost.toFixed(0)}
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 14, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyR }}>
+                  {totalCostK.toFixed(0)}
                 </td>
-                <td />
               </tr>
+
+              {/* Footer: requested (forecast) headcount + cost */}
+              {reqRows.length > 0 && (
+                <>
+                  <tr style={{ background: 'var(--surface)', fontWeight: 600, color: 'var(--accent)', borderTop: '1px dashed var(--border-2)' }}>
+                    <td style={{ padding: '8px 20px', fontSize: 12, background: 'var(--surface)', ...stickyL }}>Requested FTE (forecast)</td>
+                    {reqColFte.map((t, i) => (
+                      <td key={i} style={{ padding: '8px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontStyle: 'italic', color: t === 0 ? 'var(--text-3)' : 'var(--accent)' }}>
+                        {t > 0 ? t.toFixed(1) : '—'}
+                      </td>
+                    ))}
+                    <td style={{ padding: '8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', background: 'var(--surface)', ...stickyR }}>
+                      {reqFteTotal.toFixed(1)}
+                    </td>
+                  </tr>
+                  <tr style={{ background: 'var(--surface)', fontWeight: 600, color: 'var(--accent)' }}>
+                    <td style={{ padding: '8px 20px', fontSize: 12, background: 'var(--surface)', ...stickyL }}>Requested cost ($K · ETC)</td>
+                    {reqColCost.map((t, i) => (
+                      <td key={i} style={{ padding: '8px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontStyle: 'italic', color: t === 0 ? 'var(--text-3)' : 'var(--accent)' }}>
+                        {t > 0 ? t.toFixed(0) : '—'}
+                      </td>
+                    ))}
+                    <td style={{ padding: '8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, background: 'var(--surface)', ...stickyR }}>
+                      {reqCostK.toFixed(0)}
+                    </td>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* Placeholder headcount requests (resourcing asks, no real name) */}
+      <PlaceholderRequests projectId={p.id} role={role} session={session} RATES={RATES} requests={requests} reload={reloadRequests} />
+
       <style>{`@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>
     </div>
   );
 }
+
+/* ── Placeholder headcount requests ──────────────────────────────────────
+   A PM-raised "resourcing need" that is NOT tied to a real person and does
+   not feed actual cost. Every ask carries a justification (remarks). Open
+   requests are surfaced to the PD via the project Overview alerts, creating
+   a visible, timestamped record of "PM asked for help". */
+const REQ_STATUS = {
+  open:     { label: 'Open',     color: 'var(--accent)' },
+  resolved: { label: 'Resolved', color: 'var(--ok)' },
+  declined: { label: 'Declined', color: 'var(--text-3)' },
+};
+
+function relTime(iso) {
+  if (!iso) return '';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? '1 month ago' : `${months} months ago`;
+}
+
+// "From -> To" label for a request's need window.
+function reqRangeLabel(rq) {
+  const f = rq.need_month ? `${MONTHS[(Number(rq.need_month) || 1) - 1]}${rq.need_year ? ` ${rq.need_year}` : ''}` : null;
+  const t = rq.need_end_month ? `${MONTHS[(Number(rq.need_end_month) || 1) - 1]}${rq.need_end_year ? ` ${rq.need_end_year}` : ''}` : null;
+  if (f && t) return `${f} → ${t}`;
+  if (f) return `from ${f}`;
+  if (t) return `until ${t}`;
+  return null;
+}
+
+function PlaceholderRequests({ projectId, role, session, RATES, requests, reload }) {
+  const canRaise   = role === 'Project Manager' || role === 'Leader' || role === 'Admin';
+  const canResolve = role === 'Project Director' || role === 'Leader' || role === 'Admin';
+
+  const [adding, setAdding] = useState(false);
+  const [form, setForm]     = useState({ function_title: '', grade: '', need_month: '', need_year: '', need_end_month: '', need_end_year: '', remarks: '' });
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState(null);
+  const [resolvingId, setResolvingId] = useState(null);
+  const [resolveNote, setResolveNote] = useState('');
+
+  const grades = (RATES || []).map(r => r.grade);
+  const openCount = requests.filter(r => r.status === 'open').length;
+
+  function reset() {
+    setForm({ function_title: '', grade: '', need_month: '', need_year: '', need_end_month: '', need_end_year: '', remarks: '' });
+    setAdding(false); setErr(null);
+  }
+
+  async function submit() {
+    if (!form.function_title.trim()) { setErr('Role / function is required.'); return; }
+    if (!form.remarks.trim())        { setErr('A justification (remarks) is required.'); return; }
+    setBusy(true); setErr(null);
+    try {
+      await api.post('/api/resource-requests', {
+        project_id: projectId,
+        function_title: form.function_title.trim(),
+        grade: form.grade || null,
+        need_year: form.need_year || null,
+        need_month: form.need_month || null,
+        need_end_year: form.need_end_year || null,
+        need_end_month: form.need_end_month || null,
+        remarks: form.remarks.trim(),
+        created_by: session?.id || null,
+      });
+      reset(); reload();
+    } catch (e) { setErr(e?.message || 'Could not save request.'); }
+    finally { setBusy(false); }
+  }
+
+  async function setStatus(id, status, note) {
+    setBusy(true);
+    try {
+      await api.patch(`/api/resource-requests/${id}`, {
+        status, resolved_by: session?.id || null,
+        resolution_note: note != null ? note : undefined,
+      });
+      setResolvingId(null); setResolveNote(''); reload();
+    } catch (e) { setErr(e?.message || 'Could not update request.'); }
+    finally { setBusy(false); }
+  }
+
+  async function del(id) {
+    setBusy(true);
+    try { await api.del(`/api/resource-requests/${id}`); reload(); }
+    catch (e) { setErr(e?.message || 'Could not delete request.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ overflow: 'hidden', marginTop: 20 }}>
+      <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            Placeholder headcount requests
+            {openCount > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-light)', border: '1px solid rgba(232,150,31,.25)', borderRadius: 20, padding: '1px 8px' }}>
+                {openCount} open
+              </span>
+            )}
+          </h4>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
+            Un-named resourcing asks (distinct from confirmed headcount above). Open requests are flagged to the PD on the project Overview.
+          </div>
+          {err && <div style={{ fontSize: 11, color: 'var(--bad)', marginTop: 4 }}>{err}</div>}
+        </div>
+        {canRaise && !adding && (
+          <button className="btn btn-ghost btn-sm" onClick={() => { setAdding(true); setErr(null); }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M6 1v10M1 6h10" />
+            </svg>
+            New request
+          </button>
+        )}
+      </div>
+
+      {/* Add form */}
+      {adding && (
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+            <label style={{ flex: '2 1 200px', fontSize: 11, color: 'var(--text-3)' }}>
+              Role / function *
+              <input className="input" style={{ marginTop: 4 }} placeholder="e.g. System Engineer"
+                value={form.function_title} autoFocus
+                onChange={e => setForm(f => ({ ...f, function_title: e.target.value }))} />
+            </label>
+            <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
+              Grade
+              <select className="input" style={{ marginTop: 4 }} value={form.grade}
+                onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}>
+                <option value="">—</option>
+                {grades.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </label>
+            <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
+              From (month)
+              <select className="input" style={{ marginTop: 4 }} value={form.need_month}
+                onChange={e => setForm(f => ({ ...f, need_month: e.target.value }))}>
+                <option value="">—</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+            </label>
+            <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
+              From (year)
+              <input className="input" type="number" min="2024" max="2035" style={{ marginTop: 4 }}
+                placeholder={String(new Date().getFullYear())} value={form.need_year}
+                onChange={e => setForm(f => ({ ...f, need_year: e.target.value }))} />
+            </label>
+            <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
+              To (month)
+              <select className="input" style={{ marginTop: 4 }} value={form.need_end_month}
+                onChange={e => setForm(f => ({ ...f, need_end_month: e.target.value }))}>
+                <option value="">—</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+            </label>
+            <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
+              To (year)
+              <input className="input" type="number" min="2024" max="2035" style={{ marginTop: 4 }}
+                placeholder={String(new Date().getFullYear())} value={form.need_end_year}
+                onChange={e => setForm(f => ({ ...f, need_end_year: e.target.value }))} />
+            </label>
+          </div>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>
+            Justification (remarks) *
+            <textarea className="input" style={{ marginTop: 4, minHeight: 54, resize: 'vertical' }}
+              placeholder='e.g. "Spike in Feb due to commissioning overlap on two sites"'
+              value={form.remarks}
+              onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+          </label>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={submit}>Submit request</button>
+            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={reset}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      {requests.length === 0 ? (
+        <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+          No placeholder requests. {canRaise ? 'Raise one when you need resourcing help that has no named person yet.' : ''}
+        </div>
+      ) : (
+        <div>
+          {requests.map(rq => {
+            const st = REQ_STATUS[rq.status] || REQ_STATUS.open;
+            const needBy = rq.need_month ? `${MONTHS[rq.need_month - 1]}${rq.need_year ? ` ${rq.need_year}` : ''}` : null;
+            const isOpen = rq.status === 'open';
+            return (
+              <div key={rq.id} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <span style={{ flexShrink: 0, marginTop: 2, fontSize: 10.5, fontWeight: 700, letterSpacing: '.03em', color: st.color, background: `color-mix(in srgb, ${st.color} 14%, transparent)`, border: `1px solid color-mix(in srgb, ${st.color} 35%, transparent)`, borderRadius: 20, padding: '2px 9px' }}>
+                  {st.label}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    {rq.function_title}
+                    {rq.grade && <span className="badge badge-accent" style={{ fontSize: 10, marginLeft: 6 }}>{rq.grade}</span>}
+                    <span style={{ color: 'var(--text-3)', fontWeight: 500, marginLeft: 8 }}>
+                      {Number(rq.headcount) % 1 === 0 ? Number(rq.headcount) : Number(rq.headcount).toFixed(1)} FTE
+                    </span>
+                    {needBy && <span style={{ color: 'var(--text-3)', fontWeight: 500, marginLeft: 8 }}>· need by {needBy}</span>}
+                  </div>
+                  {rq.remarks && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3, whiteSpace: 'pre-wrap' }}>{rq.remarks}</div>}
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                    Raised{rq.created_by_name ? ` by ${rq.created_by_name}` : ''} {relTime(rq.created_at)}
+                    {!isOpen && rq.resolved_by_name && <> · {st.label.toLowerCase()} by {rq.resolved_by_name} {relTime(rq.resolved_at)}</>}
+                    {!isOpen && rq.resolution_note && <> — "{rq.resolution_note}"</>}
+                  </div>
+
+                  {/* Resolve inline note */}
+                  {resolvingId === rq.id && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <label style={{ flex: '1 1 240px', fontSize: 11, color: 'var(--text-3)' }}>
+                        Response note (optional)
+                        <input className="input" style={{ marginTop: 4 }} placeholder="e.g. Approved — assigning E4 from pool"
+                          value={resolveNote} autoFocus
+                          onChange={e => setResolveNote(e.target.value)} />
+                      </label>
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setStatus(rq.id, 'resolved', resolveNote)}>Mark resolved</button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setStatus(rq.id, 'declined', resolveNote)}>Decline</button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setResolvingId(null); setResolveNote(''); }}>Cancel</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div style={{ flexShrink: 0, display: 'flex', gap: 6 }}>
+                  {isOpen && canResolve && resolvingId !== rq.id && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setResolvingId(rq.id); setResolveNote(''); }}>Respond</button>
+                  )}
+                  {isOpen && !canResolve && canRaise && (
+                    <button className="btn btn-icon" title="Withdraw request" disabled={busy} onClick={() => del(rq.id)} style={{ color: 'var(--text-3)' }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M3 3.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8"/>
+                      </svg>
+                    </button>
+                  )}
+                  {!isOpen && canResolve && (
+                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setStatus(rq.id, 'open')}>Reopen</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+

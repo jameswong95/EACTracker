@@ -4,18 +4,23 @@ import { ah, requireFields } from '../util.js';
 
 const r = Router();
 
-// GET /api/revrec/:project_id  → { project, entries, totals }
+// GET /api/revrec/:project_id  → { project, entries, totals, tender }
 r.get('/:project_id', ah(async (req, res) => {
   const pid = req.params.project_id;
-  const [p, entries, totals] = await Promise.all([
+  const [p, entries, totals, tender] = await Promise.all([
     query(`SELECT id, name, contract_value, revrec_method FROM projects WHERE id = $1`, [pid]),
     query(`
-      SELECT re.*, m.name AS milestone_name, m.target_date AS milestone_date
+      SELECT re.*, m.name AS milestone_name, m.target_date AS milestone_date,
+             u.full_name AS forecast_updated_by_name
       FROM revrec_entries re
       LEFT JOIN milestones m ON m.id = re.milestone_id
+      LEFT JOIN users u ON u.id = re.forecast_updated_by
       WHERE re.project_id = $1
       ORDER BY re.period_year NULLS LAST, re.period_month NULLS LAST, re.id`, [pid]),
     query(`SELECT * FROM v_revrec_totals WHERE project_id = $1`, [pid]),
+    // Tender total rolls up into Rev Rec as "Planned (Tender)"
+    query(`SELECT COALESCE(SUM(total_amount), 0) AS planned_tender
+             FROM v_tender_totals WHERE project_id = $1`, [pid]),
   ]);
   if (!p.rows[0]) return res.status(404).json({ error: 'project not found' });
   res.json({
@@ -24,7 +29,22 @@ r.get('/:project_id', ah(async (req, res) => {
     totals:   totals.rows[0] || { total_recognised: 0, recognised_to_date: 0,
                                    contract_value: p.rows[0].contract_value, remaining: p.rows[0].contract_value,
                                    revrec_method: p.rows[0].revrec_method },
+    tender:   { planned_tender: Number(tender.rows[0]?.planned_tender || 0) },
   });
+}));
+
+// PATCH /api/revrec/:id/forecast  (PM-editable Forecast column, timestamped)
+r.patch('/:id/forecast', ah(async (req, res) => {
+  const { forecast_amount, forecast_updated_by } = req.body;
+  if (forecast_amount == null) return res.status(400).json({ error: 'forecast_amount required' });
+  const upd = await query(
+    `UPDATE revrec_entries
+        SET forecast_amount = $1, forecast_updated_at = NOW(), forecast_updated_by = $2
+      WHERE id = $3 RETURNING *`,
+    [forecast_amount, forecast_updated_by || null, req.params.id]
+  );
+  if (!upd.rows[0]) return res.status(404).json({ error: 'entry not found' });
+  res.json(upd.rows[0]);
 }));
 
 // POST /api/revrec  (create a single recognition entry)

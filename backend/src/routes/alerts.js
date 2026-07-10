@@ -14,7 +14,7 @@ r.get('/', ah(async (req, res) => {
   const { project_id } = req.query;
   if (!project_id) return res.status(400).json({ error: 'project_id required' });
 
-  const [projRes, msRes, riskRes, subjobRes, updRes] = await Promise.all([
+  const [projRes, msRes, riskRes, subjobRes, updRes, reqRes] = await Promise.all([
     query(`SELECT * FROM projects WHERE id = $1`, [project_id]),
     query(`SELECT * FROM milestones WHERE project_id = $1`, [project_id]),
     query(`SELECT * FROM risks WHERE project_id = $1`, [project_id]),
@@ -22,6 +22,14 @@ r.get('/', ah(async (req, res) => {
     query(
       `SELECT * FROM project_updates WHERE project_id = $1
        ORDER BY period_year DESC, period_month DESC LIMIT 1`,
+      [project_id]
+    ),
+    query(
+      `SELECT rq.*, cu.full_name AS created_by_name
+       FROM resource_requests rq
+       LEFT JOIN users cu ON cu.id = rq.created_by
+       WHERE rq.project_id = $1 AND rq.status = 'open'
+       ORDER BY rq.created_at ASC`,
       [project_id]
     ),
   ]);
@@ -33,6 +41,7 @@ r.get('/', ah(async (req, res) => {
   const risks      = riskRes.rows;
   const subjobs    = subjobRes.rows;
   const lastUpdate = updRes.rows[0];
+  const openRequests = reqRes.rows;
 
   const budget   = n(p.budget);
   const eac      = n(p.eac);
@@ -166,6 +175,22 @@ r.get('/', ah(async (req, res) => {
       kind: 'adv', code: 'SUBJOB_OVERRUN',
       text: `${overrunSubjobs.length} sub-job${overrunSubjobs.length > 1 ? 's are' : ' is'} over budget. Worst: "${worst.name}" (+${worstPct}%).`,
       sub:  'Review ETC for overrun cost elements and submit revised forecast.',
+    });
+  }
+
+  // ── 14. Unresolved placeholder headcount requests (PM asked, no response) ──
+  if (openRequests.length > 0) {
+    const oldest = openRequests[0];
+    const waitingDays = daysSince(oldest.created_at);
+    const askedBy = oldest.created_by_name ? ` by ${oldest.created_by_name}` : '';
+    const totalHc = openRequests.reduce((a, rq) => a + n(rq.headcount), 0);
+    alerts.push({
+      kind: waitingDays > 7 ? 'adv' : 'attn',
+      code: 'UNRESOLVED_RESOURCE_REQUEST',
+      text: `${openRequests.length} unresolved placeholder headcount request${openRequests.length > 1 ? 's' : ''} `
+        + `(${totalHc % 1 === 0 ? totalHc : totalHc.toFixed(1)} FTE) awaiting PD response.`,
+      sub: `Oldest raised${askedBy} ${waitingDays === Infinity ? '' : `${Math.round(waitingDays)} day${Math.round(waitingDays) === 1 ? '' : 's'} ago`}`
+        + `${oldest.remarks ? ` — "${String(oldest.remarks).slice(0, 120)}"` : ''}. Resolve or decline on the Resource Plan.`,
     });
   }
 

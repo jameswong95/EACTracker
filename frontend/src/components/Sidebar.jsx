@@ -119,18 +119,22 @@ function Icon({ name, size = 16 }) {
 // PRD §3.1 navigation model
 const NAV = {
   PM: [
+    { id: 'tenders',   label: 'Tenders',           icon: 'reports'    },
     { id: 'portfolio', label: 'Portfolio',         icon: 'portfolio'  },
   ],
   PD: [
+    { id: 'tenders',   label: 'Tenders',            icon: 'reports'    },
     { id: 'portfolio', label: 'Portfolio',          icon: 'portfolio'  },
   ],
   Finance: [
+    { id: 'tenders',    label: 'Tenders',           icon: 'reports'         },
     { id: 'portfolio',  label: 'Portfolio',         icon: 'portfolio'       },
     { id: 'sap-import', label: 'SAP Import',        icon: 'sap'             },
-    { id: 'standards',  label: 'Reconciliation',    icon: 'reconciliation'  },
+    { id: 'standards',  label: 'Standards',         icon: 'standards'  },
   ],
   Admin: [
     { id: 'portfolio',         label: 'Portfolio',    icon: 'portfolio' },
+    { id: 'standards',         label: 'Standards',    icon: 'standards' },
     { id: 'admin-pool',        label: 'Resource Pool', icon: 'settings'  },
     { id: 'admin-permissions', label: 'Permissions', icon: 'shield'    },
     { id: 'admin-audit',       label: 'Audit Trail', icon: 'standards' },
@@ -139,7 +143,11 @@ const NAV = {
 
 const PROJECT_SUB = [
   { id: 'project',  label: 'Overview',       icon: 'project' },
+  { id: 'project-initiation', label: 'Project initiation', icon: 'reports' },
   { id: 'resource', label: 'Resource Plan',  icon: 'resource' },
+  { id: 'material', label: 'Material',       icon: 'financials' },
+  { id: 'sub-con',  label: 'Sub-Con',        icon: 'reconciliation' },
+  { id: 'others',   label: 'Others LOB/MISC', icon: 'reports' },
   { id: 'revrec',   label: 'Rev. Rec.',      icon: 'revrec' },
 ];
 
@@ -207,7 +215,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
       </div>
 
       {/* Project context */}
-      {inProjectView && activeProject && (role === 'Project Manager' || role === 'Project Director' || role === 'Finance') && (
+      {inProjectView && activeProject && (role === 'Project Manager' || role === 'Project Director' || role === 'Finance' || role === 'Leader') && (
         <>
           {!collapsed && <div className="sidebar-section" style={{ marginTop: 4 }}>Project</div>}
           {!collapsed && (

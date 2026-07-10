@@ -1,4 +1,5 @@
 import React from 'react';
+import Icon from '../components/Icon.jsx';
 
 export const SVGFilters = () => (
   <svg width="0" height="0" style={{ position: 'absolute' }}>
@@ -175,7 +176,9 @@ export const TopBar = ({ user = 'Sara Tan', role = 'Project Manager', tabs, acti
       </div>
     )}
     <div className="grow" />
-    <div className="input" style={{ minWidth: 120, fontStyle: 'italic', color: 'var(--ink-3)' }}>🔍 search projects</div>
+    <div className="input" style={{ minWidth: 120, fontStyle: 'italic', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Icon name="search" size={13} /> search projects
+    </div>
     <div className="row gap-3">
       <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--ink-3)', color: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>ST</div>
       <div className="col" style={{ gap: 0, lineHeight: 1 }}>

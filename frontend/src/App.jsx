@@ -5,6 +5,12 @@ import Dashboard from './screens/Dashboard.jsx';
 import Portfolio from './screens/Portfolio.jsx';
 import Project from './screens/Project.jsx';
 import Resource from './screens/Resource.jsx';
+import Material from './screens/Material.jsx';
+import SubCon from './screens/SubCon.jsx';
+import Others from './screens/Others.jsx';
+import Tender from './screens/Tender.jsx';
+import Tenders from './screens/Tenders.jsx';
+import ProjectInitiation from './screens/ProjectInitiation.jsx';
 import RevRec from './screens/RevRec.jsx';
 import SapImport from './screens/SapImport.jsx';
 import Standards from './screens/Standards.jsx';
@@ -17,11 +23,11 @@ const ROLE_DEFAULTS = { 'Project Manager': 'portfolio', 'Project Director': 'por
 
 // PRD §10: roles and minimum access
 const ROLE_ALLOWED_INIT = {
-  'Project Manager':  ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards'],
-  'Project Director': ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'standards', 'pd-approvals'],
-  Finance:            ['portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists'],
-  Leader:             ['dashboard', 'portfolio', 'project', 'resource', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
-  Admin:              ['dashboard', 'portfolio', 'project', 'admin-pool', 'admin-permissions', 'admin-audit'],
+  'Project Manager':  ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'standards'],
+  'Project Director': ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'standards', 'pd-approvals'],
+  Finance:            ['portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists'],
+  Leader:             ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
+  Admin:              ['dashboard', 'portfolio', 'project', 'standards', 'admin-pool', 'admin-permissions', 'admin-audit'],
 };
 
 export default function App() {
@@ -52,6 +58,51 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('pfms-theme', theme);
   }, [theme]);
+
+  // Responsive tables: on mobile, tag every table that has a header and copy
+  // each column's header text onto its cells as data-label, so CSS can reflow
+  // the table into stacked cards (no horizontal scrolling required).
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    let raf = 0;
+    function apply() {
+      raf = 0;
+      if (!mq.matches) return;
+      document.querySelectorAll('table').forEach(table => {
+        const ths = table.querySelectorAll('thead th');
+        if (!ths.length) return;
+        const labels = Array.from(ths).map(th =>
+          th.textContent.replace(/[↑↓]/g, '').replace(/\s+/g, ' ').trim()
+        );
+        table.classList.add('rtable');
+        table.querySelectorAll('tbody tr, tfoot tr').forEach(tr => {
+          const cells = tr.children;
+          if (cells.length === 1 && (cells[0].colSpan || 1) > 1) {
+            tr.classList.add('rtable-full');
+            return;
+          }
+          let col = 0;
+          for (let i = 0; i < cells.length; i++) {
+            const span = cells[i].colSpan || 1;
+            if (span === 1 && labels[col]) cells[i].setAttribute('data-label', labels[col]);
+            col += span;
+          }
+        });
+      });
+    }
+    function schedule() { if (!raf) raf = setTimeout(apply, 90); }
+    schedule();
+    const obs = new MutationObserver(schedule);
+    obs.observe(document.body, { childList: true, subtree: true });
+    mq.addEventListener('change', schedule);
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (raf) clearTimeout(raf);
+      obs.disconnect();
+      mq.removeEventListener('change', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+  }, []);
 
   function handleSignIn(s) {
     setSession(s);
@@ -99,7 +150,13 @@ export default function App() {
     dashboard:    <Dashboard navigate={navigate} session={session} />,
     portfolio:    <Portfolio navigate={navigate} role={role} session={session} />,
     project:      <Project key={projectId} projectId={projectId} navigate={navigate} role={role} session={session} />,
-    resource:     <Resource projectId={projectId} navigate={navigate} role={role} />,
+    'project-initiation': <ProjectInitiation projectId={projectId} navigate={navigate} role={role} session={session} />,
+    resource:     <Resource projectId={projectId} navigate={navigate} role={role} session={session} />,
+    material:     <Material projectId={projectId} navigate={navigate} role={role} session={session} />,
+    'sub-con':    <SubCon projectId={projectId} navigate={navigate} role={role} />,
+    others:       <Others projectId={projectId} navigate={navigate} role={role} session={session} />,
+    tender:       <Tender tenderId={projectId} navigate={navigate} role={role} session={session} />,
+    tenders:      <Tenders navigate={navigate} role={role} session={session} />,
     revrec:       <RevRec projectId={projectId} navigate={navigate} role={role} />,
     'sap-import': <SapImport navigate={navigate} session={session} />,
     standards:    <Standards navigate={navigate} role={role} />,

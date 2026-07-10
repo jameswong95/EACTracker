@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useProjects } from '../data/store.js';
+import Icon from '../components/Icon.jsx';
 
 const DRAFT_SECTIONS = [
   {
@@ -101,7 +102,7 @@ export default function Assists({ navigate }) {
         <div className="flex gap-2">
           <button className="btn btn-ghost btn-sm">Save draft</button>
           <button className="btn btn-primary btn-sm" disabled={!draft} onClick={handleSubmit}>
-            {submitted ? '✓ Submitted' : 'Submit to PD'}
+            {submitted ? <><Icon name="check" size={13} /> Submitted</> : 'Submit to PD'}
           </button>
         </div>
       </div>
@@ -220,7 +221,9 @@ export default function Assists({ navigate }) {
                 <div style={{ fontWeight: 700, fontSize: 14 }}>Draft for PD</div>
                 {draft && (
                   <span style={{ fontSize: 12, color: wordCount >= 120 && wordCount <= 250 ? 'var(--ok)' : 'var(--warn)', fontWeight: 600 }}>
-                    {wordCount} words · {wordCount >= 120 && wordCount <= 250 ? 'within template ✓' : 'outside 120–250 range'}
+                    {wordCount} words · {wordCount >= 120 && wordCount <= 250 ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>within template <Icon name="check" size={12} /></span>
+                    ) : 'outside 120-250 range'}
                   </span>
                 )}
               </div>
@@ -302,7 +305,7 @@ export default function Assists({ navigate }) {
                       )}
                     </button>
                     <button className="btn btn-primary btn-sm" onClick={handleSubmit}>
-                      Accept &amp; submit →
+                      Accept &amp; submit <Icon name="arrowRight" size={13} />
                     </button>
                   </div>
                 </>

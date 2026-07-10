@@ -21,6 +21,70 @@ r.get('/grades', ah(async (_req, res) => {
   res.json(result.rows);
 }));
 
+// ---- Rate card / grade ownership (Finance/Admin edit; access gated in UI) ----
+
+// POST /api/resources/grades  (add a grade / band to the rate card)
+r.post('/grades', ah(async (req, res) => {
+  const b = req.body;
+  requireFields(b, ['grade', 'title']);
+  const ins = await query(
+    `INSERT INTO resource_grades (grade, title, daily_rate, monthly_rate)
+     VALUES ($1,$2,COALESCE($3,0),COALESCE($4,0))
+     ON CONFLICT (grade) DO UPDATE
+       SET title = EXCLUDED.title, daily_rate = EXCLUDED.daily_rate, monthly_rate = EXCLUDED.monthly_rate
+     RETURNING *`,
+    [String(b.grade).trim().toUpperCase(), b.title, b.daily_rate, b.monthly_rate]);
+  res.status(201).json(ins.rows[0]);
+}));
+
+// PATCH /api/resources/grades/:grade  (edit rate card entry)
+r.patch('/grades/:grade', ah(async (req, res) => {
+  const editable = new Set(['title', 'daily_rate', 'monthly_rate']);
+  const sets = []; const vals = []; let i = 1;
+  for (const [k, v] of Object.entries(req.body)) {
+    if (editable.has(k)) { sets.push(`${k} = $${i++}`); vals.push(v); }
+  }
+  if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
+  vals.push(String(req.params.grade).toUpperCase());
+  const upd = await query(`UPDATE resource_grades SET ${sets.join(', ')} WHERE grade = $${i} RETURNING *`, vals);
+  if (!upd.rows[0]) return res.status(404).json({ error: 'grade not found' });
+  res.json(upd.rows[0]);
+}));
+
+// ---- Resource pool ownership (Finance/Admin edit; access gated in UI) ----
+
+// POST /api/resources/pool  (add a person to the pool)
+r.post('/pool', ah(async (req, res) => {
+  const b = req.body;
+  requireFields(b, ['id', 'name', 'grade']);
+  const ins = await query(
+    `INSERT INTO resource_pool (id, name, grade, is_active)
+     VALUES ($1,$2,$3,COALESCE($4,TRUE)) RETURNING *`,
+    [String(b.id).trim(), b.name, String(b.grade).trim().toUpperCase(), b.is_active]);
+  res.status(201).json(ins.rows[0]);
+}));
+
+// PATCH /api/resources/pool/:id
+r.patch('/pool/:id', ah(async (req, res) => {
+  const editable = new Set(['name', 'grade', 'is_active']);
+  const sets = []; const vals = []; let i = 1;
+  for (const [k, v] of Object.entries(req.body)) {
+    if (editable.has(k)) { sets.push(`${k} = $${i++}`); vals.push(k === 'grade' ? String(v).toUpperCase() : v); }
+  }
+  if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
+  vals.push(req.params.id);
+  const upd = await query(`UPDATE resource_pool SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+  if (!upd.rows[0]) return res.status(404).json({ error: 'resource not found' });
+  res.json(upd.rows[0]);
+}));
+
+// DELETE /api/resources/pool/:id  (soft delete -> is_active = FALSE)
+r.delete('/pool/:id', ah(async (req, res) => {
+  const upd = await query(`UPDATE resource_pool SET is_active = FALSE WHERE id = $1 RETURNING id`, [req.params.id]);
+  if (!upd.rows[0]) return res.status(404).json({ error: 'resource not found' });
+  res.status(204).end();
+}));
+
 // GET /api/resources?project_id=... (assignments on a project)
 r.get('/', ah(async (req, res) => {
   const { project_id } = req.query;

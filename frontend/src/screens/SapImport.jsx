@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { api } from '../data/api.js';
 import { useSapImports, fmt, MONTHS } from '../data/store.js';
+import Icon from '../components/Icon.jsx';
 
 const STEPS = ['Upload', 'Preview', 'Commit', 'Done'];
 
@@ -272,7 +273,7 @@ export default function SapImport({ navigate, session }) {
                     <button className="btn btn-primary btn-lg" onClick={handleCommit} disabled={committing}
                       style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {committing && <span className="spinner spinner-sm" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.35)' }} />}
-                      {committing ? 'Committing…' : 'Commit import →'}
+                      {committing ? 'Committing...' : <>Commit import <Icon name="arrowRight" size={14} /></>}
                     </button>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
@@ -298,7 +299,7 @@ export default function SapImport({ navigate, session }) {
                 <div style={{ marginTop: 10 }}>
                   <button className="btn btn-ghost btn-sm" onClick={reset}>Upload another</button>
                   <button className="btn btn-primary btn-sm" style={{ marginLeft: 8 }}
-                    onClick={() => navigate('portfolio')}>View portfolio →</button>
+                    onClick={() => navigate('portfolio')}>View portfolio <Icon name="arrowRight" size={13} /></button>
                 </div>
               </div>
             </div>
@@ -315,7 +316,7 @@ export default function SapImport({ navigate, session }) {
             <div>
               {history.length === 0 ? (
                 <div className="empty-state" style={{ padding: '32px 16px' }}>
-                  <div className="empty-state-icon">📂</div>
+                  <div className="empty-state-icon"><Icon name="folder" size={36} /></div>
                   <div className="empty-state-title">No imports yet</div>
                   <div className="empty-state-sub">Completed imports will appear here.</div>
                 </div>

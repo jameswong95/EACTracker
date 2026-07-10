@@ -17,6 +17,16 @@ import usersRouter      from './routes/users.js';
 import sapRouter        from './routes/sap.js';
 import auditRouter      from './routes/audit.js';
 import alertsRouter     from './routes/alerts.js';
+import tenderRouter     from './routes/tender.js';
+import projectInitiationRouter from './routes/projectInitiation.js';
+import etcRouter        from './routes/etc.js';
+import resourceRequestsRouter from './routes/resourceRequests.js';
+import materialAssetsRouter from './routes/materialAssets.js';
+import materialMiscRouter from './routes/materialMisc.js';
+import fixedRatesRouter from './routes/fixedRates.js';
+import settingsRouter from './routes/settings.js';
+import fxRatesRouter from './routes/fxRates.js';
+import { materialsRouter, subConRouter, othersRouter } from './routes/costItems.js';
 
 const app = express();
 
@@ -40,12 +50,24 @@ app.use('/api/milestones', milestonesRouter);
 app.use('/api/risks',      risksRouter);
 app.use('/api/updates',    updatesRouter);
 app.use('/api/resources',  resourcesRouter);
+app.use('/api/resource-requests', resourceRequestsRouter);
 app.use('/api/approvals',  approvalsRouter);
 app.use('/api/periods',    periodsRouter);
 app.use('/api/users',      usersRouter);
 app.use('/api/sap',        sapRouter);
 app.use('/api/audit',      auditRouter);
 app.use('/api/alerts',     alertsRouter);
+app.use('/api/tender',     tenderRouter);
+app.use('/api/project-initiation', projectInitiationRouter);
+app.use('/api/etc',        etcRouter);
+app.use('/api/materials',  materialsRouter);
+app.use('/api/material-assets', materialAssetsRouter);
+app.use('/api/material-misc', materialMiscRouter);
+app.use('/api/fixed-rates', fixedRatesRouter);
+app.use('/api/settings',   settingsRouter);
+app.use('/api/fx-rates',   fxRatesRouter);
+app.use('/api/sub-con',    subConRouter);
+app.use('/api/others',     othersRouter);
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'not found', path: req.path }));

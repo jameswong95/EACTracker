@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useProjects, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
-import { Sparkline, MultiSeriesLineChart, HorizontalBarChart, SegmentedRing, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
+import { Sparkline, MultiSeriesLineChart, DivergingBarChart, SegmentedRing, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
+import Icon from '../components/Icon.jsx';
 
 // PRD Section 4: Portfolio Financial Health Dashboard
 
@@ -36,7 +37,7 @@ function HealthBadge({ status }) {
 }
 
 // PRD §4.6: Standard sub-job categories
-const CATEGORIES = ['PM/MISC', 'Material', 'Subcon', 'Spares', 'Others'];
+const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Others LOB/MISC'];
 
 function buildCategoryBreakdown(projects) {
   const weights = [0.12, 0.32, 0.28, 0.18, 0.10];
@@ -118,13 +119,16 @@ export default function Portfolio({ navigate, role, session }) {
   const [search, setSearch]             = useState('');
   const [healthFilter, setHealthFilter] = useState('all');
   const [sort, setSort]                 = useState({ key: 'eacVariance', dir: 1 });
-  const [varMode, setVarMode]           = useState('amount');
 
   const debouncedSearch = useDebounce(search);
 
   const myName   = session?.full_name;
-  const baseList = (role === 'Project Manager' && myName)
-    ? projects.filter(p => p.pm === myName)
+  const myId     = session?.id != null ? Number(session.id) : null;
+  const baseList = (role === 'Project Manager' && (myName || myId))
+    ? projects.filter(p =>
+        (myId != null && (p.pmUserIds || []).includes(myId)) ||
+        (myName && ((p.pmNames || []).includes(myName) || p.pm === myName))
+      )
     : (role === 'Project Director' && myName)
     ? projects.filter(p => p.pd === myName)
     : projects;
@@ -192,23 +196,20 @@ export default function Portfolio({ navigate, role, session }) {
     { label: 'Not Assessed', value: hCounts.none, color: C.neutral },
   ].filter(s => s.value > 0);
 
-  // EAC Variance ranking (PRD §4.3) — top 10 adverse first
+  // EAC Variance ranking (PRD §4.3) — Top 10 by variance %, diverging around zero.
+  // Variance % = (EAC − Budget) / Budget. Positive = overrun (red, right),
+  // negative = under budget (green, left).
   const varBars = [...baseList]
-    .sort((a, b) => (a.budget - a.eac) - (b.budget - b.eac))
-    .slice(0, 10)
     .map(p => {
-      const variance = p.budget - p.eac;
-      const pct = p.budget > 0 ? (variance / p.budget) * 100 : 0;
-      // Positive = under budget (green). Negative overrun uses same health thresholds as dot:
-      // < 10% over → ok/green, 10-25% → warn/amber, > 25% → bad/red.
-      const col = pct >= 0 ? C.fav : pct > -10 ? C.fav : pct > -25 ? C.attn : C.adverse;
+      const pct = p.budget > 0 ? ((p.eac - p.budget) / p.budget) * 100 : 0;
       return {
-        label: p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name,
-        value: variance,
+        label: p.name.length > 20 ? p.name.slice(0, 19) + '…' : p.name,
         pct,
-        color: col,
+        color: pct > 0 ? C.adverse : C.fav,
       };
-    });
+    })
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 10);
 
   // Portfolio trend (PRD §4.4)
   const { labels: trendLabels, eacTrend, budgetLine } = buildPortfolioTrend(baseList);
@@ -249,8 +250,8 @@ export default function Portfolio({ navigate, role, session }) {
           </div>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm">⤓ Export CSV</button>
-          <button className="btn btn-ghost btn-sm">⤓ Export PDF</button>
+          <button className="btn btn-ghost btn-sm"><Icon name="download" size={13} /> Export CSV</button>
+          <button className="btn btn-ghost btn-sm"><Icon name="download" size={13} /> Export PDF</button>
         </div>
       </div>
 
@@ -290,22 +291,14 @@ export default function Portfolio({ navigate, role, session }) {
 
         {/* EAC Variance by Project (PRD §4.3) */}
         <div className="card card-p">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>EAC Variance by Project</div>
-            <div className="flex gap-1">
-              <button className={`btn btn-sm ${varMode === 'amount' ? 'btn-secondary' : 'btn-ghost'}`}
-                onClick={() => setVarMode('amount')}>S$</button>
-              <button className={`btn btn-sm ${varMode === 'pct' ? 'btn-secondary' : 'btn-ghost'}`}
-                onClick={() => setVarMode('pct')}>%</button>
-            </div>
+          <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+            EAC Variance (by Project)
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>
-            Largest adverse first · Green = on track (&lt;10% over) · Amber = at risk · Red = off track
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>
+            Top 10 by Variance %
           </div>
           {varBars.length
-            ? <HorizontalBarChart
-                bars={varBars.map(b => ({ ...b, pct: varMode === 'pct' ? b.pct : null }))}
-                maxAbs={Math.max(...varBars.map(b => Math.abs(b.value)), 1)} />
+            ? <DivergingBarChart bars={varBars} />
             : <div style={{ color: 'var(--text-3)', fontSize: 12 }}>No data</div>
           }
         </div>
@@ -441,7 +434,11 @@ export default function Portfolio({ navigate, role, session }) {
                     padding: '7px 10px', borderRadius: 6, background: 'var(--surface-2)', marginTop: 2 }}>
                     <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Cash vs Rev gap</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: gapColor }}>
-                      {gap >= 0 ? '+' : ''}{fmtShort(gap)} {gap >= 0 ? '▲ ahead' : '▼ behind'}
+                      {gap >= 0 ? '+' : ''}{fmtShort(gap)}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+                        <Icon name={gap >= 0 ? 'trendUp' : 'trendDown'} size={12} />
+                        {gap >= 0 ? 'ahead' : 'behind'}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -606,7 +603,7 @@ export default function Portfolio({ navigate, role, session }) {
                         className={health === 'bad' ? 'row-bad' : health === 'warn' ? 'row-warn' : ''}>
                         <td>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.id} · {p.pm}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.id} · PM: {p.pm}</div>
                         </td>
                         <td style={{ padding: '10px 6px', textAlign: 'center' }}>
                           <span className={`dot dot-${health}`} title={healthLabel(health)} />
@@ -628,7 +625,7 @@ export default function Portfolio({ navigate, role, session }) {
                         <td>
                           <button className="btn btn-ghost btn-sm"
                             onClick={e => { e.stopPropagation(); navigate('project', p.id); }}>
-                            View →
+                            View <Icon name="arrowRight" size={13} />
                           </button>
                         </td>
                       </tr>
@@ -638,7 +635,7 @@ export default function Portfolio({ navigate, role, session }) {
                     <tr>
                       <td colSpan={10}>
                         <div className="empty-state">
-                          <div className="empty-state-icon">🔍</div>
+                          <div className="empty-state-icon"><Icon name="search" size={36} /></div>
                           <div className="empty-state-title">
                             {baseList.length === 0 ? 'No projects found' : 'No projects match these filters'}
                           </div>

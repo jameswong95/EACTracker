@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useProject, fmt, MONTHS } from '../data/store.js';
+import { useProject, useTender, fmt, MONTHS } from '../data/store.js';
 import { LineChart } from '../components/Charts.jsx';
 import { api } from '../data/api.js';
+import Icon from '../components/Icon.jsx';
 
 const NOW_MONTH = new Date().getMonth(); // months 0..NOW_MONTH are locked
 
@@ -23,10 +24,10 @@ export default function RevRec({ projectId, navigate, role }) {
   if (!p) return (
     <div className="screen" style={{ padding: 32 }}>
       <div className="empty-state">
-        <div className="empty-state-icon">⚠️</div>
+        <div className="empty-state-icon"><Icon name="alertTriangle" size={36} /></div>
         <div className="empty-state-title">Project not found</div>
         <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
-          onClick={() => navigate('portfolio')}>← Back to Portfolio</button>
+          onClick={() => navigate('portfolio')}><Icon name="arrowLeft" size={13} /> Back to Portfolio</button>
       </div>
     </div>
   );
@@ -35,6 +36,7 @@ export default function RevRec({ projectId, navigate, role }) {
 
 function RevRecBody({ p, navigate, role, reload }) {
   const canEdit = role !== 'Project Director';
+  const { data: tenderData } = useTender(p.id);
   const rr = p.revrec;
   // Build a recognition curve if one isn't provided yet
   const curve = (rr.recognitionCurve && rr.recognitionCurve.length === 12)
@@ -110,7 +112,7 @@ function RevRecBody({ p, navigate, role, reload }) {
         <span className="breadcrumb-sep">/</span>
         <span className="breadcrumb-current">Revenue Recognition</span>
         <div className="grow" />
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}>← Back</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', p.id)}><Icon name="arrowLeft" size={13} /> Back</button>
         {canEdit && (
           <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
             {saved ? (
@@ -157,6 +159,83 @@ function RevRecBody({ p, navigate, role, reload }) {
           <div className="kpi-sub">PM-entered per month</div>
         </div>
       </div>
+
+      {/* Recognition summary — Planned / Actual / Forecast / Planned (Tender) */}
+      {(() => {
+        const plannedTotal = (rr.entries || []).reduce((s, e) => s + (Number(e.amount) || 0), 0) || rr.forecastFull;
+        const tenderTotal = Number(tenderData?.totals?.total_amount) || 0;
+        const cols = [
+          { label: 'Planned',          value: plannedTotal,     color: 'var(--text)',  sub: 'Baseline recognition schedule' },
+          { label: 'Actual',           value: recognisedToDate, color: 'var(--ok)',    sub: 'Recognised to date (SAP-locked)' },
+          { label: 'Forecast',         value: totalForecast,    color: totalForecast > rr.forecastFull ? 'var(--bad)' : 'var(--accent)', sub: 'Full-year projected recognition' },
+          { label: 'Planned (Tender)', value: tenderTotal,      color: 'var(--text-2)', sub: 'Pre-kickoff tender estimate' },
+        ];
+        return (
+          <div className="card card-p" style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Recognition summary</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>
+              Four distinct views of project revenue. Planned (Tender) is the standalone pre-kickoff estimate.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+              {cols.map(c => (
+                <div key={c.label} style={{ padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>{c.label}</div>
+                  <div className="num" style={{ fontSize: 20, fontWeight: 700, color: c.color, marginTop: 4 }}>{fmt(c.value)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Tender cost — per-category planned cost sourced live from the Tender module.
+          When the tender is awarded these totals represent the committed plan. */}
+      {(() => {
+        if (!tenderData?.tender) return null;
+        const t = tenderData?.totals || {};
+        const status = tenderData?.tender?.status || 'draft';
+        const isAwarded = status === 'awarded';
+        const cats = [
+          { label: 'Resource', value: Number(t.resource_amount) || 0, color: '#2F6BBD' },
+          { label: 'Material', value: Number(t.material_amount) || 0, color: '#008C95' },
+          { label: 'Sub-Con',  value: Number(t.subcon_amount)   || 0, color: '#C99000' },
+          { label: 'Others',   value: Number(t.others_amount)   || 0, color: '#6B7280' },
+        ];
+        const tenderTotal = Number(t.total_amount) || 0;
+        const statusBadge = { draft: 'neutral', submitted: 'accent', awarded: 'ok', lost: 'bad' }[status] || 'neutral';
+        return (
+          <div className="card card-p" style={{ marginBottom: 16 }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Tender cost</div>
+              <div className="flex items-center gap-2">
+                <span className={`badge badge-${statusBadge}`} style={{ fontSize: 10 }}>{status}</span>
+                <span className="breadcrumb-link" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate('tender', tenderData.tender.id)}>
+                  Open tender <Icon name="arrowRight" size={11} />
+                </span>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>
+              Planned cost by category from the Tender module.
+              {isAwarded
+                ? ' This tender is awarded — the figures below are the committed cost plan.'
+                : ' These figures populate here once the tender is awarded.'}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+              {cats.map(c => (
+                <div key={c.label} style={{ padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', borderLeft: `3px solid ${c.color}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>{c.label}</div>
+                  <div className="num" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>{fmt(c.value)}</div>
+                </div>
+              ))}
+              <div style={{ padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2, var(--surface))' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Total tender cost</div>
+                <div className="num" style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent, var(--ok))', marginTop: 4 }}>{fmt(tenderTotal)}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="flex gap-4">
         {/* Left: guardrails */}

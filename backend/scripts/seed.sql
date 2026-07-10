@@ -104,6 +104,13 @@ BEGIN
 
 END $$;
 
+INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
+SELECT id, pm_user_id, TRUE
+FROM projects
+WHERE pm_user_id IS NOT NULL
+ON CONFLICT (project_id, user_id) DO UPDATE
+  SET is_lead = project_pm_assignments.is_lead OR EXCLUDED.is_lead;
+
 -- -- sub_jobs --
 INSERT INTO sub_jobs (project_id, wbs_code, wbs_suffix, name, sort_order,
                       lab, foh, mat, doc, sco, tot_cost, com_cst, plan_cos,

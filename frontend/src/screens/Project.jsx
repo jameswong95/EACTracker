@@ -1,9 +1,42 @@
-import React, { useState, useEffect } from 'react';
-import { useProject, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
+import React, { useState, useEffect, useRef } from 'react';
+import { useProject, useEtc, useRates, useEacMonthly, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
 import { api } from '../data/api.js';
 import { MultiSeriesLineChart, SegmentedRing, GroupedBarChart, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
+import Icon from '../components/Icon.jsx';
 
 // PRD Section 5: Project Financial Health Dashboard
+
+// Reusable hover tooltip. Renders a fixed-position bubble so it is never
+// clipped by scrolling containers (e.g. tables) and appears instantly.
+function Tip({ text, children }) {
+  const [show, setShow] = useState(false);
+  const [pos, setPos]   = useState({ x: 0, y: 0 });
+  const ref = useRef(null);
+  function enter() {
+    const r = ref.current?.getBoundingClientRect();
+    if (r) setPos({ x: r.left + r.width / 2, y: r.bottom + 6 });
+    setShow(true);
+  }
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={enter}
+      onMouseLeave={() => setShow(false)}
+      style={{ borderBottom: '1px dotted currentColor', cursor: 'help' }}
+    >
+      {children}
+      {show && (
+        <span style={{
+          position: 'fixed', left: pos.x, top: pos.y, transform: 'translateX(-50%)',
+          background: '#1f2937', color: '#fff', padding: '6px 10px', borderRadius: 6,
+          fontSize: 11, fontWeight: 500, lineHeight: 1.4, width: 'max-content', maxWidth: 240,
+          whiteSpace: 'normal', textAlign: 'left', letterSpacing: 0, textTransform: 'none',
+          zIndex: 1000, pointerEvents: 'none', boxShadow: '0 4px 14px rgba(0,0,0,.2)',
+        }}>{text}</span>
+      )}
+    </span>
+  );
+}
 
 const CATEGORIES = ['PM/MISC', 'Material', 'Subcon', 'Spares', 'Others'];
 
@@ -48,22 +81,114 @@ function HealthBadge({ status }) {
   );
 }
 
-function ForecastBadge({ status = 'approved' }) {
-  const styles = {
-    draft:     { bg: C.neutral + '18', color: C.neutral },
-    submitted: { bg: C.forecast + '18', color: C.forecast },
-    approved:  { bg: C.fav + '18', color: C.fav },
-    returned:  { bg: C.attn + '18', color: C.attn },
-    overdue:   { bg: C.adverse + '18', color: C.adverse },
-  };
-  const s = styles[status] || styles.draft;
-  const label = status.charAt(0).toUpperCase() + status.slice(1);
+function PmAssignmentControl({ project, users, session, onSaved }) {
+  const pmUsers = users.filter(u => u.role === 'Project Manager' && u.is_active !== false);
+  const initialIds = project.pmUserIds?.length
+    ? project.pmUserIds
+    : (project.pmUserId != null ? [Number(project.pmUserId)] : []);
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(initialIds);
+  const [lead, setLead] = useState(project.pmUserId != null ? Number(project.pmUserId) : (initialIds[0] || null));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef();
+
+  useEffect(() => {
+    const ids = project.pmUserIds?.length
+      ? project.pmUserIds
+      : (project.pmUserId != null ? [Number(project.pmUserId)] : []);
+    setSelected(ids);
+    setLead(project.pmUserId != null ? Number(project.pmUserId) : (ids[0] || null));
+    setError('');
+    setSaved(false);
+  }, [project.id, project.pmUserId, (project.pmUserIds || []).join(',')]);
+
+  useEffect(() => () => clearTimeout(savedTimer.current), []);
+
+  function toggleUser(id) {
+    setSaved(false);
+    setSelected(prev => {
+      const has = prev.includes(id);
+      const next = has ? prev.filter(v => v !== id) : [...prev, id];
+      if (has && lead === id) setLead(next[0] || null);
+      if (!has && lead == null) setLead(id);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    setSaved(false);
+    try {
+      const updated = await api.post(`/api/projects/${encodeURIComponent(project.id)}/pm-assignments`, {
+        user_ids: selected,
+        lead_user_id: selected.includes(lead) ? lead : (selected[0] || null),
+        user_id: session?.id || null,
+      });
+      onSaved?.(updated);
+      setSaved(true);
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 2200);
+    } catch (e) {
+      setError(e.message || 'Could not save PM assignments');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 8px', borderRadius: 3, fontSize: 11, fontWeight: 600,
-      background: s.bg, color: s.color }}>
-      Forecast: {label}
-    </span>
+    <div className="pm-assign">
+      <button className="btn btn-ghost btn-sm pm-assign-trigger" onClick={() => setOpen(v => !v)}>
+        Manage PMs
+        <span className="pm-assign-count">{selected.length}</span>
+        {saved && <span className="pm-assign-saved-dot" title="Saved" />}
+      </button>
+      {open && (
+        <div className="pm-assign-popover">
+          <div className="pm-assign-head">
+            <div>
+              <div className="pm-assign-title">Project Managers</div>
+              <div className="pm-assign-sub">Tick all assigned PMs and choose the lead.</div>
+            </div>
+          </div>
+          <div className="pm-assign-list">
+            {pmUsers.map(u => {
+              const id = Number(u.id);
+              const checked = selected.includes(id);
+              return (
+                <label key={u.id} className={`pm-assign-row${checked ? ' checked' : ''}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleUser(id)} />
+                  <span className="pm-assign-avatar">{u.initials}</span>
+                  <span className="pm-assign-name">{u.full_name}</span>
+                  <input
+                    type="radio"
+                    name={`lead-pm-${project.id}`}
+                    checked={checked && lead === id}
+                    disabled={!checked}
+                    onChange={() => setLead(id)}
+                    title="Lead PM"
+                  />
+                  <span className="pm-assign-lead">Lead</span>
+                </label>
+              );
+            })}
+            {pmUsers.length === 0 && (
+              <div className="pm-assign-empty">No active Project Manager users found.</div>
+            )}
+          </div>
+          {error && <div className="pm-assign-error">{error}</div>}
+          {saved && !error && <div className="pm-assign-saved">PM assignments saved.</div>}
+          <div className="pm-assign-actions">
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} disabled={saving}>Cancel</button>
+            <button className="btn btn-secondary btn-sm" onClick={save} disabled={saving}>
+              {saving ? 'Saving...' : saved ? 'Saved' : 'Save PMs'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -122,18 +247,16 @@ function buildCategories(subjobs) {
 
 // Build Revenue & Cash chart series (PRD §5.2)
 function buildRevSeries(p) {
-  const n = 24;
+  const n = 12;
   const budget  = p.budget || 1;
   const cv      = p.contractValue || budget * 1.2;
   const rev     = p.revRecognised || 0;
   const cash    = p.progressBilling || 0;
 
-  const labels = Array.from({ length: n }, (_, i) => {
-    const d = new Date(2025, 0 + i, 1);
-    return d.toLocaleString('default', { month: 'short', year: '2-digit' });
-  });
+  const labels = Array.from({ length: n }, (_, i) =>
+    new Date(2026, i, 1).toLocaleString('default', { month: 'short' }));
 
-  const asAtIdx = 18; // Jul 2026 approx
+  const asAtIdx = 6; // Jul 2026 (matches As at date)
 
   // Budgeted revenue: linear ramp to contract value
   const budRevValues = labels.map((_, i) => Math.round(cv * (i / (n - 1))));
@@ -146,7 +269,12 @@ function buildRevSeries(p) {
   // Cash received: linear ramp to current progress_billing value (single cumulative total from SAP PB column)
   const cashValues = labels.map((_, i) => i <= asAtIdx ? Math.round(cash * (i / asAtIdx)) : null);
 
-  return { labels, budRevValues, revActual, revForecast, cashValues, asAtIdx };
+  // Milestone payment markers (orange squares) on the cash line, up to as-at
+  const milestones = [1, 3, 5]
+    .filter(i => i <= asAtIdx && cashValues[i] != null)
+    .map(i => ({ index: i, value: cashValues[i] }));
+
+  return { labels, budRevValues, revActual, revForecast, cashValues, asAtIdx, milestones };
 }
 
 // GP chart data (PRD §5.3)
@@ -167,6 +295,209 @@ function buildGpSeries(p) {
     variance:      (forecastGp - budgetGp).toFixed(1),
     gpStatus:      forecastGp >= budgetGp * 0.95 ? 'ok' : forecastGp >= budgetGp * 0.85 ? 'warn' : 'bad',
   };
+}
+
+// GP % timeline for the Actual-GP-vs-Budget-GP chart (PRD §5.3) — ACTUAL | FORECAST
+function buildGpTimeline(p, labels, asAtIdx) {
+  const cv           = p.contractValue || 0;
+  const budgetGp     = cv > 0 ? ((cv - p.budget) / cv) * 100 : 0;
+  const forecastGp   = cv > 0 ? ((cv - p.eac)   / cv) * 100 : 0;
+  const rev          = p.revRecognised || 0;
+  const actual       = p.actual || 0;
+  const recognitionGp = rev > 0 ? ((rev - actual) / rev) * 100 : budgetGp;
+  const n = labels.length;
+
+  const budgetLine = labels.map(() => +budgetGp.toFixed(1));
+  const actualLine = labels.map((_, i) => {
+    if (i > asAtIdx) return null;
+    const t = asAtIdx > 0 ? i / asAtIdx : 1;
+    const start = recognitionGp * 0.55;
+    return +(start + (recognitionGp - start) * t).toFixed(1);
+  });
+  const forecastLine = labels.map((_, i) => {
+    if (i < asAtIdx) return null;
+    const t = (n - 1 - asAtIdx) > 0 ? (i - asAtIdx) / (n - 1 - asAtIdx) : 1;
+    return +(recognitionGp + (forecastGp - recognitionGp) * t).toFixed(1);
+  });
+  forecastLine[asAtIdx] = actualLine[asAtIdx];
+
+  return { budgetLine, actualLine, forecastLine, budgetGp, recognitionGp, forecastGp };
+}
+
+// ── Cross-module monthly rollup (Labour + Material + Sub-Con) ─────────────
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ROLLUP_BUCKETS = [
+  { key: 'labour',   label: 'Labour',   color: CAT_COLORS['PM/MISC'], match: (c) => c === 'labour' },
+  { key: 'material', label: 'Material', color: CAT_COLORS['Material'], match: (c) => ['material', 'materials', 'hardware', 'software', 'licence', 'license'].includes(c) },
+  { key: 'subcon',   label: 'Sub-Con',  color: CAT_COLORS['Subcon'],  match: (c) => ['subcon', 'subcontract', 'sub-con'].includes(c) },
+];
+
+function bucketFor(costCategory) {
+  const c = String(costCategory || '').toLowerCase();
+  return ROLLUP_BUCKETS.find(b => b.match(c)) || null;
+}
+
+// Stacked monthly bars with a cumulative total-spend trajectory line overlay.
+function PlannedSpendChart({ months, height = 220 }) {
+  const padL = 44, padR = 8, padT = 12, padB = 24;
+  const n = months.length;
+  const colW = Math.max(28, Math.min(72, 640 / Math.max(n, 1)));
+  const innerW = n * colW;
+  const totalW = padL + innerW + padR;
+  const H = height - padT - padB;
+
+  const maxMonthly = Math.max(...months.map(m => m.total), 1);
+  const grandTotal = months.reduce((a, m) => a + m.total, 0) || 1;
+
+  const yOf = (v) => padT + H - (v / maxMonthly) * H;
+
+  // cumulative line points (scaled to grand total, sharing the same axis top)
+  let cum = 0;
+  const cumPts = months.map((m, i) => {
+    cum += m.total;
+    const x = padL + i * colW + colW / 2;
+    const y = padT + H - (cum / grandTotal) * H;
+    return { x, y, cum };
+  });
+  const linePath = cumPts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x},${pt.y}`).join(' ');
+
+  function fmtAxis(v) {
+    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+    if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+    return String(Math.round(v));
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg viewBox={`0 0 ${totalW} ${height}`} width={totalW} height={height}
+        style={{ width: '100%', maxWidth: totalW, minWidth: 320 }}>
+        {/* gridlines + left axis */}
+        {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
+          const y = padT + H - f * H;
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={totalW - padR} y2={y} stroke="var(--border)" strokeWidth="1" opacity="0.4" />
+              <text x={padL - 6} y={y + 3} textAnchor="end" fontSize="9" fill="var(--text-3)">{fmtAxis(maxMonthly * f)}</text>
+            </g>
+          );
+        })}
+        {/* stacked bars */}
+        {months.map((m, i) => {
+          const x = padL + i * colW + colW * 0.16;
+          const bw = colW * 0.68;
+          let yCursor = padT + H;
+          return (
+            <g key={i}>
+              {ROLLUP_BUCKETS.map((b) => {
+                const val = m[b.key];
+                if (!val) return null;
+                const h = (val / maxMonthly) * H;
+                yCursor -= h;
+                return <rect key={b.key} x={x} y={yCursor} width={bw} height={Math.max(h, 0.5)} fill={b.color} opacity={0.9} />;
+              })}
+              <text x={x + bw / 2} y={height - 8} textAnchor="middle" fontSize="9" fill="var(--text-3)">
+                {MONTH_ABBR[m.month - 1]}{m.showYear ? ` '${String(m.year).slice(2)}` : ''}
+              </text>
+            </g>
+          );
+        })}
+        {/* cumulative trajectory line */}
+        <path d={linePath} fill="none" stroke={C.forecast} strokeWidth="2" />
+        {cumPts.map((pt, i) => <circle key={i} cx={pt.x} cy={pt.y} r="2.5" fill={C.forecast} />)}
+      </svg>
+    </div>
+  );
+}
+
+function PlannedSpendRollup({ projectId }) {
+  const { data, loading } = useEacMonthly(projectId);
+
+  const months = React.useMemo(() => {
+    if (!data) return [];
+    const rowCat = {};
+    (data.rows || []).forEach(r => { rowCat[r.id] = r.cost_category; });
+    const acc = {}; // 'year-month' → bucket sums
+    (data.values || []).forEach(v => {
+      const b = bucketFor(rowCat[v.row_id]);
+      if (!b) return;
+      const key = `${v.year}-${v.month}`;
+      if (!acc[key]) acc[key] = { year: v.year, month: v.month, labour: 0, material: 0, subcon: 0 };
+      acc[key][b.key] += (Number(v.amount_k) || 0) * 1000; // amount_k is thousands
+    });
+    const arr = Object.values(acc)
+      .map(m => ({ ...m, total: m.labour + m.material + m.subcon }))
+      .sort((a, b) => (a.year - b.year) || (a.month - b.month));
+    // mark first month of each year for the axis label
+    let lastYear = null;
+    arr.forEach(m => { m.showYear = m.year !== lastYear; lastYear = m.year; });
+    return arr;
+  }, [data]);
+
+  const totals = React.useMemo(() => {
+    const t = months.reduce((a, m) => ({
+      labour: a.labour + m.labour, material: a.material + m.material,
+      subcon: a.subcon + m.subcon, total: a.total + m.total,
+    }), { labour: 0, material: 0, subcon: 0, total: 0 });
+    const peak = months.reduce((best, m) => (m.total > (best?.total || 0) ? m : best), null);
+    return { ...t, peak };
+  }, [months]);
+
+  if (loading) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 24 }}>
+      <div style={{ padding: '12px 20px 10px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Planned Spend by Month</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+            Cross-module rollup — Labour + Material + Sub-Con, showing the total planned spend trajectory.
+          </div>
+        </div>
+        <div className="chart-legend" style={{ margin: 0 }}>
+          {ROLLUP_BUCKETS.map(b => (
+            <div key={b.key} className="legend-item">
+              <div className="legend-swatch" style={{ background: b.color }} />
+              <span>{b.label}</span>
+            </div>
+          ))}
+          <div className="legend-item">
+            <div className="legend-swatch" style={{ background: 'transparent', borderTop: `2px solid ${C.forecast}` }} />
+            <span>Cumulative total</span>
+          </div>
+        </div>
+      </div>
+
+      {months.length === 0 ? (
+        <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+          No monthly cost plan yet. Add Labour, Material or Sub-Con lines to the monthly EAC grid to see the spend trajectory.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
+            {[
+              { label: 'Labour',       value: totals.labour,   color: CAT_COLORS['PM/MISC'] },
+              { label: 'Material',     value: totals.material, color: CAT_COLORS['Material'] },
+              { label: 'Sub-Con',      value: totals.subcon,   color: CAT_COLORS['Subcon'] },
+              { label: 'Total planned', value: totals.total,   color: 'var(--text-1)', strong: true },
+              { label: 'Peak month',   text: totals.peak ? `${MONTH_ABBR[totals.peak.month - 1]} ${totals.peak.year}` : '—',
+                sub: totals.peak ? fmtShort(totals.peak.total) : '', color: 'var(--text-1)' },
+            ].map((k, i, a) => (
+              <div key={k.label} style={{ flex: 1, padding: '12px 20px', borderRight: i < a.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <div className="kpi-label">{k.label}</div>
+                <div className="kpi-value" style={{ fontSize: k.strong ? 20 : 17, color: k.color }}>
+                  {k.text != null ? k.text : fmtShort(k.value)}
+                </div>
+                {k.sub && <div className="kpi-sub">{k.sub}</div>}
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: '14px 16px' }}>
+            <PlannedSpendChart months={months} />
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 // ── Tab: Overview ─────────────────────────────────────────────────────────
@@ -202,6 +533,9 @@ function TabOverview({ p, navigate }) {
           </div>
         ))}
       </div>
+
+      {/* Cross-module monthly rollup (Labour + Material + Sub-Con) */}
+      <PlannedSpendRollup projectId={p.id} />
 
       {/* Alerts */}
       {alertsLoading ? (
@@ -242,7 +576,7 @@ function TabOverview({ p, navigate }) {
         <div style={{ marginBottom: 24 }}>
           <div className="section-label">Alerts</div>
           <div style={{ color: C.fav, fontSize: 13, padding: '10px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>✓</span> No active alerts — project is on track.
+            <Icon name="check" size={16} /> No active alerts — project is on track.
           </div>
         </div>
       )}
@@ -253,11 +587,12 @@ function TabOverview({ p, navigate }) {
 
 // ── Tab: Revenue & Cash (PRD §5.2) ────────────────────────────────────────
 function TabRevenueCash({ p }) {
-  const { labels, budRevValues, revActual, revForecast, cashValues, asAtIdx } = buildRevSeries(p);
+  const { labels, budRevValues, revActual, revForecast, cashValues, asAtIdx, milestones } = buildRevSeries(p);
   const cv         = p.contractValue || 0;
   const rev        = p.revRecognised || 0;
   const cash       = p.progressBilling || 0;
   const cashRevVar = cash - rev;
+  const gpT        = buildGpTimeline(p, labels, asAtIdx);
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -321,38 +656,135 @@ function TabRevenueCash({ p }) {
         );
       })()}
 
-      {/* Cumulative Revenue & Cash chart (PRD §5.2) */}
-      <div className="card card-p" style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
-          Revenue Recognition vs Budget vs Cash Inflow
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>
-          Cumulative · monthly · dashed = forecast period
-        </div>
-        <MultiSeriesLineChart
-          series={[
-            { label: 'Budgeted Revenue',         values: budRevValues, color: C.budget,   dashed: true, strokeWidth: 1.5 },
-            { label: 'Revenue Recognised Actual', values: revActual,   color: C.actual,   area: true },
-            { label: 'Revenue Recognised Forecast', values: revForecast, color: C.actual, dashed: true, opacity: 0.6 },
-            { label: 'Customer Cash Received',    values: cashValues,  color: C.cash,     strokeWidth: 2 },
-          ]}
-          labels={labels}
-          asAtIndex={asAtIdx}
-          height={220}
-        />
-        <div className="chart-legend" style={{ marginTop: 10 }}>
-          {[
-            { color: C.budget,   label: 'Budgeted Revenue',          dashed: true },
-            { color: C.actual,   label: 'Revenue Recognised (actual)' },
-            { color: C.actual,   label: 'Revenue Recognised (forecast)', dashed: true },
-            { color: C.cash,     label: 'Customer Cash Received' },
-          ].map((l, i) => (
-            <div key={i} className="legend-item">
-              <div className="legend-swatch" style={{ background: l.dashed ? 'transparent' : l.color,
-                borderTop: l.dashed ? `2px dashed ${l.color}` : 'none' }} />
-              <span>{l.label}</span>
+      {/* Timeline visualizations (PRD §5.2 + §5.3) — ACTUAL | FORECAST, side by side */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+
+        {/* 1. Revenue Recognition vs Budget vs Cash Inflow */}
+        <div className="card">
+          <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Revenue Recognition vs Budget vs Cash Inflow</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+              With timeline — cumulative (S$M)
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.fav, display: 'inline-block' }} />
+              <span>On track</span>
             </div>
-          ))}
+          </div>
+          <div style={{ display: 'flex', gap: 12, padding: '12px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="chart-legend" style={{ marginBottom: 8 }}>
+                {[
+                  { color: C.budget,    label: 'Budgeted Revenue (cumulative)', dashed: true },
+                  { color: C.actual,    label: 'Revenue Recognised (actual)' },
+                  { color: C.cash,      label: 'Customer Cash Received' },
+                  { color: C.milestone, label: 'Milestone payment', square: true },
+                ].map((l, i) => (
+                  <div key={i} className="legend-item">
+                    <div className="legend-swatch" style={{
+                      background: l.dashed ? 'transparent' : l.color,
+                      borderTop: l.dashed ? `2px dashed ${l.color}` : 'none',
+                      borderRadius: l.square ? 1 : undefined }} />
+                    <span>{l.label}</span>
+                  </div>
+                ))}
+              </div>
+              <MultiSeriesLineChart
+                zones
+                series={[
+                  { label: 'Budgeted Revenue',            values: budRevValues, color: C.budget, dashed: true, strokeWidth: 1.5 },
+                  { label: 'Revenue Recognised Actual',   values: revActual,   color: C.actual, area: true, markers: true },
+                  { label: 'Revenue Recognised Forecast', values: revForecast, color: C.actual, dashed: true, opacity: 0.6 },
+                  { label: 'Customer Cash Received',      values: cashValues,  color: C.cash,   strokeWidth: 2, markers: true },
+                ]}
+                labels={labels}
+                asAtIndex={asAtIdx}
+                milestones={milestones}
+                height={230}
+              />
+            </div>
+            <div style={{ width: 128, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>As at <strong style={{ color: 'var(--text-2)' }}>{fmtAsAt()}</strong></div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Revenue Recognised</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtShort(rev)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{cv > 0 ? `${((rev / cv) * 100).toFixed(1)}%` : '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Cash Received</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtShort(cash)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{cv > 0 ? `${((cash / cv) * 100).toFixed(1)}%` : '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Variance (Cash vs Rev)</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: cashRevVar >= 0 ? C.fav : C.adverse }}>
+                  {cashRevVar >= 0 ? '' : '('}{fmtShort(Math.abs(cashRevVar))}{cashRevVar >= 0 ? '' : ')'}
+                </div>
+                <div style={{ fontSize: 10, color: cashRevVar >= 0 ? C.fav : C.adverse }}>
+                  {rev > 0 ? `${cashRevVar >= 0 ? '+' : '-'}${Math.abs((cashRevVar / rev) * 100).toFixed(1)}%` : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Actual GP vs Budget GP */}
+        <div className="card">
+          <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Actual GP vs Budget GP</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+              With timeline — GP %
+              <span style={{ width: 7, height: 7, borderRadius: '50%',
+                background: gpT.forecastGp >= gpT.budgetGp * 0.95 ? C.fav : gpT.forecastGp >= gpT.budgetGp * 0.85 ? C.attn : C.adverse,
+                display: 'inline-block' }} />
+              <span>{gpT.forecastGp >= gpT.budgetGp * 0.95 ? 'On track' : gpT.forecastGp >= gpT.budgetGp * 0.85 ? 'At risk' : 'Off track'}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, padding: '12px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="chart-legend" style={{ marginBottom: 8 }}>
+                {[
+                  { color: C.budget, label: 'GP % (Budget)', dashed: true },
+                  { color: C.fav,    label: 'GP % (Actual)' },
+                ].map((l, i) => (
+                  <div key={i} className="legend-item">
+                    <div className="legend-swatch" style={{
+                      background: l.dashed ? 'transparent' : l.color,
+                      borderTop: l.dashed ? `2px dashed ${l.color}` : 'none' }} />
+                    <span>{l.label}</span>
+                  </div>
+                ))}
+              </div>
+              <MultiSeriesLineChart
+                zones
+                unit="%"
+                series={[
+                  { label: 'GP % (Budget)',   values: gpT.budgetLine,   color: C.budget, dashed: true, strokeWidth: 1.5 },
+                  { label: 'GP % (Actual)',   values: gpT.actualLine,   color: C.fav,    strokeWidth: 2, markers: true },
+                  { label: 'GP % (Forecast)', values: gpT.forecastLine, color: C.fav,    dashed: true, opacity: 0.6 },
+                ]}
+                labels={labels}
+                asAtIndex={asAtIdx}
+                height={230}
+              />
+            </div>
+            <div style={{ width: 128, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>As at <strong style={{ color: 'var(--text-2)' }}>{fmtAsAt()}</strong></div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>GP % (Actual)</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.fav }}>{gpT.recognitionGp.toFixed(1)}%</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>GP % (Budget)</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{gpT.budgetGp.toFixed(1)}%</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Variance</div>
+                <div style={{ fontSize: 15, fontWeight: 700,
+                  color: (gpT.forecastGp - gpT.budgetGp) >= 0 ? C.fav : C.adverse }}>
+                  {(gpT.forecastGp - gpT.budgetGp) >= 0 ? '+' : ''}{(gpT.forecastGp - gpT.budgetGp).toFixed(1)}pp
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -361,32 +793,114 @@ function TabRevenueCash({ p }) {
 
 // ── Tab: Cost Performance (PRD §5.4) ──────────────────────────────────────
 function TabCost({ p }) {
-  const cats      = buildCategories(p.subjobs);
+  const { etc: etcData } = useEtc(p.id);
+  const rates = useRates();
   const [selCat, setSelCat] = useState(null);
 
-  const totalBudget = cats.reduce((a, c) => a + c.budget, 0) || p.budget;
-  const totalActual = cats.reduce((a, c) => a + c.actual, 0) || p.actual;
-  const totalEtc    = cats.reduce((a, c) => a + c.etc,    0) || Math.max(0, p.eac - p.actual - p.committed);
-  // Use project-level EAC for the header KPI (approved top-down figure)
-  // Sub-job EAC is shown in the table as the bottom-up view
-  const subJobEac   = cats.reduce((a, c) => a + c.eac,    0);
+  // Labour (PM/MISC) splits by the Resource Plan lock boundary, so the two
+  // screens agree: Committed = locked (fully-elapsed quarters), ETC = unlocked
+  // (current/future quarters). Rates × FTE per month, same as the Resource Plan.
+  const startAbs = (p.startYear ?? 2026) * 12 + (p.startMonth ?? 0);
+  const nowAbs   = new Date().getFullYear() * 12 + new Date().getMonth();
+  const isLockedMonth = (i) => { const q = Math.floor((startAbs + i) / 3); return q * 3 + 2 < nowAbs; };
+  const rateOf = (grade) => rates.find(x => x.grade === grade)?.monthly || 0;
+  let labourCommitted = 0, labourEtc = 0;
+  (p.resources || []).forEach(r => {
+    const rate = rateOf(r.grade);
+    (r.fte || []).forEach((v, i) => {
+      const cost = (parseFloat(v) || 0) * rate;
+      if (isLockedMonth(i)) labourCommitted += cost; else labourEtc += cost;
+    });
+  });
+
+  // Material / Sub-Con committed & ETC come from their project-level registers:
+  // a line item with a purchase date is Committed, otherwise it is ETC.
+  const derived = etcData?.totals || {
+    labour_etc: 0, material_etc: 0, subcon_etc: 0,
+    material_committed: 0, subcon_committed: 0, etc_total: 0,
+  };
+  const committedByCategory = {
+    'PM/MISC':  labourCommitted,
+    'Material': Number(derived.material_committed) || 0,
+    'Subcon':   Number(derived.subcon_committed)   || 0,
+  };
+  const etcByCategory = {
+    'PM/MISC':  labourEtc,
+    'Material': Number(derived.material_etc) || 0,
+    'Subcon':   Number(derived.subcon_etc)   || 0,
+    'Spares':   0,
+    'Others':   0,
+  };
+  const cats = buildCategories(p.subjobs).map(c => {
+    const etc       = c.name in etcByCategory       ? etcByCategory[c.name]       : c.etc;
+    const committed = c.name in committedByCategory ? committedByCategory[c.name] : c.committed;
+    return { ...c, committed, etc, eac: c.actual + committed + etc };
+  });
+
+  const totalBudget    = cats.reduce((a, c) => a + c.budget,    0) || p.budget;
+  const totalActual    = cats.reduce((a, c) => a + c.actual,    0) || p.actual;
+  const totalCommitted = cats.reduce((a, c) => a + c.committed, 0);
+  const totalEtc       = cats.reduce((a, c) => a + c.etc,       0);
+  // Bottom-up sub-job/category EAC (shown in the table)
+  const subJobEac   = cats.reduce((a, c) => a + c.eac, 0);
+  const forecastEac = totalActual + totalCommitted + totalEtc;
 
   return (
     <div style={{ padding: '24px 28px' }}>
-      {/* Cost totals row */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 24 }}>
-        {[
-          { label: 'Budget',     value: fmtShort(totalBudget),  color: C.budget    },
-          { label: 'Actual',     value: fmtShort(totalActual),  color: C.actual    },
-          { label: 'Committed',  value: fmtShort(p.committed),  color: C.committed },
-          { label: 'ETC',        value: fmtShort(totalEtc),     color: C.forecast  },
-          { label: 'EAC',        value: fmtShort(p.eac),        color: C.forecast  },
-        ].map(k => (
-          <div key={k.label} className="kpi-tile">
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value" style={{ fontSize: 20, color: k.color }}>{k.value}</div>
+      {/* Forecast summary KPIs */}
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
+        <div className="kpi-tile">
+          <div className="kpi-label"><Tip text="Total Estimate to Complete — the remaining cost you expect to spend across all categories to finish the project.">Total ETC (forecast)</Tip></div>
+          <div className="kpi-value" style={{ fontSize: 20, color: C.forecast }}>{fmtShort(totalEtc)}</div>
+          <div className="kpi-sub">Remaining cost to complete</div>
+        </div>
+        <div className="kpi-tile">
+          <div className="kpi-label"><Tip text="Estimate at Completion = Actual + Committed + ETC. The total projected final cost of the project.">Forecast EAC</Tip></div>
+          <div className="kpi-value" style={{ fontSize: 20, color: forecastEac > p.budget ? C.adverse : C.fav }}>
+            {fmtShort(forecastEac)}
           </div>
-        ))}
+          <div className="kpi-sub">Actual + Committed + ETC</div>
+        </div>
+        <div className="kpi-tile">
+          {(() => {
+            const cv = p.contractValue || 0;
+            const fgp = cv > 0 ? ((cv - forecastEac) / cv) * 100 : null;
+            const bgp = cv > 0 ? ((cv - p.budget)    / cv) * 100 : null;
+            const col = fgp == null ? C.neutral
+              : fgp >= (bgp ?? 0) * 0.95 ? C.fav
+              : fgp >= (bgp ?? 0) * 0.85 ? C.attn
+              : C.adverse;
+            return (
+              <>
+                <div className="kpi-label"><Tip text="Forecast Gross Profit % = (Contract Value − Forecast EAC) ÷ Contract Value. Projected margin at completion, compared to the budgeted margin.">Forecast GP%</Tip></div>
+                <div className="kpi-value" style={{ fontSize: 20, color: col }}>
+                  {fgp != null ? fgp.toFixed(1) + '%' : '—'}
+                </div>
+                <div className="kpi-sub">
+                  {bgp != null ? `Budget: ${bgp.toFixed(1)}%` : 'No contract value'}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+        <div className="kpi-tile">
+          {(() => {
+            const varAmt = p.budget - forecastEac;
+            const varPct = p.budget > 0 ? (varAmt / p.budget) * 100 : 0;
+            const col = varAmt >= 0 ? C.fav : Math.abs(varPct) > 5 ? C.adverse : C.attn;
+            return (
+              <>
+                <div className="kpi-label"><Tip text="Budget − Forecast EAC. Positive (green) means the project is expected to finish under budget; negative (red) signals a projected overrun.">Budget Variance</Tip></div>
+                <div className="kpi-value" style={{ fontSize: 20, color: col }}>
+                  {varAmt >= 0 ? '+' : ''}{fmtShort(varAmt)}
+                </div>
+                <div className="kpi-sub">
+                  {varAmt >= 0 ? 'Under budget' : 'Over budget'} · {varPct >= 0 ? '+' : ''}{varPct.toFixed(1)}%
+                </div>
+              </>
+            );
+          })()}
+        </div>
       </div>
 
       <div className="proj-2col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
@@ -476,7 +990,7 @@ function TabCost({ p }) {
                 <th style={{ color: C.budget }}>Budget</th>
                 <th style={{ color: C.actual }}>Actual</th>
                 <th style={{ color: C.committed }}>Committed</th>
-                <th style={{ color: C.forecast }}>ETC</th>
+                <th style={{ color: C.forecast }}>ETC (Forecast)</th>
                 <th>EAC</th>
                 <th>Variance (Budget−EAC)</th>
               </tr>
@@ -491,7 +1005,7 @@ function TabCost({ p }) {
                 <td>Total</td>
                 <td className="num">{fmt(totalBudget)}</td>
                 <td className="num" style={{ color: C.actual }}>{fmt(totalActual)}</td>
-                <td className="num" style={{ color: C.committed }}>{fmt(p.committed)}</td>
+                <td className="num" style={{ color: C.committed }}>{fmt(totalCommitted)}</td>
                 <td className="num" style={{ color: C.forecast }}>{fmt(totalEtc)}</td>
                 <td className="num">{fmt(subJobEac)}</td>
                 <td>
@@ -503,192 +1017,14 @@ function TabCost({ p }) {
               {subJobEac > 0 && Math.abs(subJobEac - p.eac) > 1 && (
                 <tr>
                   <td colSpan={7} style={{ paddingTop: 8, paddingBottom: 4 }}>
-                    <span style={{ fontSize: 11, color: C.attn }}>
-                      ⚠ Sub-job bottom-up EAC ({fmtShort(subJobEac)}) differs from approved project EAC ({fmtShort(p.eac)}) by {fmtShort(Math.abs(subJobEac - p.eac))}. Update sub-job ETCs or re-baseline.
+                    <span style={{ fontSize: 11, color: C.attn, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Icon name="alertTriangle" size={13} />
+                      Sub-job bottom-up EAC ({fmtShort(subJobEac)}) differs from approved project EAC ({fmtShort(p.eac)}) by {fmtShort(Math.abs(subJobEac - p.eac))}. Update sub-job ETCs or re-baseline.
                     </span>
                   </td>
                 </tr>
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Tab: Forecast ──────────────────────────────────────────────────────────
-function TabForecast({ p, reload }) {
-  const initEtc = () => Object.fromEntries((p.subjobs || []).map(s => [s.id, s.etc]));
-  const [etcVals, setEtcVals] = useState(initEtc);
-  const [saving,  setSaving]  = useState(false);
-  const [saved,   setSaved]   = useState(false);
-  const [saveErr, setSaveErr] = useState(null);
-
-  const subjobs = p.subjobs || [];
-  const totalEtc = Object.values(etcVals).reduce((a, v) => a + (Number(v) || 0), 0);
-  // Use SAP-validated project-level actual & committed; ETCs are PM-entered from sub-jobs
-  const forecastEac = p.actual + p.committed + totalEtc;
-
-  async function handleSave() {
-    setSaving(true); setSaveErr(null);
-    try {
-      await Promise.all(
-        subjobs.map(s =>
-          api.patch(`/api/sub-jobs/${s.id}`, { etc_lab: Number(etcVals[s.id]) || 0 })
-        )
-      );
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-      reload();
-    } catch (e) {
-      setSaveErr(e.message || 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div style={{ padding: '24px 28px' }}>
-      {/* ETC summary KPIs */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
-        <div className="kpi-tile">
-          <div className="kpi-label">Total ETC (forecast)</div>
-          <div className="kpi-value" style={{ fontSize: 20, color: C.forecast }}>{fmtShort(totalEtc)}</div>
-          <div className="kpi-sub">Remaining cost to complete</div>
-        </div>
-        <div className="kpi-tile">
-          <div className="kpi-label">Forecast EAC</div>
-          <div className="kpi-value" style={{ fontSize: 20, color: forecastEac > p.budget ? C.adverse : C.fav }}>
-            {fmtShort(forecastEac)}
-          </div>
-          <div className="kpi-sub">Actual + Committed + ETC</div>
-        </div>
-        <div className="kpi-tile">
-          {(() => {
-            const cv = p.contractValue || 0;
-            const fgp = cv > 0 ? ((cv - forecastEac) / cv) * 100 : null;
-            const bgp = cv > 0 ? ((cv - p.budget)    / cv) * 100 : null;
-            const col = fgp == null ? C.neutral
-              : fgp >= (bgp ?? 0) * 0.95 ? C.fav
-              : fgp >= (bgp ?? 0) * 0.85 ? C.attn
-              : C.adverse;
-            return (
-              <>
-                <div className="kpi-label">Forecast GP%</div>
-                <div className="kpi-value" style={{ fontSize: 20, color: col }}>
-                  {fgp != null ? fgp.toFixed(1) + '%' : '—'}
-                </div>
-                <div className="kpi-sub">
-                  {bgp != null ? `Budget: ${bgp.toFixed(1)}%` : 'No contract value'}
-                </div>
-              </>
-            );
-          })()}
-        </div>
-        <div className="kpi-tile">
-          <div className="kpi-label">Forecast Status</div>
-          <div style={{ marginTop: 8 }}><ForecastBadge status="approved" /></div>
-        </div>
-      </div>
-
-      {/* ETC input table */}
-      <div className="card">
-        <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>ETC by Sub-Job</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-              Enter remaining cost to complete for each sub-job. EAC = Actual + Committed + ETC.
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {saveErr && <span style={{ fontSize: 12, color: 'var(--bad)' }}>{saveErr}</span>}
-            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-              {saved ? '✓ Saved' : saving ? 'Saving…' : 'Save ETC'}
-            </button>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Sub-Job</th>
-                <th>Category</th>
-                <th style={{ color: C.budget }}>Budget</th>
-                <th style={{ color: C.actual }}>Actual</th>
-                <th style={{ color: C.committed }}>Committed</th>
-                <th style={{ color: C.forecast, minWidth: 140 }}>ETC (editable)</th>
-                <th>Forecast EAC</th>
-                <th>Variance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subjobs.map(s => {
-                const etc = Number(etcVals[s.id]) || 0;
-                const eac = s.actual + s.committed + etc;
-                const variance = s.budget - eac;
-                const varCol = variance >= 0 ? C.fav : Math.abs(variance) / s.budget > 0.05 ? C.adverse : C.attn;
-                return (
-                  <tr key={s.id}>
-                    <td style={{ fontSize: 12 }}>{s.name}</td>
-                    <td style={{ fontSize: 11 }}>
-                      <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 10, fontWeight: 700,
-                        background: (CAT_COLORS[suffixToCategory(s.suffix)] || C.neutral) + '20',
-                        color: CAT_COLORS[suffixToCategory(s.suffix)] || C.neutral }}>
-                        {suffixToCategory(s.suffix) || s.suffix}
-                      </span>
-                    </td>
-                    <td className="num">{fmt(s.budget)}</td>
-                    <td className="num" style={{ color: C.actual }}>{fmt(s.actual)}</td>
-                    <td className="num" style={{ color: C.committed }}>{fmt(s.committed)}</td>
-                    <td style={{ padding: '4px 12px' }}>
-                      <input
-                        type="number" min="0" step="1000"
-                        className="eac-cell eac-editable"
-                        value={etcVals[s.id] ?? ''}
-                        placeholder="0"
-                        onChange={e => setEtcVals(prev => ({ ...prev, [s.id]: parseFloat(e.target.value) || 0 }))}
-                        style={{ width: 110, textAlign: 'right' }}
-                      />
-                    </td>
-                    <td className="num" style={{ fontWeight: 700 }}>{fmt(eac)}</td>
-                    <td>
-                      <span style={{ color: varCol, fontWeight: 700, fontSize: 12 }}>
-                        {variance >= 0 ? '+' : ''}{fmtShort(variance)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {subjobs.length === 0 && (
-                <tr>
-                  <td colSpan={8}>
-                    <div className="empty-state" style={{ padding: '40px 24px' }}>
-                      <div className="empty-state-icon">📋</div>
-                      <div className="empty-state-title">No sub-jobs</div>
-                      <div className="empty-state-sub">No WBS sub-jobs have been set up for this project yet.</div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {subjobs.length > 0 && (
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
-                  <td colSpan={2} style={{ fontSize: 12, paddingLeft: 20 }}>Total</td>
-                  <td className="num" style={{ paddingLeft: 16 }}>{fmt(subjobs.reduce((a, s) => a + s.budget, 0))}</td>
-                  <td className="num" style={{ color: C.actual, paddingLeft: 16 }}>{fmt(p.actual)}</td>
-                  <td className="num" style={{ color: C.committed, paddingLeft: 16 }}>{fmt(p.committed)}</td>
-                  <td className="num" style={{ color: C.forecast, minWidth: 140, paddingLeft: 16 }}>{fmt(totalEtc)}</td>
-                  <td className="num" style={{ paddingLeft: 16 }}>{fmt(forecastEac)}</td>
-                  <td style={{ paddingLeft: 16 }}>
-                    <span style={{ color: p.budget >= forecastEac ? C.fav : C.adverse, fontWeight: 700 }}>
-                      {p.budget >= forecastEac ? '+' : ''}{fmtShort(p.budget - forecastEac)}
-                    </span>
-                  </td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </div>
@@ -716,7 +1052,8 @@ function TabRecon({ p }) {
 
 // ── Main Project component ────────────────────────────────────────────────
 export default function Project({ projectId, navigate, role, session }) {
-  const { project: p, loading, error, reload } = useProject(projectId);
+  const { project: p, loading, error, updateProject } = useProject(projectId);
+  const users = useUsers();
   const [tab, setTab] = useState('overview');
 
   if (loading) return (
@@ -758,24 +1095,38 @@ export default function Project({ projectId, navigate, role, session }) {
   if (error || !p) return (
     <div className="screen" style={{ padding: 32 }}>
       <div className="empty-state">
-        <div className="empty-state-icon">⚠️</div>
+        <div className="empty-state-icon"><Icon name="alertTriangle" size={36} /></div>
         <div className="empty-state-title">Failed to load project</div>
         <div className="empty-state-sub">{error?.message || 'The project could not be found or an error occurred.'}</div>
         <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
-          onClick={() => navigate('portfolio')}>← Back to Portfolio</button>
+          onClick={() => navigate('portfolio')}><Icon name="arrowLeft" size={13} /> Back to Portfolio</button>
       </div>
     </div>
   );
 
   const cats = buildCategories(p.subjobs);
   const gp   = buildGpSeries(p);
+  function applyPmUpdate(updated) {
+    const ids = Array.isArray(updated?.pm_user_ids)
+      ? updated.pm_user_ids.map(v => Number(v)).filter(Number.isInteger)
+      : [];
+    const names = String(updated?.pm_names || updated?.pm_name || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    updateProject({
+      pm: updated?.pm_names || updated?.pm_name || '(Unassigned)',
+      leadPm: updated?.pm_name || names[0] || '(Unassigned)',
+      pmNames: names,
+      pmUserIds: ids,
+      pmUserId: updated?.pm_user_id ?? null,
+    });
+  }
 
   const tabs = [
     { id: 'overview',  label: 'Overview'       },
     { id: 'revcash',   label: 'Revenue & Cash'  },
-    { id: 'cost',      label: 'Cost'            },
-    { id: 'forecast',  label: 'Forecast'        },
-    { id: 'recon',     label: 'Reconciliation'  },
+    { id: 'cost',      label: 'Cost/Forecast'   },
   ];
 
   return (
@@ -786,28 +1137,28 @@ export default function Project({ projectId, navigate, role, session }) {
           <div className="proj-identity">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <button className="btn btn-ghost btn-sm"
-                onClick={() => navigate('portfolio')}>← Portfolio</button>
+                onClick={() => navigate('portfolio')}><Icon name="arrowLeft" size={13} /> Portfolio</button>
             </div>
             <div className="proj-title">{p.name}</div>
             <div className="proj-meta">
-              <span className="proj-meta-item">🔢 {p.id}</span>
-              {p.customer && <span className="proj-meta-item">🏢 {p.customer}</span>}
-              <span className="proj-meta-item">👤 PM: {p.pm}</span>
-              <span className="proj-meta-item">👤 PD: {p.pd}</span>
-              {p.department && <span className="proj-meta-item">🏷 {p.department}</span>}
+              <span className="proj-meta-item"><Icon name="hash" size={13} /> {p.id}</span>
+              {p.customer && <span className="proj-meta-item"><Icon name="building" size={13} /> {p.customer}</span>}
+              <span className="proj-meta-item"><Icon name="users" size={13} /> PMs: {p.pm}</span>
+              <span className="proj-meta-item"><Icon name="user" size={13} /> PD: {p.pd}</span>
+              {p.department && <span className="proj-meta-item"><Icon name="tag" size={13} /> {p.department}</span>}
             </div>
           </div>
           <div className="proj-badges">
             <HealthBadge status={liveHealth(p)} />
-            <ForecastBadge status="approved" />
+            <PmAssignmentControl project={p} users={users} session={session} onSaved={applyPmUpdate} />
           </div>
         </div>
 
         {/* Reporting context */}
         <div className="proj-context">
-          <span className="proj-context-item">📅 As at: <strong>{fmtAsAt()}</strong></span>
-          <span className="proj-context-item">💱 SGD</span>
-          <span className="proj-context-item data-freshness">● SAP sync: {fmtSapSync(p.lastSapImport)}</span>
+          <span className="proj-context-item"><Icon name="calendar" size={13} /> As at: <strong>{fmtAsAt()}</strong></span>
+          <span className="proj-context-item"><Icon name="currency" size={13} /> SGD</span>
+          <span className="proj-context-item data-freshness"><Icon name="dot" size={10} /> SAP sync: {fmtSapSync(p.lastSapImport)}</span>
           <span className="proj-context-item">
             GP: <strong style={{ color: gp.gpStatus === 'ok' ? C.fav : gp.gpStatus === 'warn' ? C.attn : C.adverse }}>
               {gp.forecastGp}%
@@ -834,8 +1185,6 @@ export default function Project({ projectId, navigate, role, session }) {
         {tab === 'overview'   && <TabOverview   p={p} navigate={navigate} />}
         {tab === 'revcash'    && <TabRevenueCash p={p} />}
         {tab === 'cost'       && <TabCost        p={p} />}
-        {tab === 'forecast'   && <TabForecast    p={p} reload={reload} />}
-        {tab === 'recon'      && <TabRecon       p={p} />}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useRates, useProjects, fmt } from '../data/store.js';
+import { useRates, useProjects, useResourcePool, useFixedRates, useFxRates, fmt } from '../data/store.js';
 import { api } from '../data/api.js';
+import Icon from '../components/Icon.jsx';
 
 const WBS_TREE = [
   {
@@ -27,11 +28,12 @@ void WBS_TREE;
 export default function Standards({ navigate, role }) {
   const isFinance = role === 'Finance' || role === 'Admin';
   const tabs = [
-    ...(isFinance ? [['rates', 'Blended rate card'], ['wbs', 'WBS structure'], ['purchases', 'Purchases']] : []),
-    ['catalog', 'Sub-job catalog'],
+    ['rates', 'Blended rate card'],
+    ['pool', 'Resource pool'],
+    ...(isFinance ? [['fixed', 'Fixed rates']] : []),
+    ['fad', 'FAD (FX rates)'],
   ];
-  const [rateTab, setRateTab] = useState(isFinance ? 'rates' : 'catalog');
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [rateTab, setRateTab] = useState('rates');
 
   return (
     <div className="screen">
@@ -40,16 +42,10 @@ export default function Standards({ navigate, role }) {
           <div className="page-title">Standards</div>
           <div className="page-sub">
             {isFinance
-              ? 'Finance-owned rate card and WBS structure reference'
-              : 'Sub-job catalog reference'}
+              ? 'Finance-owned rate card, resource pool, fixed rates and WBS structure'
+              : 'Rate card and resource pool (read-only) - owned by Finance'}
           </div>
         </div>
-        {isFinance && (
-          <div className="flex gap-2">
-            <button className="btn btn-ghost btn-sm" onClick={() => setHistoryOpen(!historyOpen)}>📋 History</button>
-            <button className="btn btn-primary btn-sm">Publish FY27 draft</button>
-          </div>
-        )}
       </div>
 
       {/* Tabs */}
@@ -66,18 +62,24 @@ export default function Standards({ navigate, role }) {
         ))}
       </div>
 
-      {rateTab === 'rates'     && isFinance && <RateTab />}
-      {rateTab === 'wbs'       && isFinance && <WbsTab />}
-      {rateTab === 'purchases' && isFinance && <PurchasesTab />}
-      {rateTab === 'catalog'   && <CatalogTab />}
+      {rateTab === 'rates'     && <RateTab editable={isFinance} />}
+      {rateTab === 'pool'      && <PoolTab editable={isFinance} />}
+      {rateTab === 'fixed'     && isFinance && <FixedRatesTab />}
+      {rateTab === 'fad'       && <FadTab editable={isFinance} />}
     </div>
   );
 }
 
-function RateTab() {
+function RateTab({ editable = false }) {
   const RATES = useRates();
+  const [err, setErr] = useState(null);
+  async function patchGrade(grade, patch) {
+    try { await api.patch(`/api/resources/grades/${grade}`, patch); setErr(null); }
+    catch (e) { setErr(e.message || 'Update failed'); }
+  }
   return (
     <>
+      {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
       {/* Header card */}
       <div className="card card-p mb-5">
         <div className="flex items-center gap-4 flex-wrap">
@@ -94,7 +96,7 @@ function RateTab() {
             </div>
           </div>
           <div className="grow" />
-          <span className="badge badge-accent" style={{ alignSelf: 'flex-start' }}>Finance-owned · locked to PMs</span>
+          <span className="badge badge-accent" style={{ alignSelf: 'flex-start' }}>{editable ? 'Finance-owned · editable' : 'Finance-owned · read-only'}</span>
         </div>
       </div>
 
@@ -120,13 +122,31 @@ function RateTab() {
               {RATES.map((r, i) => (
                 <tr key={i}>
                   <td><span className="badge badge-accent" style={{ fontWeight: 800 }}>{r.grade}</span></td>
-                  <td style={{ fontWeight: 500 }}>{r.title}</td>
-                  <td className="num text-right" style={{ fontWeight: 700 }}>SGD {r.daily.toLocaleString()}</td>
-                  <td className="num text-right" style={{ color: 'var(--text-2)' }}>SGD {r.monthly.toLocaleString()}</td>
+                  <td style={{ fontWeight: 500 }}>
+                    {editable ? (
+                      <input className="input" defaultValue={r.title}
+                        onBlur={e => e.target.value !== r.title && patchGrade(r.grade, { title: e.target.value })}
+                        style={{ maxWidth: 220 }} />
+                    ) : r.title}
+                  </td>
+                  <td className="num text-right" style={{ fontWeight: 700 }}>
+                    {editable ? (
+                      <input className="input num" type="number" defaultValue={r.daily}
+                        onBlur={e => Number(e.target.value) !== r.daily && patchGrade(r.grade, { daily_rate: Number(e.target.value) || 0 })}
+                        style={{ maxWidth: 110, textAlign: 'right' }} />
+                    ) : <>SGD {r.daily.toLocaleString()}</>}
+                  </td>
+                  <td className="num text-right" style={{ color: 'var(--text-2)' }}>
+                    {editable ? (
+                      <input className="input num" type="number" defaultValue={r.monthly}
+                        onBlur={e => Number(e.target.value) !== r.monthly && patchGrade(r.grade, { monthly_rate: Number(e.target.value) || 0 })}
+                        style={{ maxWidth: 110, textAlign: 'right' }} />
+                    ) : <>SGD {r.monthly.toLocaleString()}</>}
+                  </td>
                   <td className="num text-right">
                     <span style={{ color: 'var(--ok)', fontWeight: 600 }}>+{(3.5 + i * 0.2).toFixed(1)}%</span>
                   </td>
-                  <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{[142, 198, 156, 88, 42][i]} plans</td>
+                  <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{[142, 198, 156, 88, 42][i] || '—'} plans</td>
                 </tr>
               ))}
               <tr style={{ background: 'var(--surface-2)' }}>
@@ -141,20 +161,249 @@ function RateTab() {
           </table>
         </div>
       </div>
+    </>
+  );
+}
 
-      {/* Info cards */}
-      <div className="grid-3">
-        {[
-          { title: 'PM visibility',    icon: <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="11" cy="11" rx="9" ry="6"/><circle cx="11" cy="11" r="2.5"/></svg>, body: 'Project Managers see headcount numbers only — never dollar rates. The system multiplies behind the scenes using the locked rate card.' },
-          { title: 'Tender alignment', icon: <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="14" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/></svg>, body: 'Identical rate table feeds the tender estimation tool, ensuring no fork between bid price and execution budget.' },
-          { title: 'Change control',   icon: <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="12" height="9" rx="1.5"/><path d="M8 11V7.5a3 3 0 0 1 6 0V11"/></svg>, body: 'Annual refresh only. Mid-year rate changes require Finance Director approval and trigger a retrospective EAC freeze across all open projects.' },
-        ].map((c, i) => (
-          <div key={i} className="card card-p">
-            <div style={{ fontSize: 24, marginBottom: 10 }}>{c.icon}</div>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{c.title}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{c.body}</div>
-          </div>
-        ))}
+// Resource pool - Finance/Admin owns it (add/edit/deactivate); PM/PD read-only.
+function PoolTab({ editable = false }) {
+  const pool = useResourcePool();
+  const RATES = useRates();
+  const [rows, setRows] = useState([]);
+  const [q, setQ] = useState('');
+  const [adding, setAdding] = useState({ id: '', name: '', grade: '' });
+  const [err, setErr] = useState(null);
+  useEffect(() => { setRows(pool); }, [pool]);
+
+  async function reload() {
+    try { const p = await api.get('/api/resources/pool'); setRows(p.map(r => ({ id: r.id, name: r.name, grade: r.grade, roles: r.roles || [] }))); }
+    catch (e) { setErr(e.message); }
+  }
+  async function patchPerson(id, patch) {
+    try { await api.patch(`/api/resources/pool/${id}`, patch); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Update failed'); }
+  }
+  async function addPerson() {
+    if (!adding.id.trim() || !adding.name.trim() || !adding.grade.trim()) { setErr('id, name and grade are required'); return; }
+    try { await api.post('/api/resources/pool', adding); setAdding({ id: '', name: '', grade: '' }); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Add failed'); }
+  }
+  async function removePerson(id) {
+    try { await api.del(`/api/resources/pool/${id}`); reload(); }
+    catch (e) { setErr(e.message || 'Delete failed'); }
+  }
+
+  const gradeOptions = RATES.map(r => r.grade);
+  const filtered = rows.filter(r => !q || r.name.toLowerCase().includes(q.toLowerCase()) || r.grade.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <>
+      {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
+      <div className="card card-p mb-4 flex items-center gap-3 flex-wrap">
+        <input className="input" placeholder="Search name or grade…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 280 }} />
+        <div className="grow" />
+        <span className="badge badge-accent">{editable ? 'Finance-owned · editable' : 'Finance-owned · read-only'}</span>
+      </div>
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Grade</th>
+                {editable && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && <tr><td colSpan={editable ? 4 : 3} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No resources</td></tr>}
+              {filtered.map(r => (
+                <tr key={r.id}>
+                  <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-3)' }}>{r.id}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {editable ? (
+                      <input className="input" defaultValue={r.name}
+                        onBlur={e => e.target.value !== r.name && patchPerson(r.id, { name: e.target.value })} style={{ maxWidth: 220 }} />
+                    ) : r.name}
+                  </td>
+                  <td>
+                    {editable ? (
+                      <select className="input" defaultValue={r.grade} onChange={e => patchPerson(r.id, { grade: e.target.value })} style={{ maxWidth: 90 }}>
+                        {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    ) : <span className="badge badge-accent" style={{ fontWeight: 800 }}>{r.grade}</span>}
+                  </td>
+                  {editable && <td><button className="btn btn-ghost btn-sm" onClick={() => removePerson(r.id)} title="Deactivate"><Icon name="x" size={13} /></button></td>}
+                </tr>
+              ))}
+              {editable && (
+                <tr>
+                  <td><input className="input" placeholder="r16" value={adding.id} onChange={e => setAdding(a => ({ ...a, id: e.target.value }))} style={{ maxWidth: 70 }} /></td>
+                  <td><input className="input" placeholder="Full name" value={adding.name} onChange={e => setAdding(a => ({ ...a, name: e.target.value }))} style={{ maxWidth: 220 }} /></td>
+                  <td>
+                    <select className="input" value={adding.grade} onChange={e => setAdding(a => ({ ...a, grade: e.target.value }))} style={{ maxWidth: 90 }}>
+                      <option value="">Grade</option>
+                      {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </td>
+                  <td><button className="btn btn-primary btn-sm" onClick={addPerson}>Add</button></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Fixed-rate admin table (Finance/Admin owned reference rates).
+function FixedRatesTab() {
+  const { rows, reload } = useFixedRates();
+  const [adding, setAdding] = useState({ code: '', label: '', unit: 'each', rate: '' });
+  const [err, setErr] = useState(null);
+  async function patchRate(id, patch) {
+    try { await api.patch(`/api/fixed-rates/${id}`, patch); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Update failed'); }
+  }
+  async function addRate() {
+    if (!adding.label.trim()) { setErr('Label is required'); return; }
+    try { await api.post('/api/fixed-rates', { ...adding, rate: Number(adding.rate) || 0 }); setAdding({ code: '', label: '', unit: 'each', rate: '' }); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Add failed'); }
+  }
+  async function removeRate(id) {
+    try { await api.del(`/api/fixed-rates/${id}`); reload(); }
+    catch (e) { setErr(e.message || 'Delete failed'); }
+  }
+  return (
+    <>
+      {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
+      <div className="card card-p mb-4">
+        <h4 style={{ marginBottom: 6 }}>Fixed rates</h4>
+        <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Standard reference charges (mobilisation, freight, testing…). Reused when estimating material and sub-con line items.</div>
+      </div>
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Code</th><th>Description</th><th>Unit</th><th className="num">Rate (SGD)</th><th>Notes</th><th /></tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No fixed rates yet</td></tr>}
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td><input className="input" defaultValue={r.code || ''} onBlur={e => e.target.value !== (r.code || '') && patchRate(r.id, { code: e.target.value })} style={{ maxWidth: 90 }} /></td>
+                  <td><input className="input" defaultValue={r.label} onBlur={e => e.target.value !== r.label && patchRate(r.id, { label: e.target.value })} /></td>
+                  <td><input className="input" defaultValue={r.unit} onBlur={e => e.target.value !== r.unit && patchRate(r.id, { unit: e.target.value })} style={{ maxWidth: 80 }} /></td>
+                  <td className="num"><input className="input num" type="number" defaultValue={Number(r.rate)} onBlur={e => Number(e.target.value) !== Number(r.rate) && patchRate(r.id, { rate: Number(e.target.value) || 0 })} style={{ maxWidth: 120, textAlign: 'right' }} /></td>
+                  <td><input className="input" defaultValue={r.notes || ''} onBlur={e => e.target.value !== (r.notes || '') && patchRate(r.id, { notes: e.target.value })} /></td>
+                  <td><button className="btn btn-ghost btn-sm" onClick={() => removeRate(r.id)} title="Delete"><Icon name="x" size={13} /></button></td>
+                </tr>
+              ))}
+              <tr>
+                <td><input className="input" placeholder="CODE" value={adding.code} onChange={e => setAdding(a => ({ ...a, code: e.target.value }))} style={{ maxWidth: 90 }} /></td>
+                <td><input className="input" placeholder="Description" value={adding.label} onChange={e => setAdding(a => ({ ...a, label: e.target.value }))} /></td>
+                <td><input className="input" placeholder="each" value={adding.unit} onChange={e => setAdding(a => ({ ...a, unit: e.target.value }))} style={{ maxWidth: 80 }} /></td>
+                <td className="num"><input className="input num" type="number" placeholder="0.00" value={adding.rate} onChange={e => setAdding(a => ({ ...a, rate: e.target.value }))} style={{ maxWidth: 120, textAlign: 'right' }} /></td>
+                <td />
+                <td><button className="btn btn-primary btn-sm" onClick={addRate}>Add</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Global FAD / FX rates - organisation-wide exchange rates to SGD, owned by
+// Finance. Settled (locked) by Finance; read-only for everyone else.
+function FadTab({ editable = false }) {
+  const { rows, settlement, reload } = useFxRates();
+  const [adding, setAdding] = useState({ currency: '', rate_to_sgd: '', notes: '' });
+  const [err, setErr] = useState(null);
+  const settled = !!settlement.settled_at;
+  const canEdit = editable && !settled;
+
+  async function patchRate(id, patch) {
+    try { await api.patch(`/api/fx-rates/${id}`, patch); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Update failed'); }
+  }
+  async function addRate() {
+    const cur = adding.currency.trim().toUpperCase();
+    if (!cur) { setErr('Currency code is required'); return; }
+    try { await api.post('/api/fx-rates', { currency: cur, rate_to_sgd: Number(adding.rate_to_sgd) || 0, notes: adding.notes || null }); setAdding({ currency: '', rate_to_sgd: '', notes: '' }); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Add failed'); }
+  }
+  async function removeRate(id) {
+    try { await api.del(`/api/fx-rates/${id}`); reload(); }
+    catch (e) { setErr(e.message || 'Delete failed'); }
+  }
+  async function toggleSettle() {
+    try { await api.post('/api/fx-rates/settle', { settled: !settled }); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Settle failed'); }
+  }
+
+  return (
+    <>
+      {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
+      <div className="card card-p mb-4 flex items-center gap-4 flex-wrap">
+        <div>
+          <h4 style={{ marginBottom: 6 }}>FAD exchange rates</h4>
+          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Value in S$ of 1 unit of each currency. SGD is the base (1.0000). Global — shared by every project and tender.</div>
+        </div>
+        <div className="grow" />
+        {settled && (
+          <span className="badge badge-ok" style={{ alignSelf: 'flex-start' }}>
+            Settled by Finance{settlement.settled_at ? ` · ${String(settlement.settled_at).slice(0, 10)}` : ''}
+          </span>
+        )}
+        {editable && (
+          <button className={`btn btn-sm ${settled ? 'btn-ghost' : 'btn-primary'}`} onClick={toggleSettle}>
+            {settled ? 'Unsettle FAD' : 'Settle FAD'}
+          </button>
+        )}
+      </div>
+      {settled && editable && (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>FAD is settled — rates are locked. Unsettle to edit.</div>
+      )}
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Currency</th><th className="num">Rate to SGD</th><th>Notes</th>{canEdit && <th />}</tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={canEdit ? 4 : 3} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No rates yet</td></tr>}
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td><span className="badge badge-accent" style={{ fontWeight: 800 }}>{r.currency}</span></td>
+                  <td className="num">
+                    {canEdit && r.currency !== 'SGD' ? (
+                      <input className="input num" type="number" step="0.0001" defaultValue={Number(r.rate_to_sgd)}
+                        onBlur={e => Number(e.target.value) !== Number(r.rate_to_sgd) && patchRate(r.id, { rate_to_sgd: Number(e.target.value) || 0 })}
+                        style={{ maxWidth: 130, textAlign: 'right' }} />
+                    ) : Number(r.rate_to_sgd).toFixed(4)}
+                  </td>
+                  <td>
+                    {canEdit ? (
+                      <input className="input" defaultValue={r.notes || ''} onBlur={e => e.target.value !== (r.notes || '') && patchRate(r.id, { notes: e.target.value })} />
+                    ) : (r.notes || '—')}
+                  </td>
+                  {canEdit && <td>{r.currency !== 'SGD' && <button className="btn btn-ghost btn-sm" onClick={() => removeRate(r.id)} title="Delete"><Icon name="x" size={13} /></button>}</td>}
+                </tr>
+              ))}
+              {canEdit && (
+                <tr>
+                  <td><input className="input" placeholder="USD" value={adding.currency} onChange={e => setAdding(a => ({ ...a, currency: e.target.value }))} style={{ maxWidth: 90 }} /></td>
+                  <td className="num"><input className="input num" type="number" step="0.0001" placeholder="0.0000" value={adding.rate_to_sgd} onChange={e => setAdding(a => ({ ...a, rate_to_sgd: e.target.value }))} style={{ maxWidth: 130, textAlign: 'right' }} /></td>
+                  <td><input className="input" placeholder="Notes" value={adding.notes} onChange={e => setAdding(a => ({ ...a, notes: e.target.value }))} /></td>
+                  <td><button className="btn btn-primary btn-sm" onClick={addRate}>Add</button></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   );

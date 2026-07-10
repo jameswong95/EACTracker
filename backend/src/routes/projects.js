@@ -45,6 +45,14 @@ r.post('/', ah(async (req, res) => {
        b.contract_value, b.initial_budget, b.budget, b.eac, b.actual, b.committed,
        b.rev_recognised, b.progress_billing, b.gr_profit_sap, b.revrec_method, b.last_update]
     );
+    if (b.pm_user_id) {
+      await c.query(
+        `INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
+         VALUES ($1,$2,TRUE)
+         ON CONFLICT (project_id, user_id) DO UPDATE SET is_lead = TRUE`,
+        [b.id, b.pm_user_id]
+      );
+    }
     await logAudit(c, { entity_type: 'project', entity_id: b.id, action: 'create', user_id: req.body.user_id });
     return ins.rows[0];
   });
@@ -73,10 +81,85 @@ r.patch('/:id', ah(async (req, res) => {
       vals
     );
     if (!upd.rows[0]) { const e = new Error('project not found'); e.status = 404; throw e; }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'pm_user_id')) {
+      if (req.body.pm_user_id == null) {
+        await c.query(`DELETE FROM project_pm_assignments WHERE project_id = $1`, [req.params.id]);
+      } else {
+        await c.query(`UPDATE project_pm_assignments SET is_lead = FALSE WHERE project_id = $1`, [req.params.id]);
+        await c.query(
+          `INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
+           VALUES ($1,$2,TRUE)
+           ON CONFLICT (project_id, user_id) DO UPDATE SET is_lead = TRUE`,
+          [req.params.id, req.body.pm_user_id]
+        );
+      }
+    }
     await logAudit(c, { entity_type: 'project', entity_id: req.params.id, action: 'update', user_id: req.body.user_id });
     return upd.rows[0];
   });
   res.json(result);
+}));
+
+async function savePmAssignments(req) {
+  const rawIds = Array.isArray(req.body.user_ids) ? req.body.user_ids
+    : Array.isArray(req.body.pm_user_ids) ? req.body.pm_user_ids
+    : [];
+  const userIds = [...new Set(rawIds.map(v => Number(v)).filter(Number.isInteger))];
+  const leadCandidate = req.body.lead_user_id != null ? Number(req.body.lead_user_id) : null;
+  const leadUserId = Number.isInteger(leadCandidate) && userIds.includes(leadCandidate)
+    ? leadCandidate
+    : (userIds[0] || null);
+
+  return tx(async (c) => {
+    const exists = (await c.query(`SELECT id FROM projects WHERE id = $1`, [req.params.id])).rows[0];
+    if (!exists) { const e = new Error('project not found'); e.status = 404; throw e; }
+
+    if (userIds.length) {
+      const users = await c.query(
+        `SELECT id FROM users
+          WHERE id = ANY($1::int[])
+            AND role = 'Project Manager'
+            AND is_active = TRUE`,
+        [userIds]
+      );
+      if (users.rowCount !== userIds.length) {
+        const e = new Error('all assigned users must be active Project Managers');
+        e.status = 400;
+        throw e;
+      }
+    }
+
+    await c.query(`DELETE FROM project_pm_assignments WHERE project_id = $1`, [req.params.id]);
+    for (const uid of userIds) {
+      await c.query(
+        `INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
+         VALUES ($1,$2,$3)`,
+        [req.params.id, uid, uid === leadUserId]
+      );
+    }
+    await c.query(
+      `UPDATE projects SET pm_user_id = $2, updated_at = NOW() WHERE id = $1`,
+      [req.params.id, leadUserId]
+    );
+    await logAudit(c, {
+      entity_type: 'project',
+      entity_id: req.params.id,
+      action: 'assign_pms',
+      user_id: req.body.user_id,
+    });
+    return (await c.query(`SELECT * FROM v_project_financials WHERE id = $1`, [req.params.id])).rows[0];
+  });
+}
+
+// PUT /api/projects/:id/pm-assignments
+// Assigns one or more Project Managers. projects.pm_user_id remains the lead PM.
+r.put('/:id/pm-assignments', ah(async (req, res) => {
+  res.json(await savePmAssignments(req));
+}));
+
+// POST alias for clients/proxies that are stricter about PUT.
+r.post('/:id/pm-assignments', ah(async (req, res) => {
+  res.json(await savePmAssignments(req));
 }));
 
 // DELETE /api/projects/:id
