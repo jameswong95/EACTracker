@@ -145,7 +145,10 @@ CREATE TABLE IF NOT EXISTS tender_items (
 CREATE INDEX IF NOT EXISTS tender_items_tender_idx ON tender_items (tender_id);
 
 -- Tender totals — rolls up into Rev Rec as "Planned (Tender)"
-CREATE OR REPLACE VIEW v_tender_totals AS
+-- Drop first because later migrations add columns to this view, and
+-- CREATE OR REPLACE VIEW cannot remove columns on a rerun.
+DROP VIEW IF EXISTS v_tender_totals;
+CREATE VIEW v_tender_totals AS
 SELECT
   t.project_id,
   t.id                                          AS tender_id,

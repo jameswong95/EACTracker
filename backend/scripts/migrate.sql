@@ -131,6 +131,12 @@ CREATE TABLE IF NOT EXISTS risks (
   status      TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed','monitor'))
 );
 
+-- Older local schemas only allowed open/closed. Seed data uses monitor.
+ALTER TABLE risks DROP CONSTRAINT IF EXISTS risks_status_check;
+ALTER TABLE risks
+  ADD CONSTRAINT risks_status_check
+  CHECK (status IN ('open','closed','monitor'));
+
 -- -- 8. project_updates (monthly status narrative) --
 CREATE TABLE IF NOT EXISTS project_updates (
   id           SERIAL PRIMARY KEY,
@@ -155,6 +161,75 @@ CREATE TABLE IF NOT EXISTS project_resources (
   fte_allocations JSONB NOT NULL DEFAULT '[]'   -- [{year,month,fte}]
 );
 
+-- Older local schemas used integer resource ids. Current seed/app data uses
+-- stable text ids (r01, r02, ...), so normalize the columns before seeding.
+DO $$
+DECLARE
+  rp_type TEXT;
+  pr_type TEXT;
+  fk RECORD;
+BEGIN
+  SELECT data_type INTO rp_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'resource_pool'
+    AND column_name = 'id';
+
+  SELECT data_type INTO pr_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'project_resources'
+    AND column_name = 'resource_id';
+
+  IF rp_type IS DISTINCT FROM 'text' OR pr_type IS DISTINCT FROM 'text' THEN
+    FOR fk IN
+      SELECT conrelid::regclass AS table_name, conname
+      FROM pg_constraint
+      WHERE contype = 'f'
+        AND conrelid = 'project_resources'::regclass
+        AND confrelid = 'resource_pool'::regclass
+    LOOP
+      EXECUTE format('ALTER TABLE %s DROP CONSTRAINT IF EXISTS %I', fk.table_name, fk.conname);
+    END LOOP;
+
+    IF pr_type IS DISTINCT FROM 'text' THEN
+      ALTER TABLE project_resources
+        ALTER COLUMN resource_id TYPE TEXT
+        USING CASE
+          WHEN resource_id IS NULL THEN NULL
+          ELSE 'r' || lpad(resource_id::text, 2, '0')
+        END;
+    END IF;
+
+    IF rp_type IS DISTINCT FROM 'text' THEN
+      ALTER TABLE resource_pool ALTER COLUMN id DROP DEFAULT;
+      ALTER TABLE resource_pool
+        ALTER COLUMN id TYPE TEXT
+        USING 'r' || lpad(id::text, 2, '0');
+    END IF;
+  END IF;
+
+  DELETE FROM resource_pool a
+  USING resource_pool b
+  WHERE a.ctid < b.ctid
+    AND a.id = b.id;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS resource_pool_id_unique
+    ON resource_pool (id);
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'project_resources'::regclass
+      AND conname = 'project_resources_resource_id_fkey'
+  ) THEN
+    ALTER TABLE project_resources
+      ADD CONSTRAINT project_resources_resource_id_fkey
+      FOREIGN KEY (resource_id) REFERENCES resource_pool(id)
+      NOT VALID;
+  END IF;
+END $$;
+
 -- -- 10. eac_monthly_rows (cost-category rows per project) --
 CREATE TABLE IF NOT EXISTS eac_monthly_rows (
   id            SERIAL PRIMARY KEY,
@@ -163,6 +238,11 @@ CREATE TABLE IF NOT EXISTS eac_monthly_rows (
   label         TEXT NOT NULL,
   sort_order    INT  NOT NULL DEFAULT 0
 );
+
+-- Older local schemas restricted cost_category to a short enum. The EAC grid
+-- now uses free-text categories (labour, reserve, services, software, etc.).
+ALTER TABLE eac_monthly_rows
+  DROP CONSTRAINT IF EXISTS eac_monthly_rows_cost_category_check;
 
 -- -- 11. eac_monthly_values (cell values) --
 CREATE TABLE IF NOT EXISTS eac_monthly_values (
@@ -235,6 +315,88 @@ CREATE INDEX IF NOT EXISTS audit_log_entity_idx
 CREATE INDEX IF NOT EXISTS audit_log_occurred_idx
   ON audit_log (occurred_at DESC);
 
+-- -- Upsert compatibility indexes --
+-- Existing local DBs may have been created by older draft migrations where
+-- these unique constraints were missing. The app and seed use these columns as
+-- ON CONFLICT targets, so ensure matching unique indexes exist.
+DELETE FROM resource_grades a
+USING resource_grades b
+WHERE a.ctid < b.ctid
+  AND a.grade = b.grade;
+CREATE UNIQUE INDEX IF NOT EXISTS resource_grades_grade_unique
+  ON resource_grades (grade);
+
+DELETE FROM users a
+USING users b
+WHERE a.ctid < b.ctid
+  AND a.username = b.username;
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique
+  ON users (username);
+
+DELETE FROM resource_pool a
+USING resource_pool b
+WHERE a.ctid < b.ctid
+  AND a.id = b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS resource_pool_id_unique
+  ON resource_pool (id);
+
+DELETE FROM projects a
+USING projects b
+WHERE a.ctid < b.ctid
+  AND a.id = b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS projects_id_unique
+  ON projects (id);
+
+DELETE FROM sub_jobs a
+USING sub_jobs b
+WHERE a.ctid < b.ctid
+  AND a.wbs_code = b.wbs_code;
+CREATE UNIQUE INDEX IF NOT EXISTS sub_jobs_wbs_code_unique
+  ON sub_jobs (wbs_code);
+
+DELETE FROM project_pm_assignments a
+USING project_pm_assignments b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.user_id = b.user_id;
+CREATE UNIQUE INDEX IF NOT EXISTS project_pm_assignments_unique
+  ON project_pm_assignments (project_id, user_id);
+
+DELETE FROM project_updates a
+USING project_updates b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.period_year = b.period_year
+  AND a.period_month = b.period_month;
+CREATE UNIQUE INDEX IF NOT EXISTS project_updates_period_unique
+  ON project_updates (project_id, period_year, period_month);
+
+DELETE FROM eac_monthly_values a
+USING eac_monthly_values b
+WHERE a.ctid < b.ctid
+  AND a.row_id = b.row_id
+  AND a.year = b.year
+  AND a.month = b.month;
+CREATE UNIQUE INDEX IF NOT EXISTS eac_monthly_values_row_period_unique
+  ON eac_monthly_values (row_id, year, month);
+
+DELETE FROM pd_approvals a
+USING pd_approvals b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.period_year = b.period_year
+  AND a.period_month = b.period_month;
+CREATE UNIQUE INDEX IF NOT EXISTS pd_approvals_period_unique
+  ON pd_approvals (project_id, period_year, period_month);
+
+DELETE FROM period_locks a
+USING period_locks b
+WHERE a.ctid < b.ctid
+  AND a.period_year = b.period_year
+  AND a.period_month = b.period_month;
+CREATE UNIQUE INDEX IF NOT EXISTS period_locks_period_unique
+  ON period_locks (period_year, period_month);
+
 -- --
 -- VIEWS
 -- --
@@ -278,7 +440,10 @@ LEFT JOIN LATERAL (
 ) pm_rollup ON TRUE;
 
 -- -- v_sub_job_summary --
-CREATE OR REPLACE VIEW v_sub_job_summary AS
+-- Drop first because later migrations add columns to this view, and
+-- CREATE OR REPLACE VIEW cannot remove columns on a rerun.
+DROP VIEW IF EXISTS v_sub_job_summary;
+CREATE VIEW v_sub_job_summary AS
 SELECT
   sj.*,
   (sj.etc_lab + sj.etc_foh + sj.etc_mat + sj.etc_doc + sj.etc_sco) AS etc_total,
@@ -286,7 +451,10 @@ SELECT
 FROM sub_jobs sj;
 
 -- -- v_revrec_totals --
-CREATE OR REPLACE VIEW v_revrec_totals AS
+-- Drop first because older versions did not include revrec_method before
+-- remaining, and CREATE OR REPLACE VIEW cannot rename/reorder columns.
+DROP VIEW IF EXISTS v_revrec_totals;
+CREATE VIEW v_revrec_totals AS
 SELECT
   re.project_id,
   SUM(re.amount)                            AS total_recognised,

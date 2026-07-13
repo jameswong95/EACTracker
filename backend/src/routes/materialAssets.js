@@ -3,14 +3,13 @@ import { query, tx } from '../db.js';
 import { ah, requireFields, logAudit } from '../util.js';
 
 // Material Asset List - a live document per project.
-//   * PO present  => Committed (from SAP)
-//   * PO absent   => Forecast
+// SAP import owns committed costs; asset rows are local planning/forecast only.
 // Each asset can carry a vendor payment structure (advance/milestone/retention %)
 // and a timeline dollar-planning schedule (planned cash per month).
 const r = Router();
 
 const EDITABLE = new Set([
-  'asset_tag', 'description', 'serial_no', 'location', 'vendor', 'po_number',
+  'asset_tag', 'description', 'serial_no', 'location', 'vendor',
   'gr_status', 'amount', 'need_by', 'advance_pct', 'milestone_pct', 'retention_pct', 'notes',
 ]);
 
@@ -47,13 +46,13 @@ r.post('/', ah(async (req, res) => {
   const result = await tx(async (c) => {
     const ins = await c.query(
       `INSERT INTO material_assets
-         (project_id, asset_tag, description, serial_no, location, vendor, po_number,
+         (project_id, asset_tag, description, serial_no, location, vendor,
           gr_status, amount, need_by, advance_pct, milestone_pct, retention_pct, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,'not_ordered'),COALESCE($9,0),$10,
-               COALESCE($11,0),COALESCE($12,0),COALESCE($13,0),$14,$15)
+       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'not_ordered'),COALESCE($8,0),$9,
+               COALESCE($10,0),COALESCE($11,0),COALESCE($12,0),$13,$14)
        RETURNING *`,
       [b.project_id, b.asset_tag || null, b.description, b.serial_no || null, b.location || null,
-       b.vendor || null, b.po_number || null, b.gr_status, b.amount, b.need_by || null,
+       b.vendor || null, b.gr_status, b.amount, b.need_by || null,
        b.advance_pct, b.milestone_pct, b.retention_pct, b.notes || null, b.created_by || null]);
     await logAudit(c, { entity_type: 'material_asset', entity_id: ins.rows[0].id, action: 'create' });
     return ins.rows[0];
@@ -66,8 +65,7 @@ r.patch('/:id', ah(async (req, res) => {
   const sets = []; const vals = []; let i = 1;
   for (const [k, v] of Object.entries(req.body)) {
     if (EDITABLE.has(k)) {
-      const val = (k === 'po_number' && typeof v === 'string' && v.trim() === '') ? null : v;
-      sets.push(`${k} = $${i++}`); vals.push(val);
+      sets.push(`${k} = $${i++}`); vals.push(v);
     }
   }
   if (!sets.length) return res.status(400).json({ error: 'no editable fields' });

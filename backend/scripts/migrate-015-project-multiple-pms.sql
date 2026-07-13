@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS project_pm_assignments (
 CREATE INDEX IF NOT EXISTS project_pm_assignments_user_idx
   ON project_pm_assignments (user_id);
 
+DELETE FROM project_pm_assignments a
+USING project_pm_assignments b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.user_id = b.user_id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_pm_assignments_unique
+  ON project_pm_assignments (project_id, user_id);
+
 INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
 SELECT id, pm_user_id, TRUE
 FROM projects

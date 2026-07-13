@@ -14,9 +14,22 @@ ALTER TABLE tender_labour_allocations
 ALTER TABLE tender_labour_allocations
   DROP CONSTRAINT IF EXISTS tender_labour_allocations_phase_function_year_month_key;
 
+DELETE FROM tender_labour_allocations a
+USING tender_labour_allocations b
+WHERE a.ctid < b.ctid
+  AND a.phase_id = b.phase_id
+  AND a.function_id = b.function_id
+  AND a.year = b.year
+  AND a.month = b.month;
+
+DROP INDEX IF EXISTS tender_labour_alloc_phase_function_year_unique;
+
 ALTER TABLE tender_labour_allocations
   ADD CONSTRAINT tender_labour_allocations_phase_function_year_month_key
   UNIQUE (phase_id, function_id, year, month);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tender_labour_alloc_phase_function_year_month_unique
+  ON tender_labour_allocations (phase_id, function_id, year, month);
 
 -- 2. Contiguous timeline range for the labour grid (start .. end inclusive).
 CREATE TABLE IF NOT EXISTS tender_labour_range (

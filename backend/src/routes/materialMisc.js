@@ -7,7 +7,7 @@ import { ah, requireFields, logAudit } from '../util.js';
 // the Finance-owned fixed_rates catalog (qty x unit_rate).
 const r = Router();
 
-const EDITABLE = new Set(['rate_code', 'description', 'unit', 'qty', 'unit_rate', 'amount', 'po_number', 'notes']);
+const EDITABLE = new Set(['rate_code', 'description', 'unit', 'qty', 'unit_rate', 'amount', 'notes']);
 
 // amount = qty * unit_rate unless amount was supplied explicitly.
 function deriveAmount(body, prev = {}) {
@@ -39,12 +39,12 @@ r.post('/', ah(async (req, res) => {
   const result = await tx(async (c) => {
     const ins = await c.query(
       `INSERT INTO material_misc
-         (project_id, rate_code, description, unit, qty, unit_rate, amount, po_number, notes, created_by)
-       VALUES ($1,$2,$3,COALESCE($4,'each'),COALESCE($5,1),COALESCE($6,0),$7,$8,$9,$10)
+         (project_id, rate_code, description, unit, qty, unit_rate, amount, notes, created_by)
+       VALUES ($1,$2,$3,COALESCE($4,'each'),COALESCE($5,1),COALESCE($6,0),$7,$8,$9)
        RETURNING *`,
       [b.project_id, b.rate_code || null, b.description, b.unit,
        b.qty != null ? Number(b.qty) : null, b.unit_rate != null ? Number(b.unit_rate) : null,
-       amount, b.po_number || null, b.notes || null, b.created_by || null]);
+       amount, b.notes || null, b.created_by || null]);
     await logAudit(c, { entity_type: 'material_misc', entity_id: ins.rows[0].id, action: 'create' });
     return ins.rows[0];
   });
@@ -61,8 +61,7 @@ r.patch('/:id', ah(async (req, res) => {
   const sets = []; const vals = []; let i = 1;
   for (const [k, v] of Object.entries(body)) {
     if (EDITABLE.has(k)) {
-      const val = (k === 'po_number' && typeof v === 'string' && v.trim() === '') ? null : v;
-      sets.push(`${k} = $${i++}`); vals.push(val);
+      sets.push(`${k} = $${i++}`); vals.push(v);
     }
   }
   if (!sets.length) return res.status(400).json({ error: 'no editable fields' });

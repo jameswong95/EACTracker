@@ -27,3 +27,15 @@ CREATE INDEX IF NOT EXISTS project_initiation_items_project_idx
   ON project_initiation_items (project_id);
 CREATE INDEX IF NOT EXISTS project_initiation_items_source_tender_idx
   ON project_initiation_items (source_tender_id);
+
+-- Existing local DBs may have this table from an older draft without the
+-- unique key. Ensure ON CONFLICT (project_id, source_tender_item_id) works.
+DELETE FROM project_initiation_items a
+USING project_initiation_items b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.source_tender_item_id = b.source_tender_item_id
+  AND a.source_tender_item_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_initiation_items_project_source_unique
+  ON project_initiation_items (project_id, source_tender_item_id);

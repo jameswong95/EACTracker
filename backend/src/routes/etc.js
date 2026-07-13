@@ -5,9 +5,9 @@ import { ah } from '../util.js';
 const r = Router();
 
 // GET /api/etc/:project_id
-// Read-only derived ETC for a project, aggregated by sub-job x Category (PM/MISC).
+// Read-only derived ETC for a project, aggregated by sub-job x Category (PM).
 // Labour is derived from the Resource Plan (FTE x grade monthly rate);
-// Material and Sub-Con from their respective module line items.
+// Material and Sub-Con forecast from their respective module line items.
 r.get('/:project_id', ah(async (req, res) => {
   const pid = req.params.project_id;
   const proj = await query(`SELECT id FROM projects WHERE id = $1`, [pid]);
@@ -30,7 +30,7 @@ r.get('/:project_id', ah(async (req, res) => {
         ORDER BY sj.sort_order, sj.id`,
       [pid]
     ),
-    // Labour is parked under PM/MISC and is not tied to a WBS/sub-job, so sum
+    // Labour is parked under PM and is not tied to a WBS/sub-job, so sum
     // every resource on the project (regardless of sub_job_id). fte_allocations may
     // be a flat array of numbers ([1, 1.5, ...]) or legacy objects ([{fte: x}]).
     query(
@@ -49,18 +49,18 @@ r.get('/:project_id', ah(async (req, res) => {
         WHERE pr.project_id = $1`,
       [pid]
     ),
-    // Material register (project-level): a purchase_date makes the item Committed,
-    // otherwise it counts as ETC (Forecast).
+    // Material register (project-level): planning forecast only. SAP import is
+    // the committed source of truth.
     query(
-      `SELECT COALESCE(SUM(amount) FILTER (WHERE purchase_date IS NOT NULL), 0) AS committed,
-              COALESCE(SUM(amount) FILTER (WHERE purchase_date IS NULL), 0)     AS etc
+      `SELECT 0::numeric AS committed,
+              COALESCE(SUM(amount), 0) AS etc
          FROM material_items WHERE project_id = $1`,
       [pid]
     ),
-    // Sub-Con register (project-level): same Committed / ETC split.
+    // Sub-Con register (project-level): planning forecast only.
     query(
-      `SELECT COALESCE(SUM(amount) FILTER (WHERE purchase_date IS NOT NULL), 0) AS committed,
-              COALESCE(SUM(amount) FILTER (WHERE purchase_date IS NULL), 0)     AS etc
+      `SELECT 0::numeric AS committed,
+              COALESCE(SUM(amount), 0) AS etc
          FROM sub_con_items WHERE project_id = $1`,
       [pid]
     ),

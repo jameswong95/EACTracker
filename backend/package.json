@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "migrate": "node scripts/run-sql.mjs scripts/migrate.sql && node scripts/run-sql.mjs scripts/migrate-002-sap.sql && node scripts/run-sql.mjs scripts/migrate-003-planning.sql",
+    "migrate": "node scripts/migrate-all.mjs",
     "seed": "node scripts/run-sql.mjs scripts/seed.sql",
     "db:setup": "npm run migrate && npm run seed"
   },

@@ -51,8 +51,7 @@ GROUP BY tender_id;
 
 -- ---------------------------------------------------------------
 -- B. Material asset list (live document)
---   PO present  => Committed (from SAP)
---   PO absent   => Forecast
+--   SAP import owns committed costs; asset rows are local forecast planning.
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS material_assets (
   id            SERIAL PRIMARY KEY,
@@ -62,7 +61,6 @@ CREATE TABLE IF NOT EXISTS material_assets (
   serial_no     TEXT,
   location      TEXT,
   vendor        TEXT,
-  po_number     TEXT,
   gr_status     TEXT NOT NULL DEFAULT 'not_ordered'
                   CHECK (gr_status IN ('not_ordered','ordered','partial','received')),
   amount        NUMERIC(18,2) NOT NULL DEFAULT 0,
@@ -88,12 +86,25 @@ CREATE TABLE IF NOT EXISTS material_asset_schedule (
 );
 CREATE INDEX IF NOT EXISTS material_asset_schedule_asset_idx ON material_asset_schedule (asset_id);
 
--- Asset rollup by bucket (committed = has PO, forecast = no PO).
+-- Existing local DBs may have this table from an older draft without the
+-- unique key. Ensure route ON CONFLICT targets have a matching index.
+DELETE FROM material_asset_schedule a
+USING material_asset_schedule b
+WHERE a.ctid < b.ctid
+  AND a.asset_id = b.asset_id
+  AND a.year = b.year
+  AND a.month = b.month;
+
+CREATE UNIQUE INDEX IF NOT EXISTS material_asset_schedule_unique
+  ON material_asset_schedule (asset_id, year, month);
+
+-- Asset rollup by bucket. Committed is SAP-only, so local asset rows roll up
+-- as forecast planning.
 CREATE OR REPLACE VIEW v_material_asset_totals AS
 SELECT
   project_id,
-  COALESCE(SUM(amount) FILTER (WHERE NULLIF(btrim(po_number), '') IS NOT NULL), 0) AS committed_amount,
-  COALESCE(SUM(amount) FILTER (WHERE NULLIF(btrim(po_number), '') IS NULL), 0)     AS forecast_amount,
+  0::numeric AS committed_amount,
+  COALESCE(SUM(amount), 0) AS forecast_amount,
   COUNT(*) AS asset_count
 FROM material_assets
 GROUP BY project_id;

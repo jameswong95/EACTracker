@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_by INTEGER REFERENCES users(id)
 );
 
+DELETE FROM app_settings a
+USING app_settings b
+WHERE a.ctid < b.ctid
+  AND a.key = b.key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_settings_key_unique
+  ON app_settings (key);
+
 INSERT INTO app_settings (key, value)
   VALUES ('material_asset_threshold', '10000')
   ON CONFLICT (key) DO NOTHING;
@@ -27,7 +35,6 @@ CREATE TABLE IF NOT EXISTS material_misc (
   qty         NUMERIC(14,2) NOT NULL DEFAULT 1,
   unit_rate   NUMERIC(18,2) NOT NULL DEFAULT 0,
   amount      NUMERIC(18,2) NOT NULL DEFAULT 0,
-  po_number   TEXT,
   notes       TEXT,
   created_by  INTEGER REFERENCES users(id),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),

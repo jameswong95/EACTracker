@@ -17,6 +17,14 @@ CREATE TABLE IF NOT EXISTS tender_fx_rates (
 );
 CREATE INDEX IF NOT EXISTS tender_fx_rates_tender_idx ON tender_fx_rates (tender_id);
 
+DELETE FROM tender_fx_rates a
+USING tender_fx_rates b
+WHERE a.ctid < b.ctid
+  AND a.tender_id = b.tender_id
+  AND a.currency = b.currency;
+CREATE UNIQUE INDEX IF NOT EXISTS tender_fx_rates_tender_currency_unique
+  ON tender_fx_rates (tender_id, currency);
+
 -- -- 2. ST Labour ------------------------------------------------------
 -- Phases of work (ordered, user managed).
 CREATE TABLE IF NOT EXISTS tender_labour_phases (

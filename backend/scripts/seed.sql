@@ -104,6 +104,16 @@ BEGIN
 
 END $$;
 
+UPDATE projects
+   SET end_date = '2028-12-31'
+ WHERE id = 'PR-2026-022'
+   AND (end_date IS NULL OR end_date < '2028-12-31');
+
+UPDATE projects
+   SET end_date = '2035-12-31'
+ WHERE id = 'PR-2026-031'
+   AND (end_date IS NULL OR end_date < '2035-12-31');
+
 INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
 SELECT id, pm_user_id, TRUE
 FROM projects
@@ -197,30 +207,162 @@ BEGIN
 END $$;
 
 -- -- project_resources --
-INSERT INTO project_resources (project_id, resource_id, role_name, function_title, grade, fte_allocations) VALUES
-('PR-2025-014','r02','Isabelle Dupont','Programme Manager','E4',
-  '[{"year":2026,"month":1,"fte":0.5},{"year":2026,"month":2,"fte":0.5},{"year":2026,"month":3,"fte":0.5},{"year":2026,"month":4,"fte":0.5},{"year":2026,"month":5,"fte":0.5},{"year":2026,"month":6,"fte":0.5},{"year":2026,"month":7,"fte":0.5},{"year":2026,"month":8,"fte":0.5}]'),
-('PR-2025-014','r05','Rachel Lim',     'Technical Lead',   'E3',
-  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1},{"year":2026,"month":6,"fte":1},{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1}]'),
-('PR-2025-014','r08','James Chen',     'Engineer',         'E2',
-  '[{"year":2026,"month":1,"fte":2},{"year":2026,"month":2,"fte":2},{"year":2026,"month":3,"fte":2},{"year":2026,"month":4,"fte":2},{"year":2026,"month":5,"fte":2},{"year":2026,"month":6,"fte":2},{"year":2026,"month":7,"fte":2}]'),
-('PR-2025-014','r12','Tom Whitfield',  'Business Analyst', 'E1',
-  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1}]'),
-('PR-2026-022','r03','Amara Osei',     'Programme Manager','E4',
-  '[{"year":2026,"month":1,"fte":0.5},{"year":2026,"month":2,"fte":0.5},{"year":2026,"month":3,"fte":0.5},{"year":2026,"month":4,"fte":0.5},{"year":2026,"month":5,"fte":0.5},{"year":2026,"month":6,"fte":0.5},{"year":2026,"month":7,"fte":0.5},{"year":2026,"month":8,"fte":0.5},{"year":2026,"month":9,"fte":0.5}]'),
-('PR-2026-022','r04','Sam Okonkwo',    'Network Lead',     'E3',
-  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1},{"year":2026,"month":6,"fte":1},{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1},{"year":2026,"month":9,"fte":1},{"year":2026,"month":10,"fte":1}]'),
-('PR-2026-022','r10','Kevin Zhang',    'Engineer',         'E2',
-  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":2},{"year":2026,"month":4,"fte":2},{"year":2026,"month":5,"fte":2},{"year":2026,"month":6,"fte":2},{"year":2026,"month":7,"fte":2},{"year":2026,"month":8,"fte":1},{"year":2026,"month":9,"fte":1}]'),
-('PR-2026-031','r01','Marcus Tan',     'Programme Director','E5',
-  '[{"year":2026,"month":3,"fte":0.3},{"year":2026,"month":4,"fte":0.3},{"year":2026,"month":5,"fte":0.3},{"year":2026,"month":6,"fte":0.3}]'),
-('PR-2026-031','r07','Ravi Kumar',     'Technical Lead',   'E3',
-  '[{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1},{"year":2026,"month":6,"fte":1},{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1}]'),
-('PR-2026-008','r06','Nadia Hassan',   'Project Manager',  'E3',
-  '[{"year":2025,"month":11,"fte":1},{"year":2025,"month":12,"fte":1},{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1}]'),
-('PR-2026-008','r09','Priya Sharma',   'Security Engineer','E2',
-  '[{"year":2025,"month":11,"fte":2},{"year":2025,"month":12,"fte":2},{"year":2026,"month":1,"fte":2},{"year":2026,"month":2,"fte":2},{"year":2026,"month":3,"fte":2},{"year":2026,"month":4,"fte":2},{"year":2026,"month":5,"fte":2}]')
-ON CONFLICT DO NOTHING;
+WITH rows(project_id, resource_id, role_name, function_title, grade, category, wbs_code, fte_allocations) AS (VALUES
+('PR-2025-014','r02','Isabelle Dupont','Programme Manager', 'E4','PM',  '123456789/001-1-1',
+  '[{"year":2026,"month":1,"fte":0.5},{"year":2026,"month":2,"fte":0.5},{"year":2026,"month":3,"fte":0.5},{"year":2026,"month":4,"fte":0.5},{"year":2026,"month":5,"fte":0.5},{"year":2026,"month":6,"fte":0.5},{"year":2026,"month":7,"fte":0.5},{"year":2026,"month":8,"fte":0.5}]'::jsonb),
+('PR-2025-014','r05','Rachel Lim',     'Technical Lead',    'E3','PM',  '123456789/001-1-2',
+  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1},{"year":2026,"month":6,"fte":1},{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1}]'::jsonb),
+('PR-2025-014','r08','James Chen',     'Engineer',          'E2','PM',  '123456789/001-1-2',
+  '[{"year":2026,"month":1,"fte":2},{"year":2026,"month":2,"fte":2},{"year":2026,"month":3,"fte":2},{"year":2026,"month":4,"fte":2},{"year":2026,"month":5,"fte":2},{"year":2026,"month":6,"fte":2},{"year":2026,"month":7,"fte":2}]'::jsonb),
+('PR-2025-014','r12','Tom Whitfield',  'Business Analyst',  'E1','MISC','123456789/001-1-3',
+  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1}]'::jsonb),
+('PR-2026-022','r03','Amara Osei',     'Programme Manager', 'E4','PM',  '234567890/002-1-1',
+  '[{"year":2026,"month":1,"fte":0.5},{"year":2026,"month":2,"fte":0.5},{"year":2026,"month":3,"fte":0.5},{"year":2026,"month":4,"fte":0.5},{"year":2026,"month":5,"fte":0.5},{"year":2026,"month":6,"fte":0.5},{"year":2026,"month":7,"fte":0.5},{"year":2026,"month":8,"fte":0.5},{"year":2026,"month":9,"fte":0.5}]'::jsonb),
+('PR-2026-022','r04','Sam Okonkwo',    'Network Lead',      'E3','PM',  '234567890/002-1-2',
+  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1},{"year":2026,"month":6,"fte":1},{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1},{"year":2026,"month":9,"fte":1},{"year":2026,"month":10,"fte":1}]'::jsonb),
+('PR-2026-022','r10','Kevin Zhang',    'Engineer',          'E2','PM',  '234567890/002-1-2',
+  '[{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":2},{"year":2026,"month":4,"fte":2},{"year":2026,"month":5,"fte":2},{"year":2026,"month":6,"fte":2},{"year":2026,"month":7,"fte":2},{"year":2026,"month":8,"fte":1},{"year":2026,"month":9,"fte":1}]'::jsonb),
+('PR-2026-022','r13','Sofia Ng',       'Site Coordinator',  'E1','MISC','234567890/002-1-3',
+  '[{"year":2026,"month":5,"fte":0.5},{"year":2026,"month":6,"fte":0.5},{"year":2026,"month":7,"fte":0.5}]'::jsonb),
+('PR-2026-031','r01','Marcus Tan',     'Programme Director','E5','PM',  '345678901/003-1-1',
+  '[{"year":2026,"month":3,"fte":0.3},{"year":2026,"month":4,"fte":0.3},{"year":2026,"month":5,"fte":0.3},{"year":2026,"month":6,"fte":0.3}]'::jsonb),
+('PR-2026-031','r07','Ravi Kumar',     'Technical Lead',    'E3','PM',  '345678901/003-1-2',
+  '[{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1},{"year":2026,"month":6,"fte":1},{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1}]'::jsonb),
+('PR-2026-031','r15','Daniel Lee',     'Cutover Support',   'E1','MISC','345678901/003-1-3',
+  '[{"year":2026,"month":7,"fte":1},{"year":2026,"month":8,"fte":1},{"year":2026,"month":9,"fte":1}]'::jsonb),
+('PR-2026-008','r06','Nadia Hassan',   'Project Manager',   'E3','PM',  '456789012/004-1-1',
+  '[{"year":2025,"month":11,"fte":1},{"year":2025,"month":12,"fte":1},{"year":2026,"month":1,"fte":1},{"year":2026,"month":2,"fte":1},{"year":2026,"month":3,"fte":1},{"year":2026,"month":4,"fte":1},{"year":2026,"month":5,"fte":1}]'::jsonb),
+('PR-2026-008','r09','Priya Sharma',   'Security Engineer', 'E2','PM',  '456789012/004-1-2',
+  '[{"year":2025,"month":11,"fte":2},{"year":2025,"month":12,"fte":2},{"year":2026,"month":1,"fte":2},{"year":2026,"month":2,"fte":2},{"year":2026,"month":3,"fte":2},{"year":2026,"month":4,"fte":2},{"year":2026,"month":5,"fte":2}]'::jsonb),
+('PR-2026-008','r11','Yuki Tanaka',    'Audit Analyst',     'E2','MISC','456789012/004-1-3',
+  '[{"year":2026,"month":5,"fte":0.5},{"year":2026,"month":6,"fte":0.5},{"year":2026,"month":7,"fte":0.5}]'::jsonb)
+)
+INSERT INTO project_resources (project_id, resource_id, role_name, function_title, grade, category, sub_job_id, fte_allocations)
+SELECT r.project_id, r.resource_id, r.role_name, r.function_title, r.grade, r.category, sj.id, r.fte_allocations
+FROM rows r
+LEFT JOIN sub_jobs sj ON sj.wbs_code = r.wbs_code
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM project_resources pr
+  WHERE pr.project_id = r.project_id
+    AND pr.resource_id = r.resource_id
+    AND pr.function_title = r.function_title
+);
+
+WITH links(project_id, resource_id, function_title, category, wbs_code) AS (VALUES
+  ('PR-2025-014','r02','Programme Manager', 'PM',  '123456789/001-1-1'),
+  ('PR-2025-014','r05','Technical Lead',    'PM',  '123456789/001-1-2'),
+  ('PR-2025-014','r08','Engineer',          'PM',  '123456789/001-1-2'),
+  ('PR-2025-014','r12','Business Analyst',  'MISC','123456789/001-1-3'),
+  ('PR-2026-022','r03','Programme Manager', 'PM',  '234567890/002-1-1'),
+  ('PR-2026-022','r04','Network Lead',      'PM',  '234567890/002-1-2'),
+  ('PR-2026-022','r10','Engineer',          'PM',  '234567890/002-1-2'),
+  ('PR-2026-022','r13','Site Coordinator',  'MISC','234567890/002-1-3'),
+  ('PR-2026-031','r01','Programme Director','PM',  '345678901/003-1-1'),
+  ('PR-2026-031','r07','Technical Lead',    'PM',  '345678901/003-1-2'),
+  ('PR-2026-031','r15','Cutover Support',   'MISC','345678901/003-1-3'),
+  ('PR-2026-008','r06','Project Manager',   'PM',  '456789012/004-1-1'),
+  ('PR-2026-008','r09','Security Engineer', 'PM',  '456789012/004-1-2'),
+  ('PR-2026-008','r11','Audit Analyst',     'MISC','456789012/004-1-3')
+)
+UPDATE project_resources pr
+SET category = l.category,
+    sub_job_id = sj.id
+FROM links l
+LEFT JOIN sub_jobs sj ON sj.wbs_code = l.wbs_code
+WHERE pr.project_id = l.project_id
+  AND pr.resource_id = l.resource_id
+  AND pr.function_title = l.function_title
+  AND (pr.category IS DISTINCT FROM l.category OR pr.sub_job_id IS DISTINCT FROM sj.id);
+
+-- -- material / sub-con / others LOB-MISC cost items --
+DO $$
+DECLARE
+  u_sara  INT := (SELECT id FROM users WHERE username = 'sara.tan');
+  u_amara INT := (SELECT id FROM users WHERE username = 'a.kumar');
+  u_nadia INT := (SELECT id FROM users WHERE username = 'nadia.hassan');
+  u_sam   INT := (SELECT id FROM users WHERE username = 'sam.okonkwo');
+BEGIN
+  WITH rows(project_id, wbs_code, category, description, amount, estimated_received_date, notes, created_by) AS (VALUES
+    ('PR-2025-014','123456789/001-1-2','PM',  'Core network switches and optics',      96000,'2026-04-18'::date,'Estimated receipt for Wave 2 rollout hardware.',u_sara),
+    ('PR-2025-014','123456789/001-1-2','PM',  'Test rig spares and installation kit',   78000,NULL::date,        'Forecast ETC pending final vendor quotation.',u_sara),
+    ('PR-2025-014','123456789/001-1-3','MISC','Site consumables and patch leads',        22000,'2026-05-06'::date,'MISC material drawdown for late-stage works.',u_sara),
+    ('PR-2026-022','234567890/002-1-3','PM',  'Access points and mounting kits',         52000,'2026-03-22'::date,'Estimated receipt for Site A deployment.',u_amara),
+    ('PR-2026-022','234567890/002-1-2','MISC','Temporary cabling and labels',            18000,NULL::date,        'MISC forecast for phase 2 cabling recovery.',u_amara),
+    ('PR-2026-031','345678901/003-1-3','PM',  'Migration staging storage',               64000,NULL::date,        'Forecast storage expansion for pilot migration.',u_sam),
+    ('PR-2026-008','456789012/004-1-2','PM',  'Endpoint security licences',              48000,'2026-02-14'::date,'Estimated receipt for annual licence tranche.',u_nadia),
+    ('PR-2026-008','456789012/004-1-3','MISC','Training lab tokens and certificates',     14000,NULL::date,        'MISC forecast for audit training materials.',u_nadia)
+  )
+  INSERT INTO material_items (project_id, sub_job_id, category, description, amount, estimated_received_date, notes, created_by)
+  SELECT r.project_id, sj.id, r.category, r.description, r.amount, r.estimated_received_date, r.notes, r.created_by
+  FROM rows r
+  LEFT JOIN sub_jobs sj ON sj.wbs_code = r.wbs_code
+  WHERE NOT EXISTS (
+    SELECT 1 FROM material_items it
+    WHERE it.project_id = r.project_id AND it.description = r.description
+  );
+
+  WITH rows(project_id, wbs_code, category, description, amount, estimated_received_date, notes, created_by) AS (VALUES
+    ('PR-2025-014','123456789/001-1-2','PM',  'Cutover field engineering crew',          58000,'2026-05-02'::date,'Estimated receipt for night cutover support.',u_sara),
+    ('PR-2025-014','123456789/001-1-3','MISC','Ad-hoc site reinstatement support',       24000,NULL::date,        'MISC forecast for closeout punch-list.',u_sara),
+    ('PR-2026-022','234567890/002-1-2','PM',  'Structured cabling subcontractor',         88000,'2026-04-10'::date,'Estimated receipt for cabling crew support.',u_amara),
+    ('PR-2026-022','234567890/002-1-2','PM',  'Additional weekend installation crew',     36000,NULL::date,        'Forecast recovery crew for delayed sites.',u_amara),
+    ('PR-2026-031','345678901/003-1-2','PM',  'Data migration factory partner',          120000,'2026-05-18'::date,'Estimated receipt for migration partner mobilisation.',u_sam),
+    ('PR-2026-031','345678901/003-1-3','MISC','Decommissioning disposal vendor',          28000,NULL::date,        'MISC forecast for legacy hardware disposal.',u_sam),
+    ('PR-2026-008','456789012/004-1-2','PM',  'Pen-test specialist retainer',             42000,'2026-03-08'::date,'Estimated receipt for security testing retainer.',u_nadia),
+    ('PR-2026-008','456789012/004-1-3','MISC','Independent audit reviewer',               26000,NULL::date,        'MISC forecast for final controls audit.',u_nadia)
+  )
+  INSERT INTO sub_con_items (project_id, sub_job_id, category, description, amount, estimated_received_date, notes, created_by)
+  SELECT r.project_id, sj.id, r.category, r.description, r.amount, r.estimated_received_date, r.notes, r.created_by
+  FROM rows r
+  LEFT JOIN sub_jobs sj ON sj.wbs_code = r.wbs_code
+  WHERE NOT EXISTS (
+    SELECT 1 FROM sub_con_items it
+    WHERE it.project_id = r.project_id AND it.description = r.description
+  );
+
+  WITH rows(project_id, wbs_code, description, amount, estimated_received_date, notes, created_by) AS (VALUES
+    ('PR-2025-014','123456789/001-1-3','LOB travel and site allowance',       18500,NULL::date,        'LOB forecast for regional rollout visits.',u_sara),
+    ('PR-2025-014','123456789/001-1-3','MISC permit and access passes',        6500,'2026-04-25'::date,'MISC estimated site access cost.',u_sara),
+    ('PR-2026-022','234567890/002-1-3','LOB site survey expenses',            12000,'2026-03-12'::date,'LOB survey and transport claims.',u_amara),
+    ('PR-2026-022','234567890/002-1-3','MISC overtime meal allowance',         9000,NULL::date,        'MISC forecast tied to weekend recovery plan.',u_amara),
+    ('PR-2026-031','345678901/003-1-3','LOB data centre access fees',         21000,NULL::date,        'LOB forecast for secure migration windows.',u_sam),
+    ('PR-2026-031','345678901/003-1-1','MISC client workshop expenses',        8000,'2026-05-03'::date,'MISC estimated workshop logistics.',u_sam),
+    ('PR-2026-008','456789012/004-1-3','LOB compliance filing fees',          11000,'2026-04-18'::date,'LOB filing and regulator submission fees.',u_nadia),
+    ('PR-2026-008','456789012/004-1-3','MISC training venue and materials',   16000,NULL::date,        'MISC forecast for security awareness sessions.',u_nadia)
+  )
+  INSERT INTO others_items (project_id, sub_job_id, description, amount, estimated_received_date, notes, created_by)
+  SELECT r.project_id, sj.id, r.description, r.amount, r.estimated_received_date, r.notes, r.created_by
+  FROM rows r
+  LEFT JOIN sub_jobs sj ON sj.wbs_code = r.wbs_code
+  WHERE NOT EXISTS (
+    SELECT 1 FROM others_items it
+    WHERE it.project_id = r.project_id AND it.description = r.description
+  );
+
+  INSERT INTO cost_item_schedule (entity_type, entity_id, year, month, amount)
+  SELECT x.entity_type, x.entity_id, x.year, x.month, x.amount
+  FROM (
+    SELECT 'material_item' AS entity_type, id AS entity_id, 2026 AS year, 6 AS month, 42000::numeric AS amount FROM material_items WHERE project_id='PR-2025-014' AND description='Test rig spares and installation kit'
+    UNION ALL SELECT 'material_item', id, 2026, 7, 36000 FROM material_items WHERE project_id='PR-2025-014' AND description='Test rig spares and installation kit'
+    UNION ALL SELECT 'material_item', id, 2026, 6, 18000 FROM material_items WHERE project_id='PR-2026-022' AND description='Temporary cabling and labels'
+    UNION ALL SELECT 'material_item', id, 2026, 7, 32000 FROM material_items WHERE project_id='PR-2026-031' AND description='Migration staging storage'
+    UNION ALL SELECT 'material_item', id, 2026, 8, 32000 FROM material_items WHERE project_id='PR-2026-031' AND description='Migration staging storage'
+    UNION ALL SELECT 'material_item', id, 2026, 6, 14000 FROM material_items WHERE project_id='PR-2026-008' AND description='Training lab tokens and certificates'
+    UNION ALL SELECT 'sub_con_item',  id, 2026, 6, 24000 FROM sub_con_items WHERE project_id='PR-2025-014' AND description='Ad-hoc site reinstatement support'
+    UNION ALL SELECT 'sub_con_item',  id, 2026, 6, 18000 FROM sub_con_items WHERE project_id='PR-2026-022' AND description='Additional weekend installation crew'
+    UNION ALL SELECT 'sub_con_item',  id, 2026, 7, 18000 FROM sub_con_items WHERE project_id='PR-2026-022' AND description='Additional weekend installation crew'
+    UNION ALL SELECT 'sub_con_item',  id, 2026, 9, 28000 FROM sub_con_items WHERE project_id='PR-2026-031' AND description='Decommissioning disposal vendor'
+    UNION ALL SELECT 'sub_con_item',  id, 2026, 7, 26000 FROM sub_con_items WHERE project_id='PR-2026-008' AND description='Independent audit reviewer'
+    UNION ALL SELECT 'others_item',   id, 2026, 6,  9000 FROM others_items WHERE project_id='PR-2025-014' AND description='LOB travel and site allowance'
+    UNION ALL SELECT 'others_item',   id, 2026, 7,  9500 FROM others_items WHERE project_id='PR-2025-014' AND description='LOB travel and site allowance'
+    UNION ALL SELECT 'others_item',   id, 2026, 6,  9000 FROM others_items WHERE project_id='PR-2026-022' AND description='MISC overtime meal allowance'
+    UNION ALL SELECT 'others_item',   id, 2026, 8, 21000 FROM others_items WHERE project_id='PR-2026-031' AND description='LOB data centre access fees'
+    UNION ALL SELECT 'others_item',   id, 2026, 6, 16000 FROM others_items WHERE project_id='PR-2026-008' AND description='MISC training venue and materials'
+  ) x
+  ON CONFLICT (entity_type, entity_id, year, month)
+  DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW();
+END $$;
 
 -- -- eac_monthly_rows + values --
 DO $$
@@ -232,13 +374,21 @@ DECLARE
 BEGIN
   -- PR-2025-014 rows
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2025-014','labour',  'Labour (blended)',     0) RETURNING id INTO r1;
+    VALUES ('PR-2025-014','labour',  'Labour (blended)',     0)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r1;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2025-014','hardware','Hardware / Materials', 1) RETURNING id INTO r2;
+    VALUES ('PR-2025-014','hardware','Hardware / Materials', 1)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r2;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2025-014','subcon',  'Sub-contractor',       2) RETURNING id INTO r3;
+    VALUES ('PR-2025-014','subcon',  'Sub-contractor',       2)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r3;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2025-014','reserve', 'PM Reserve',           3) RETURNING id INTO r4;
+    VALUES ('PR-2025-014','reserve', 'PM Reserve',           3)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r4;
 
   -- PR-2025-014 values (amount_k = thousands)
   INSERT INTO eac_monthly_values (row_id, project_id, year, month, amount_k, is_locked) VALUES
@@ -260,11 +410,17 @@ BEGIN
 
   -- PR-2026-022 rows
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-022','labour',  'Labour (blended)',     0) RETURNING id INTO r5;
+    VALUES ('PR-2026-022','labour',  'Labour (blended)',     0)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r5;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-022','materials','Materials / Hardware',1) RETURNING id INTO r6;
+    VALUES ('PR-2026-022','materials','Materials / Hardware',1)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r6;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-022','subcon',  'Sub-contractor',       2) RETURNING id INTO r7;
+    VALUES ('PR-2026-022','subcon',  'Sub-contractor',       2)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r7;
 
   INSERT INTO eac_monthly_values (row_id, project_id, year, month, amount_k, is_locked) VALUES
     (r5,'PR-2026-022',2026,1, 42, TRUE), (r5,'PR-2026-022',2026,2, 48, TRUE),
@@ -284,13 +440,21 @@ BEGIN
 
   -- PR-2026-031 rows
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-031','labour',  'Labour (blended)',     0) RETURNING id INTO r8;
+    VALUES ('PR-2026-031','labour',  'Labour (blended)',     0)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r8;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-031','services','Migration Services',   1) RETURNING id INTO r9;
+    VALUES ('PR-2026-031','services','Migration Services',   1)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r9;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-031','hardware','Hardware / Infra',     2) RETURNING id INTO r10;
+    VALUES ('PR-2026-031','hardware','Hardware / Infra',     2)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r10;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-031','reserve', 'Contingency',          3) RETURNING id INTO r11;
+    VALUES ('PR-2026-031','reserve', 'Contingency',          3)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r11;
 
   INSERT INTO eac_monthly_values (row_id, project_id, year, month, amount_k, is_locked) VALUES
     (r8,'PR-2026-031',2026,3, 48, TRUE), (r8,'PR-2026-031',2026,4, 52, TRUE),
@@ -309,11 +473,17 @@ BEGIN
 
   -- PR-2026-008 rows
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-008','labour',  'Labour (blended)',     0) RETURNING id INTO r12;
+    VALUES ('PR-2026-008','labour',  'Labour (blended)',     0)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r12;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-008','software','Software / Licences',  1) RETURNING id INTO r13;
+    VALUES ('PR-2026-008','software','Software / Licences',  1)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r13;
   INSERT INTO eac_monthly_rows (project_id, cost_category, label, sort_order)
-    VALUES ('PR-2026-008','subcon',  'Sub-contractor',       2) RETURNING id INTO r14;
+    VALUES ('PR-2026-008','subcon',  'Sub-contractor',       2)
+    ON CONFLICT (project_id, cost_category) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order
+    RETURNING id INTO r14;
 
   INSERT INTO eac_monthly_values (row_id, project_id, year, month, amount_k, is_locked) VALUES
     (r12,'PR-2026-008',2025,11,68, TRUE),(r12,'PR-2026-008',2025,12,72, TRUE),
@@ -330,6 +500,91 @@ BEGIN
   ON CONFLICT (row_id, year, month) DO NOTHING;
 
 END $$;
+
+-- -- adaptive planned-spend chart seed coverage --
+-- PR-2026-008 remains short (~11 months) for monthly display.
+-- PR-2026-022 spans ~3 years for quarterly display.
+-- PR-2026-031 spans ~10 years for yearly display.
+WITH rows(project_id, label, year, month, amount_k, is_locked) AS (VALUES
+  -- PR-2026-022 quarterly-mode coverage through 2028.
+  ('PR-2026-022','Labour (blended)',      2027,1, 35,FALSE),
+  ('PR-2026-022','Labour (blended)',      2027,4, 32,FALSE),
+  ('PR-2026-022','Labour (blended)',      2027,7, 28,FALSE),
+  ('PR-2026-022','Labour (blended)',      2027,10,24,FALSE),
+  ('PR-2026-022','Labour (blended)',      2028,1, 22,FALSE),
+  ('PR-2026-022','Labour (blended)',      2028,4, 20,FALSE),
+  ('PR-2026-022','Labour (blended)',      2028,7, 16,FALSE),
+  ('PR-2026-022','Labour (blended)',      2028,10,12,FALSE),
+  ('PR-2026-022','Materials / Hardware',  2027,2, 42,FALSE),
+  ('PR-2026-022','Materials / Hardware',  2027,8, 30,FALSE),
+  ('PR-2026-022','Materials / Hardware',  2028,3, 24,FALSE),
+  ('PR-2026-022','Materials / Hardware',  2028,9, 18,FALSE),
+  ('PR-2026-022','Sub-contractor',        2027,1, 18,FALSE),
+  ('PR-2026-022','Sub-contractor',        2027,4, 18,FALSE),
+  ('PR-2026-022','Sub-contractor',        2027,7, 15,FALSE),
+  ('PR-2026-022','Sub-contractor',        2028,1, 12,FALSE),
+  ('PR-2026-022','Sub-contractor',        2028,7, 10,FALSE),
+
+  -- PR-2026-031 long programme coverage through 2035.
+  ('PR-2026-031','Labour (blended)',      2027,1, 46,FALSE),
+  ('PR-2026-031','Labour (blended)',      2027,7, 44,FALSE),
+  ('PR-2026-031','Labour (blended)',      2028,1, 42,FALSE),
+  ('PR-2026-031','Labour (blended)',      2028,7, 40,FALSE),
+  ('PR-2026-031','Labour (blended)',      2029,1, 38,FALSE),
+  ('PR-2026-031','Labour (blended)',      2029,7, 36,FALSE),
+  ('PR-2026-031','Labour (blended)',      2030,1, 34,FALSE),
+  ('PR-2026-031','Labour (blended)',      2030,7, 32,FALSE),
+  ('PR-2026-031','Labour (blended)',      2031,1, 30,FALSE),
+  ('PR-2026-031','Labour (blended)',      2031,7, 28,FALSE),
+  ('PR-2026-031','Labour (blended)',      2032,1, 26,FALSE),
+  ('PR-2026-031','Labour (blended)',      2032,7, 24,FALSE),
+  ('PR-2026-031','Labour (blended)',      2033,1, 22,FALSE),
+  ('PR-2026-031','Labour (blended)',      2033,7, 20,FALSE),
+  ('PR-2026-031','Labour (blended)',      2034,1, 18,FALSE),
+  ('PR-2026-031','Labour (blended)',      2034,7, 16,FALSE),
+  ('PR-2026-031','Labour (blended)',      2035,1, 14,FALSE),
+  ('PR-2026-031','Labour (blended)',      2035,7, 12,FALSE),
+  ('PR-2026-031','Migration Services',    2027,3, 70,FALSE),
+  ('PR-2026-031','Migration Services',    2027,9, 80,FALSE),
+  ('PR-2026-031','Migration Services',    2028,3, 90,FALSE),
+  ('PR-2026-031','Migration Services',    2028,9,100,FALSE),
+  ('PR-2026-031','Migration Services',    2029,3, 90,FALSE),
+  ('PR-2026-031','Migration Services',    2029,9, 82,FALSE),
+  ('PR-2026-031','Migration Services',    2030,3, 72,FALSE),
+  ('PR-2026-031','Migration Services',    2030,9, 62,FALSE),
+  ('PR-2026-031','Migration Services',    2031,3, 52,FALSE),
+  ('PR-2026-031','Migration Services',    2031,9, 45,FALSE),
+  ('PR-2026-031','Migration Services',    2032,3, 38,FALSE),
+  ('PR-2026-031','Migration Services',    2032,9, 32,FALSE),
+  ('PR-2026-031','Migration Services',    2033,3, 28,FALSE),
+  ('PR-2026-031','Migration Services',    2033,9, 24,FALSE),
+  ('PR-2026-031','Migration Services',    2034,3, 20,FALSE),
+  ('PR-2026-031','Migration Services',    2034,9, 18,FALSE),
+  ('PR-2026-031','Migration Services',    2035,3, 15,FALSE),
+  ('PR-2026-031','Migration Services',    2035,9, 12,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2027,2, 35,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2028,2, 42,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2029,2, 48,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2030,2, 45,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2031,2, 38,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2032,2, 32,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2033,2, 26,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2034,2, 20,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2035,2, 16,FALSE),
+  ('PR-2026-031','Contingency',           2028,12,20,FALSE),
+  ('PR-2026-031','Contingency',           2030,12,25,FALSE),
+  ('PR-2026-031','Contingency',           2032,12,20,FALSE),
+  ('PR-2026-031','Contingency',           2034,12,15,FALSE)
+)
+INSERT INTO eac_monthly_values (row_id, project_id, year, month, amount_k, is_locked)
+SELECT rrow.id, r.project_id, r.year, r.month, r.amount_k, r.is_locked
+FROM rows r
+JOIN eac_monthly_rows rrow
+  ON rrow.project_id = r.project_id
+ AND rrow.label = r.label
+ON CONFLICT (row_id, year, month)
+DO UPDATE SET amount_k = EXCLUDED.amount_k,
+              is_locked = EXCLUDED.is_locked;
 
 -- -- revrec_entries --
 DO $$

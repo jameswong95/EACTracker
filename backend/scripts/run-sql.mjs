@@ -33,7 +33,7 @@ try {
   await client.query(sql);
   console.log(`[db] Done.`);
 } catch (err) {
-  console.error('[db] Error:', err.message);
+  console.error(`[db] Error in ${sqlFile}:`, err.message);
   process.exit(1);
 } finally {
   await client.end();
