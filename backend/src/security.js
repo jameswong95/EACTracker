@@ -45,12 +45,27 @@ function readHeader(req, name) {
   return req.get(name) || req.get(name.toLowerCase()) || '';
 }
 
+function readFirstHeader(req, names) {
+  for (const name of names) {
+    const value = clean(readHeader(req, name));
+    if (value) return value;
+  }
+  return '';
+}
+
 function normalizeRole(role) {
   const roles = String(role || '')
     .split(',')
     .map(clean)
     .filter(value => ROLES.has(value));
   return ROLE_PRIORITY.find(value => roles.includes(value)) || null;
+}
+
+function bootstrapRoleFor(username) {
+  const email = String(username || '').trim().toLowerCase();
+  if (!email || !config.auth.bootstrapAdminEmail) return null;
+  if (email !== config.auth.bootstrapAdminEmail) return null;
+  return normalizeRole(config.auth.bootstrapAdminRole) || 'Admin';
 }
 
 function allowedWriteRoles(path) {
@@ -163,8 +178,15 @@ export function authenticate(req, _res, next) {
     return next(unauthorized());
   }
 
-  const role = normalizeRole(readHeader(req, config.auth.roleHeader));
-  const username = clean(readHeader(req, config.auth.usernameHeader));
+  const username = readFirstHeader(req, [
+    config.auth.usernameHeader,
+    'x-auth-email',
+    'x-auth-user',
+    'x-auth-request-email',
+    'x-auth-request-user',
+    config.auth.userIdHeader,
+  ]);
+  const role = normalizeRole(readHeader(req, config.auth.roleHeader)) || bootstrapRoleFor(username);
   const id = Number(readHeader(req, config.auth.userIdHeader));
   if (!role || !username) {
     logSecurity(req, 'auth_failure', 'Authenticated proxy request is missing identity claims');

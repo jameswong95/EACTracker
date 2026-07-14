@@ -4,10 +4,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     environment:
-      AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET}
+      AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET:?AUTH_PROXY_SECRET is required}
     volumes:
-      - ./deploy/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - frontend
       - backend
@@ -20,33 +22,43 @@ services:
     command:
       - --http-address=0.0.0.0:4180
       - --provider=oidc
-      - --oidc-issuer-url=${OAUTH2_PROXY_OIDC_ISSUER_URL}
-      - --client-id=${OAUTH2_PROXY_CLIENT_ID}
-      - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET}
-      - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET}
+      - --oidc-issuer-url=${OAUTH2_PROXY_OIDC_ISSUER_URL:?OAUTH2_PROXY_OIDC_ISSUER_URL is required}
+      - --client-id=${OAUTH2_PROXY_CLIENT_ID:?OAUTH2_PROXY_CLIENT_ID is required}
+      - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET:?OAUTH2_PROXY_CLIENT_SECRET is required}
+      - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET:?OAUTH2_PROXY_COOKIE_SECRET is required}
+      - --redirect-url=${OAUTH2_PROXY_REDIRECT_URL:?OAUTH2_PROXY_REDIRECT_URL is required}
       - --email-domain=*
       - --scope=openid profile email
       - --set-xauthrequest=true
+      - --user-id-claim=preferred_username
       - --oidc-groups-claim=roles
       - --pass-access-token=false
       - --pass-authorization-header=false
+      - --reverse-proxy=true
+      - --cookie-secure=true
+      - --cookie-samesite=lax
+      - --cookie-domain=${OAUTH2_PROXY_COOKIE_DOMAIN:-pfms-uat.agilops.work}
+      - --cookie-name=_pfms_uat_oauth2_proxy
     networks: [app]
 
   frontend:
-    image: ${ACR_LOGIN_SERVER}/eactracker-frontend:${FRONTEND_IMAGE_TAG}
+    image: ${ACR_LOGIN_SERVER:?ACR_LOGIN_SERVER is required}/eactracker-frontend:${FRONTEND_IMAGE_TAG:?FRONTEND_IMAGE_TAG is required}
     restart: unless-stopped
     networks: [app]
 
   backend:
-    image: ${ACR_LOGIN_SERVER}/eactracker-backend:${BACKEND_IMAGE_TAG}
+    image: ${ACR_LOGIN_SERVER:?ACR_LOGIN_SERVER is required}/eactracker-backend:${BACKEND_IMAGE_TAG:?BACKEND_IMAGE_TAG is required}
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      APP_ENV: uat
       PORT: 4000
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       DATABASE_SSL: ${DATABASE_SSL:-1}
       AUTH_MODE: proxy
-      AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET}
+      AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET:?AUTH_PROXY_SECRET is required}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-wong.james@stengg.com}
+      BOOTSTRAP_ADMIN_ROLE: Admin
       TRUST_PROXY: "1"
       CORS_ORIGIN: ""
       LOG_SQL: "0"
@@ -60,4 +72,3 @@ services:
 networks:
   app:
     driver: bridge
-

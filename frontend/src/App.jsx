@@ -18,6 +18,7 @@ import Assists from './screens/Assists.jsx';
 import PdApprovals from './screens/PdApprovals.jsx';
 import AdminPanel from './screens/AdminPanel.jsx';
 import { logAction } from './data/auditLog.js';
+import { api } from './data/api.js';
 
 const ROLE_DEFAULTS = { 'Project Manager': 'portfolio', 'Project Director': 'portfolio', Finance: 'portfolio', Leader: 'portfolio', Admin: 'portfolio' };
 
@@ -58,6 +59,22 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('pfms-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (session) return;
+    let alive = true;
+    api.get('/api/auth/session')
+      .then(s => {
+        if (!alive || !s?.username || !s?.role) return;
+        localStorage.setItem('pfms-session', JSON.stringify(s));
+        handleSignIn(s);
+        if (window.location.search) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [session]);
 
   // Responsive tables: on mobile, tag every table that has a header and copy
   // each column's header text onto its cells as data-label, so CSS can reflow

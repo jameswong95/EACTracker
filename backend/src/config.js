@@ -9,6 +9,7 @@ const backendDir = resolve(rootDir, 'backend');
 const frontendDistDir = resolve(rootDir, 'frontend', 'dist');
 
 const nodeEnv = process.env.NODE_ENV || 'development';
+const appEnv = process.env.APP_ENV || nodeEnv;
 const isProduction = nodeEnv === 'production';
 
 function required(name, fallback) {
@@ -67,6 +68,7 @@ if (isProduction && ['demo', 'disabled'].includes(authMode)) {
 
 export const config = {
   nodeEnv,
+  appEnv,
   isProduction,
   rootDir,
   backendDir,
@@ -83,6 +85,8 @@ export const config = {
     userIdHeader: process.env.AUTH_USER_ID_HEADER || 'x-auth-user-id',
     usernameHeader: process.env.AUTH_USERNAME_HEADER || 'x-auth-username',
     roleHeader: process.env.AUTH_ROLE_HEADER || 'x-auth-role',
+    bootstrapAdminEmail: String(process.env.BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase(),
+    bootstrapAdminRole: process.env.BOOTSTRAP_ADMIN_ROLE || 'Admin',
   },
   security: {
     jsonBodyLimit: process.env.JSON_BODY_LIMIT || '1mb',

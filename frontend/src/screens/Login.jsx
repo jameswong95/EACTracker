@@ -26,7 +26,16 @@ export default function Login({ onSignIn }) {
           (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9)
           || a.full_name.localeCompare(b.full_name));
         setUsers(sorted); setLoading(false); setError(null); })
-      .catch(e   => { if (!alive) return; setError(e.message); setLoading(false); });
+      .catch(e   => {
+        if (!alive) return;
+        if (e.status === 401) {
+          setUsers([]);
+          setError(null);
+        } else {
+          setError(e.message);
+        }
+        setLoading(false);
+      });
     load();
     const onFocus = () => load();
     window.addEventListener('focus', onFocus);
@@ -60,6 +69,10 @@ export default function Login({ onSignIn }) {
     if (!u) { setError(`No user found for "${username}"`); return; }
     setError(null);
     signIn(u);
+  }
+
+  function signInWithSso() {
+    window.location.assign('/oauth2/start?rd=%2F%3Fsso%3D1');
   }
 
   return (
@@ -109,8 +122,17 @@ export default function Login({ onSignIn }) {
         <div className="login-card" style={{ width: '100%', maxWidth: 420 }}>
           <h2 style={{ marginBottom: 6 }}>Sign in</h2>
           <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 24 }}>
-            Use your company username, or pick an account below.
+            Use company single sign-on, or pick a local account where enabled.
           </p>
+
+          <button
+            type="button"
+            className="btn btn-primary btn-lg"
+            onClick={signInWithSso}
+            style={{ width: '100%', justifyContent: 'center', marginBottom: 18 }}
+          >
+            Continue with SSO
+          </button>
 
           <form onSubmit={signInByUsername} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={{
@@ -178,7 +200,7 @@ export default function Login({ onSignIn }) {
             )}
             {!loading && users.length === 0 && (
               <div style={{ padding: 16, fontSize: 13, color: 'var(--text-3)' }}>
-                No users found. Is the backend running on :4000?
+                Local account sign-in is unavailable. Continue with SSO.
               </div>
             )}
             {!loading && users.map(u => {

@@ -72,7 +72,8 @@ app.get('/api/health', async (_req, res) => {
     res.json({
       ok: true,
       service: 'pfms-backend',
-      environment: config.nodeEnv,
+      environment: config.appEnv,
+      nodeEnv: config.nodeEnv,
       demoAuthEnabled: config.demoAuthEnabled,
       ...r.rows[0],
     });
@@ -87,6 +88,42 @@ app.get('/api/ready', async (_req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(503).json({ ok: false, error: config.isProduction ? 'not ready' : e.message });
+  }
+});
+
+app.get('/api/auth/session', authenticate, async (req, res, next) => {
+  const username = req.user?.username || '';
+  const namePart = username.split('@')[0] || username;
+  const fullName = namePart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ') || username;
+  const initials = fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('') || 'U';
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO users (username, full_name, initials, role, is_active)
+       VALUES ($1, $2, $3, $4, TRUE)
+       ON CONFLICT (username) DO UPDATE
+       SET full_name = EXCLUDED.full_name,
+           initials = EXCLUDED.initials,
+           role = EXCLUDED.role,
+           is_active = TRUE
+       RETURNING id, username, full_name, initials, role`,
+      [username, fullName, initials, req.user?.role],
+    );
+    res.json({
+      ...result.rows[0],
+      signedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    next(e);
   }
 });
 
@@ -163,7 +200,7 @@ app.use((err, req, res, _next) => {
 });
 
 const server = app.listen(config.port, () => {
-  console.log(`[pfms-backend] listening on http://localhost:${config.port} (${config.nodeEnv})`);
+  console.log(`[pfms-backend] listening on http://localhost:${config.port} (${config.appEnv}; NODE_ENV=${config.nodeEnv})`);
 });
 
 async function shutdown(signal) {
