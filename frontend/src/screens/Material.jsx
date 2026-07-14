@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useProject, useMaterialAssets, useMaterialMisc, useSettings, useFixedRates, fmt, MONTHS } from '../data/store.js';
+import { useProject, useMaterialAssets, useMaterialMisc, useFixedRates, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
 import CostModule from './CostModule.jsx';
 import DatePicker from '../components/DatePicker.jsx';
@@ -13,19 +13,17 @@ const GR_STATUS = {
 };
 
 // Material module.
-//   * Asset List  - live document of physical assets. PO present => Committed
-//     (from SAP); PO absent => Forecast. Carries vendor payment structure and a
-//     month-by-month dollar-planning timeline.
-//   * Purchase register - the existing PO/description line-item register.
+//   * Asset List  - live document of physical assets for forecast planning.
+//     Carries vendor payment structure and a month-by-month dollar-planning
+//     timeline. SAP import owns committed costs.
+//   * Purchase register - description/date/amount line-item register.
 export default function Material({ projectId, navigate, role, session }) {
   const { project: p } = useProject(projectId);
-  const [tab, setTab] = useState('assets');
-  const { settings, reload: reloadSettings } = useSettings();
-  const threshold = Number(settings.material_asset_threshold) || 10000;
+  const [tab, setTab] = useState('register');
 
   const TABS = [
-    ['assets', 'Asset list'],
     ['register', 'Purchase register'],
+    ['assets', 'Asset list'],
   ];
 
   return (
@@ -57,36 +55,40 @@ export default function Material({ projectId, navigate, role, session }) {
             onClick={() => setTab(k)}
             className={tab === k ? 'active' : ''}
           >
-            {l}
+            <Icon name={k === 'register' ? 'hash' : 'tag'} size={13} />
+            <span>{l}</span>
           </button>
         ))}
       </div>
 
-      {tab === 'assets' && <AssetList projectId={projectId} role={role} session={session} threshold={threshold} />}
-      {tab === 'register' && (
-        <CostModule
-          module="materials" etcKey="material_etc" title="Material" category="Material"
-          descPlaceholder="Description of items bought"
-          projectId={projectId} navigate={navigate} role={role} embedded
-        />
-      )}
+      <div className="material-view-panel" key={tab}>
+        {tab === 'assets' && <AssetList projectId={projectId} role={role} session={session} />}
+        {tab === 'register' && (
+          <CostModule
+            module="materials" etcKey="material_etc" title="Material" category="Material"
+            descPlaceholder="Description of items bought"
+            projectId={projectId} navigate={navigate} role={role} embedded
+          />
+        )}
+      </div>
     </div>
   );
 }
 
 const BLANK = {
   asset_tag: '', description: '', serial_no: '', location: '', vendor: '',
-  po_number: '', gr_status: 'not_ordered', amount: '', need_by: '',
+  gr_status: 'not_ordered', amount: '', need_by: '',
   advance_pct: '', milestone_pct: '', retention_pct: '',
 };
 
-function AssetList({ projectId, role, session, threshold }) {
+function AssetList({ projectId, role, session }) {
   const { assets, schedule, totals, reload } = useMaterialAssets(projectId);
   const canEdit = role !== 'Project Director';
   const [form, setForm] = useState(BLANK);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [year, setYear] = useState(new Date().getFullYear());
 
   const scheduleByAsset = useMemo(() => {
@@ -108,7 +110,6 @@ function AssetList({ projectId, role, session, threshold }) {
         serial_no: form.serial_no || null,
         location: form.location || null,
         vendor: form.vendor || null,
-        po_number: form.po_number || null,
         gr_status: form.gr_status,
         amount: Number(form.amount) || 0,
         need_by: form.need_by || null,
@@ -128,8 +129,8 @@ function AssetList({ projectId, role, session, threshold }) {
     try { await api.patch(`/api/material-assets/${id}`, patch); reload(); return true; }
     catch (e) { setErr(e.message || 'Update failed'); return false; }
   }
-  async function removeAsset(id) {
-    try { await api.del(`/api/material-assets/${id}`); reload(); }
+  async function removeAsset(asset) {
+    try { await api.del(`/api/material-assets/${asset.id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
   async function setCell(assetId, month, value) {
@@ -137,25 +138,18 @@ function AssetList({ projectId, role, session, threshold }) {
     catch (e) { setErr(e.message || 'Save failed'); }
   }
 
-  const isCommitted = (a) => !!(a.po_number && a.po_number.trim());
-
   return (
     <>
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 20 }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 20 }}>
         <div className="kpi-tile">
           <div className="kpi-label">Assets</div>
           <div className="kpi-value num">{totals.asset_count || 0}</div>
           <div className="kpi-sub">live document</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Committed (PO / SAP)</div>
-          <div className="kpi-value num" style={{ color: 'var(--warn)' }}>{fmt(totals.committed_amount)}</div>
-          <div className="kpi-sub">assets with a PO number</div>
-        </div>
-        <div className="kpi-tile">
-          <div className="kpi-label">Forecast (no PO)</div>
+          <div className="kpi-label">Forecast amount</div>
           <div className="kpi-value num" style={{ color: 'var(--accent)' }}>{fmt(totals.forecast_amount)}</div>
-          <div className="kpi-sub">still to be ordered</div>
+          <div className="kpi-sub">local planning total</div>
         </div>
       </div>
 
@@ -169,13 +163,12 @@ function AssetList({ projectId, role, session, threshold }) {
       {canEdit && (
         <div className="card card-p" style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Add asset</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.8fr 1fr 1fr 1fr 0.9fr 1fr 0.9fr auto', gap: 8, alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.8fr 1fr 1fr 1fr 1fr 0.9fr auto', gap: 8, alignItems: 'end' }}>
             <Field label="Tag"><input className="input" value={form.asset_tag} onChange={e => setForm(f => ({ ...f, asset_tag: e.target.value }))} /></Field>
             <Field label="Description"><input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
             <Field label="Serial no"><input className="input" value={form.serial_no} onChange={e => setForm(f => ({ ...f, serial_no: e.target.value }))} /></Field>
             <Field label="Location"><input className="input" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} /></Field>
             <Field label="Vendor"><input className="input" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} /></Field>
-            <Field label="PO number"><input className="input" placeholder="(forecast if blank)" value={form.po_number} onChange={e => setForm(f => ({ ...f, po_number: e.target.value }))} /></Field>
             <Field label="GR status">
               <select className="input" value={form.gr_status} onChange={e => setForm(f => ({ ...f, gr_status: e.target.value }))}>
                 {Object.entries(GR_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -185,7 +178,7 @@ function AssetList({ projectId, role, session, threshold }) {
             <button className="btn btn-primary btn-sm" onClick={addAsset} disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
-            A <strong>PO number</strong> marks the asset <strong>Committed</strong> (from SAP); leave it blank to keep it in <strong>Forecast</strong>.
+            SAP import remains the committed source of truth; asset rows are local forecast planning.
           </div>
         </div>
       )}
@@ -201,9 +194,7 @@ function AssetList({ projectId, role, session, threshold }) {
                 <th>Serial</th>
                 <th>Location</th>
                 <th>Vendor</th>
-                <th>PO</th>
                 <th>GR</th>
-                <th>Bucket</th>
                 <th className="num">Amount</th>
                 <th>Need by</th>
                 {canEdit && <th />}
@@ -211,10 +202,9 @@ function AssetList({ projectId, role, session, threshold }) {
             </thead>
             <tbody>
               {assets.length === 0 && (
-                <tr><td colSpan={canEdit ? 12 : 11} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No assets yet</td></tr>
+                <tr><td colSpan={canEdit ? 10 : 9} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No assets yet</td></tr>
               )}
               {assets.map(a => {
-                const committed = isCommitted(a);
                 const gr = GR_STATUS[a.gr_status] || GR_STATUS.not_ordered;
                 const open = expanded === a.id;
                 return (
@@ -226,7 +216,6 @@ function AssetList({ projectId, role, session, threshold }) {
                       <td>{canEdit ? <input className="input" defaultValue={a.serial_no || ''} onBlur={e => (e.target.value || null) !== a.serial_no && patchAsset(a.id, { serial_no: e.target.value || null })} style={{ maxWidth: 110 }} /> : (a.serial_no || '—')}</td>
                       <td>{canEdit ? <input className="input" defaultValue={a.location || ''} onBlur={e => (e.target.value || null) !== a.location && patchAsset(a.id, { location: e.target.value || null })} style={{ maxWidth: 110 }} /> : (a.location || '—')}</td>
                       <td>{canEdit ? <input className="input" defaultValue={a.vendor || ''} onBlur={e => (e.target.value || null) !== a.vendor && patchAsset(a.id, { vendor: e.target.value || null })} style={{ maxWidth: 110 }} /> : (a.vendor || '—')}</td>
-                      <td>{canEdit ? <input className="input" defaultValue={a.po_number || ''} placeholder="—" onBlur={e => (e.target.value || null) !== a.po_number && patchAsset(a.id, { po_number: e.target.value || null })} style={{ maxWidth: 100 }} /> : (a.po_number || '—')}</td>
                       <td>
                         {canEdit ? (
                           <select className="input" value={a.gr_status} onChange={e => patchAsset(a.id, { gr_status: e.target.value })} style={{ maxWidth: 120 }}>
@@ -236,22 +225,13 @@ function AssetList({ projectId, role, session, threshold }) {
                           <span style={{ color: gr.color, fontWeight: 600, fontSize: 12 }}>{gr.label}</span>
                         )}
                       </td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: committed ? 'var(--warn)' : 'var(--accent)' }}>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor' }} />
-                          {committed ? 'Committed' : 'Forecast'}
-                        </span>
-                        {Number(a.amount) > 0 && Number(a.amount) < threshold && (
-                          <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }} title={`Below the ${fmt(threshold)} asset threshold`}>below threshold</div>
-                        )}
-                      </td>
                       <td className="num">{canEdit ? <input className="input num" type="number" defaultValue={Number(a.amount)} onBlur={e => Number(e.target.value) !== Number(a.amount) && patchAsset(a.id, { amount: Number(e.target.value) || 0 })} style={{ maxWidth: 110, textAlign: 'right' }} /> : fmt(a.amount)}</td>
                       <td>{canEdit ? <DatePicker value={a.need_by ? String(a.need_by).slice(0, 10) : ''} onChange={v => patchAsset(a.id, { need_by: v || null })} placeholder="—" style={{ maxWidth: 150 }} /> : (a.need_by ? String(a.need_by).slice(0, 10) : '—')}</td>
-                      {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => removeAsset(a.id)} title="Delete"><Icon name="x" size={13} /></button></td>}
+                      {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(a)} title="Delete"><Icon name="x" size={13} /></button></td>}
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={canEdit ? 12 : 11} style={{ background: 'var(--surface-2)', padding: '14px 18px' }}>
+                        <td colSpan={canEdit ? 10 : 9} style={{ background: 'var(--surface-2)', padding: '14px 18px' }}>
                           <AssetDetail
                             asset={a} canEdit={canEdit} patchAsset={patchAsset}
                             year={year} setYear={setYear}
@@ -267,6 +247,14 @@ function AssetList({ projectId, role, session, threshold }) {
           </table>
         </div>
       </div>
+      {deleteTarget && (
+        <MaterialDeleteConfirm
+          title="Delete asset?"
+          description={deleteTarget.description}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeAsset(deleteTarget)}
+        />
+      )}
     </>
   );
 }
@@ -386,6 +374,7 @@ function MiscMaterials({ projectId, role, session, threshold, reloadSettings }) 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [savingThreshold, setSavingThreshold] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const rateByCode = useMemo(() => {
     const m = {};
@@ -430,8 +419,8 @@ function MiscMaterials({ projectId, role, session, threshold, reloadSettings }) 
     try { await api.patch(`/api/material-misc/${id}`, patch); reload(); }
     catch (e) { setErr(e.message || 'Update failed'); }
   }
-  async function removeLine(id) {
-    try { await api.del(`/api/material-misc/${id}`); reload(); }
+  async function removeLine(line) {
+    try { await api.del(`/api/material-misc/${line.id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
 
@@ -528,13 +517,46 @@ function MiscMaterials({ projectId, role, session, threshold, reloadSettings }) 
                   <td className="num">{canEdit ? <input className="input num" type="number" defaultValue={Number(m.qty)} onBlur={e => Number(e.target.value) !== Number(m.qty) && patchLine(m.id, { qty: Number(e.target.value) || 0 })} style={{ maxWidth: 80, textAlign: 'right' }} /> : m.qty}</td>
                   <td className="num">{canEdit ? <input className="input num" type="number" defaultValue={Number(m.unit_rate)} onBlur={e => Number(e.target.value) !== Number(m.unit_rate) && patchLine(m.id, { unit_rate: Number(e.target.value) || 0 })} style={{ maxWidth: 100, textAlign: 'right' }} /> : fmt(m.unit_rate)}</td>
                   <td className="num" style={{ fontWeight: 600 }}>{fmt(m.amount)}</td>
-                  {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => removeLine(m.id)} title="Delete"><Icon name="x" size={13} /></button></td>}
+                  {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(m)} title="Delete"><Icon name="x" size={13} /></button></td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+      {deleteTarget && (
+        <MaterialDeleteConfirm
+          title="Delete material line?"
+          description={deleteTarget.description}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeLine(deleteTarget)}
+        />
+      )}
     </>
+  );
+}
+
+function MaterialDeleteConfirm({ title, description, onCancel, onConfirm }) {
+  return (
+    <div className="modal-overlay" role="presentation" onMouseDown={onCancel}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="material-delete-title" onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h3 id="material-delete-title" style={{ margin: 0 }}>{title}</h3>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>This action cannot be undone.</div>
+          </div>
+          <button className="btn btn-icon" onClick={onCancel} aria-label="Close"><Icon name="x" size={14} /></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', padding: 14, fontSize: 13, fontWeight: 750 }}>
+            {description || 'Untitled item'}
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-danger btn-sm" onClick={onConfirm}>Delete</button>
+        </div>
+      </div>
+    </div>
   );
 }

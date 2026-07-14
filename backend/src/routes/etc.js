@@ -54,14 +54,38 @@ r.get('/:project_id', ah(async (req, res) => {
     query(
       `SELECT 0::numeric AS committed,
               COALESCE(SUM(amount), 0) AS etc
-         FROM material_items WHERE project_id = $1`,
+         FROM (
+           SELECT amount
+             FROM material_items
+            WHERE project_id = $1
+              AND estimated_received_date >= (date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month')
+           UNION ALL
+           SELECT si.amount
+             FROM cost_item_sub_items si
+             JOIN material_items it ON it.id = si.parent_id
+            WHERE it.project_id = $1
+              AND si.parent_entity_type = 'material_item'
+              AND si.estimated_received_date >= (date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month')
+         ) future_material`,
       [pid]
     ),
     // Sub-Con register (project-level): planning forecast only.
     query(
       `SELECT 0::numeric AS committed,
               COALESCE(SUM(amount), 0) AS etc
-         FROM sub_con_items WHERE project_id = $1`,
+         FROM (
+           SELECT amount
+             FROM sub_con_items
+            WHERE project_id = $1
+              AND estimated_received_date >= (date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month')
+           UNION ALL
+           SELECT si.amount
+             FROM cost_item_sub_items si
+             JOIN sub_con_items it ON it.id = si.parent_id
+            WHERE it.project_id = $1
+              AND si.parent_entity_type = 'sub_con_item'
+              AND si.estimated_received_date >= (date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month')
+         ) future_subcon`,
       [pid]
     ),
   ]);

@@ -7,7 +7,7 @@ const KINDS = [
   { id: 'resource', label: 'Resource' },
   { id: 'material', label: 'Material' },
   { id: 'subcon', label: 'Sub-Con' },
-  { id: 'others', label: 'Others LOB/MISC' },
+  { id: 'others', label: 'Other LOB and MISC' },
 ];
 const CATS = ['PM', 'MISC'];
 
@@ -96,7 +96,7 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
           <div className="kpi-sub">editable handover copy</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Sub-Con + Others</div>
+          <div className="kpi-label">Sub-Con + Other LOB and MISC</div>
           <div className="kpi-value num">{fmt(Number(totals.subcon || 0) + Number(totals.others || 0))}</div>
           <div className="kpi-sub">forecast handover</div>
         </div>

@@ -37,7 +37,7 @@ function HealthBadge({ status }) {
 }
 
 // PRD §4.6: Standard sub-job categories
-const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Others LOB/MISC'];
+const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Other LOB and MISC'];
 
 function buildCategoryBreakdown(projects) {
   const weights = [0.12, 0.32, 0.28, 0.18, 0.10];

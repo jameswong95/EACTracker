@@ -38,7 +38,7 @@ function Tip({ text, children }) {
   );
 }
 
-const CATEGORIES = ['PM/MISC', 'Material', 'Subcon', 'Spares', 'Others'];
+const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Other LOB and MISC'];
 
 // Live health, same thresholds as Portfolio
 function liveHealth(p) {
@@ -52,7 +52,7 @@ function liveHealth(p) {
 // Map wbs_suffix to category (PRD §4.6)
 function suffixToCategory(suffix) {
   if (!suffix) return null;
-  const map = { '1-1': 'PM/MISC', '1-2': 'Material', '1-3': 'Subcon', '1-4': 'Spares', '1-5': 'Others' };
+  const map = { '1-1': 'PM', '1-2': 'Material', '1-3': 'Subcon', '1-4': 'Spares', '1-5': 'Other LOB and MISC' };
   // Exact match first, then last two dash-separated segments (e.g. '002-1-2' → '1-2')
   const s = String(suffix);
   if (map[s]) return map[s];
@@ -70,12 +70,12 @@ function healthColor(s) {
 function HealthBadge({ status }) {
   const col = healthColor(status);
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-      background: col + '18', color: col, border: `1px solid ${col}40`,
+    <span className="project-health-badge" style={{
+      '--health-color': col,
+      '--health-bg': col + '18',
+      '--health-border': col + '40',
     }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: col, display: 'inline-block' }} />
+      <span className="project-health-dot" />
       {healthLabel(status)}
     </span>
   );
@@ -327,7 +327,7 @@ function buildGpTimeline(p, labels, asAtIdx) {
 // ── Cross-module monthly rollup (Labour + Material + Sub-Con) ─────────────
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ROLLUP_BUCKETS = [
-  { key: 'labour',   label: 'Labour',   color: CAT_COLORS['PM/MISC'], match: (c) => c === 'labour' },
+  { key: 'labour',   label: 'Labour',   color: CAT_COLORS['PM'], match: (c) => c === 'labour' },
   { key: 'material', label: 'Material', color: CAT_COLORS['Material'], match: (c) => ['material', 'materials', 'hardware', 'software', 'licence', 'license'].includes(c) },
   { key: 'subcon',   label: 'Sub-Con',  color: CAT_COLORS['Subcon'],  match: (c) => ['subcon', 'subcontract', 'sub-con'].includes(c) },
 ];
@@ -339,10 +339,12 @@ function bucketFor(costCategory) {
 
 // Stacked monthly bars with a cumulative total-spend trajectory line overlay.
 function PlannedSpendChart({ months, height = 220 }) {
-  const padL = 44, padR = 8, padT = 12, padB = 24;
+  const padL = 44, padR = 8, padT = 12, padB = 38;
   const n = months.length;
-  const colW = Math.max(28, Math.min(72, 640 / Math.max(n, 1)));
-  const innerW = n * colW;
+  const visibleMonths = 12;
+  const colW = 112;
+  const barW = 72;
+  const innerW = Math.max(n, visibleMonths) * colW;
   const totalW = padL + innerW + padR;
   const H = height - padT - padB;
 
@@ -368,9 +370,9 @@ function PlannedSpendChart({ months, height = 220 }) {
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
       <svg viewBox={`0 0 ${totalW} ${height}`} width={totalW} height={height}
-        style={{ width: '100%', maxWidth: totalW, minWidth: 320 }}>
+        style={{ width: totalW, height, minWidth: totalW, display: 'block' }}>
         {/* gridlines + left axis */}
         {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
           const y = padT + H - f * H;
@@ -383,8 +385,8 @@ function PlannedSpendChart({ months, height = 220 }) {
         })}
         {/* stacked bars */}
         {months.map((m, i) => {
-          const x = padL + i * colW + colW * 0.16;
-          const bw = colW * 0.68;
+          const x = padL + i * colW + (colW - barW) / 2;
+          const bw = barW;
           let yCursor = padT + H;
           return (
             <g key={i}>
@@ -395,8 +397,11 @@ function PlannedSpendChart({ months, height = 220 }) {
                 yCursor -= h;
                 return <rect key={b.key} x={x} y={yCursor} width={bw} height={Math.max(h, 0.5)} fill={b.color} opacity={0.9} />;
               })}
-              <text x={x + bw / 2} y={height - 8} textAnchor="middle" fontSize="9" fill="var(--text-3)">
-                {MONTH_ABBR[m.month - 1]}{m.showYear ? ` '${String(m.year).slice(2)}` : ''}
+              <text x={x + bw / 2} y={height - 20} textAnchor="middle" fontSize="9" fill="var(--text-3)">
+                {MONTH_ABBR[m.month - 1]} '{String(m.year).slice(2)}
+              </text>
+              <text x={x + bw / 2} y={height - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill={m.total ? 'var(--text-2)' : 'var(--text-3)'}>
+                {m.total ? fmtAxis(m.total) : '-'}
               </text>
             </g>
           );
@@ -424,9 +429,21 @@ function PlannedSpendRollup({ projectId }) {
       if (!acc[key]) acc[key] = { year: v.year, month: v.month, labour: 0, material: 0, subcon: 0 };
       acc[key][b.key] += (Number(v.amount_k) || 0) * 1000; // amount_k is thousands
     });
-    const arr = Object.values(acc)
+    const populated = Object.values(acc)
       .map(m => ({ ...m, total: m.labour + m.material + m.subcon }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
+    if (!populated.length) return [];
+    const firstAbs = populated[0].year * 12 + (populated[0].month - 1);
+    const last = populated[populated.length - 1];
+    const lastAbs = last.year * 12 + (last.month - 1);
+    const byAbs = {};
+    populated.forEach(m => { byAbs[m.year * 12 + (m.month - 1)] = m; });
+    const arr = [];
+    for (let abs = firstAbs; abs <= lastAbs; abs++) {
+      const year = Math.floor(abs / 12);
+      const month = (abs % 12) + 1;
+      arr.push(byAbs[abs] || { year, month, labour: 0, material: 0, subcon: 0, total: 0 });
+    }
     // mark first month of each year for the axis label
     let lastYear = null;
     arr.forEach(m => { m.showYear = m.year !== lastYear; lastYear = m.year; });
@@ -475,7 +492,7 @@ function PlannedSpendRollup({ projectId }) {
         <>
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
             {[
-              { label: 'Labour',       value: totals.labour,   color: CAT_COLORS['PM/MISC'] },
+              { label: 'Labour',       value: totals.labour,   color: CAT_COLORS['PM'] },
               { label: 'Material',     value: totals.material, color: CAT_COLORS['Material'] },
               { label: 'Sub-Con',      value: totals.subcon,   color: CAT_COLORS['Subcon'] },
               { label: 'Total planned', value: totals.total,   color: 'var(--text-1)', strong: true },
@@ -691,7 +708,7 @@ function TabRevenueCash({ p }) {
                 zones
                 series={[
                   { label: 'Budgeted Revenue',            values: budRevValues, color: C.budget, dashed: true, strokeWidth: 1.5 },
-                  { label: 'Revenue Recognised Actual',   values: revActual,   color: C.actual, area: true, markers: true },
+                  { label: 'Revenue Recognised Actual',   values: revActual,   color: C.actual, markers: true },
                   { label: 'Revenue Recognised Forecast', values: revForecast, color: C.actual, dashed: true, opacity: 0.6 },
                   { label: 'Customer Cash Received',      values: cashValues,  color: C.cash,   strokeWidth: 2, markers: true },
                 ]}
@@ -797,7 +814,7 @@ function TabCost({ p }) {
   const rates = useRates();
   const [selCat, setSelCat] = useState(null);
 
-  // Labour (PM/MISC) splits by the Resource Plan lock boundary, so the two
+  // Labour (PM) splits by the Resource Plan lock boundary, so the two
   // screens agree: Committed = locked (fully-elapsed quarters), ETC = unlocked
   // (current/future quarters). Rates × FTE per month, same as the Resource Plan.
   const startAbs = (p.startYear ?? 2026) * 12 + (p.startMonth ?? 0);
@@ -820,16 +837,16 @@ function TabCost({ p }) {
     material_committed: 0, subcon_committed: 0, etc_total: 0,
   };
   const committedByCategory = {
-    'PM/MISC':  labourCommitted,
+    'PM':       labourCommitted,
     'Material': Number(derived.material_committed) || 0,
     'Subcon':   Number(derived.subcon_committed)   || 0,
   };
   const etcByCategory = {
-    'PM/MISC':  labourEtc,
+    'PM':       labourEtc,
     'Material': Number(derived.material_etc) || 0,
     'Subcon':   Number(derived.subcon_etc)   || 0,
     'Spares':   0,
-    'Others':   0,
+    'Other LOB and MISC': 0,
   };
   const cats = buildCategories(p.subjobs).map(c => {
     const etc       = c.name in etcByCategory       ? etcByCategory[c.name]       : c.etc;
@@ -912,9 +929,13 @@ function TabCost({ p }) {
             Actual + Committed as % of budget. ETC shown as remaining forecast.
           </div>
           {cats.filter(c => c.budget > 0).map(c => {
-            const spentPct  = Math.min(100, ((c.actual + c.committed) / c.budget) * 100);
-            const etcPct    = Math.min(100 - spentPct, (c.etc / c.budget) * 100);
-            const overrun   = (c.actual + c.committed) > c.budget;
+            const spent = c.actual + c.committed;
+            const eac = spent + c.etc;
+            const spentPct = Math.min(100, (spent / c.budget) * 100);
+            const forecastPct = Math.min(Math.max(0, 100 - spentPct), (c.etc / c.budget) * 100);
+            const overrunPct = Math.min(100, Math.max(0, ((eac - c.budget) / c.budget) * 100));
+            const hasOverrun = eac > c.budget;
+            const remaining = c.budget - eac;
             return (
               <div key={c.name} style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -922,16 +943,20 @@ function TabCost({ p }) {
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: c.color, display: 'inline-block' }} />
                     {c.name}
                   </span>
-                  <span style={{ fontSize: 11, color: overrun ? C.adverse : 'var(--text-3)' }}>
-                    {spentPct.toFixed(0)}% spent · {fmtShort(c.budget - c.actual - c.committed - c.etc)} remaining
+                  <span style={{ fontSize: 11, color: hasOverrun ? C.adverse : 'var(--text-3)' }}>
+                    {spentPct.toFixed(0)}% spent · {hasOverrun ? `${fmtShort(Math.abs(remaining))} over` : `${fmtShort(remaining)} remaining`}
                   </span>
                 </div>
                 <div style={{ height: 10, borderRadius: 4, background: 'var(--border)', overflow: 'hidden', position: 'relative' }}>
                   <div style={{ position: 'absolute', left: 0, top: 0, height: '100%',
-                    width: `${spentPct}%`, background: overrun ? C.adverse : c.color, borderRadius: '4px 0 0 4px', transition: 'width 0.4s' }} />
-                  {etcPct > 0 && (
+                    width: `${spentPct}%`, background: c.color, borderRadius: '4px 0 0 4px', transition: 'width 0.4s' }} />
+                  {forecastPct > 0 && (
                     <div style={{ position: 'absolute', left: `${spentPct}%`, top: 0, height: '100%',
-                      width: `${etcPct}%`, background: C.forecast, opacity: 0.45 }} />
+                      width: `${forecastPct}%`, background: hasOverrun ? C.adverse : C.forecast, opacity: hasOverrun ? 0.85 : 0.45 }} />
+                  )}
+                  {overrunPct > 0 && (
+                    <div style={{ position: 'absolute', right: 0, top: 0, height: '100%',
+                      width: `${Math.min(overrunPct, 18)}%`, background: C.adverse }} />
                   )}
                 </div>
               </div>
@@ -946,14 +971,14 @@ function TabCost({ p }) {
         <div className="card card-p">
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>EAC vs Budget Variance</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 16 }}>
-            Positive = under budget &nbsp;·&nbsp; Negative = overrun
+            Left = overrun &nbsp;·&nbsp; Right = under budget
           </div>
           {(() => {
             const active = cats.filter(c => c.budget > 0);
             const maxAbs = Math.max(...active.map(c => Math.abs(c.budget - c.eac)), 1);
             return active.map(c => {
               const variance = c.budget - c.eac;
-              const pct = Math.min(100, (Math.abs(variance) / maxAbs) * 100);
+              const pct = Math.min(50, (Math.abs(variance) / maxAbs) * 50);
               const col = variance >= 0 ? C.fav : Math.abs(variance) / c.budget > 0.25 ? C.adverse : C.attn;
               return (
                 <div key={c.name} style={{ marginBottom: 14 }}>
@@ -966,11 +991,20 @@ function TabCost({ p }) {
                       {variance >= 0 ? '+' : ''}{fmtShort(variance)}
                     </span>
                   </div>
-                  <div style={{ height: 10, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{ height: 10, borderRadius: 4, background: 'var(--border)', overflow: 'hidden', position: 'relative' }}>
                     <div style={{
-                      height: '100%', width: `${pct}%`,
-                      background: col, borderRadius: 4, transition: 'width 0.4s',
-                      marginLeft: variance >= 0 ? 0 : 'auto',
+                      position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1,
+                      background: 'var(--border-2)', zIndex: 2,
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      height: '100%',
+                      left: variance >= 0 ? '50%' : `${50 - pct}%`,
+                      width: `${pct}%`,
+                      background: col,
+                      borderRadius: 4,
+                      transition: 'width 0.4s, left 0.4s',
                     }} />
                   </div>
                 </div>

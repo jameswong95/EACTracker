@@ -17,10 +17,13 @@ export const C = {
 // Category colours — consistent across portfolio & project (PRD §5.4.3)
 export const CAT_COLORS = {
   'PM':               '#2F6BBD',
+  'PM/MISC':          '#2F6BBD',
   'Material':         '#008C95',
   'Subcon':           '#C99000',
   'Spares':           '#7030A0',
+  'Other LOB and MISC': '#6B7280',
   'Others LOB/MISC':  '#6B7280',
+  'Others':           '#6B7280',
 };
 
 export function fmtShort(v) {

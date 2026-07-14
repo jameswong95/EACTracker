@@ -3,6 +3,7 @@ import React from 'react';
 const paths = {
   arrowLeft: <path d="M15 18l-6-6 6-6M9 12h12" />,
   arrowRight: <path d="M9 6l6 6-6 6M3 12h12" />,
+  chevronRight: <path d="M9 18l6-6-6-6" />,
   download: <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
   alertTriangle: <><path d="M12 3l10 18H2L12 3z" /><path d="M12 9v5M12 18h.01" /></>,
