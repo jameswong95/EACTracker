@@ -9,7 +9,7 @@ services:
       APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
       AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET:?AUTH_PROXY_SECRET is required}
     volumes:
-      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
@@ -32,6 +32,7 @@ services:
       - --email-domain=*
       - --scope=openid profile email
       - --set-xauthrequest=true
+      - --user-id-claim=preferred_username
       - --oidc-groups-claim=roles
       - --pass-access-token=false
       - --pass-authorization-header=false
@@ -49,6 +50,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      APP_ENV: prod
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       DATABASE_SSL: ${DATABASE_SSL:-1}
