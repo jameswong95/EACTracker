@@ -1,5 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'crypto';
 import { config } from './config.js';
+import { query } from './db.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -160,7 +161,18 @@ export function requireExpectedContentType(req, res, next) {
   return res.status(415).json({ error: 'unsupported content type' });
 }
 
-export function authenticate(req, _res, next) {
+async function lookupUser(username) {
+  const result = await query(
+    `SELECT id, username, full_name, initials, role, is_active
+     FROM users
+     WHERE LOWER(username) = LOWER($1)
+     LIMIT 1`,
+    [username],
+  );
+  return result.rows[0] || null;
+}
+
+export async function authenticate(req, _res, next) {
   if (config.auth.mode === 'disabled') return next();
 
   if (config.auth.mode === 'demo') {
@@ -186,10 +198,35 @@ export function authenticate(req, _res, next) {
     'x-auth-request-user',
     config.auth.userIdHeader,
   ]);
+  if (!username) {
+    logSecurity(req, 'auth_failure', 'Authenticated proxy request is missing username claim');
+    return next(unauthorized());
+  }
+
+  try {
+    const dbUser = await lookupUser(username);
+    if (dbUser && !dbUser.is_active) {
+      logSecurity(req, 'auth_failure', 'Authenticated user is inactive', { username });
+      return next(unauthorized());
+    }
+    if (dbUser) {
+      req.user = {
+        id: dbUser.id,
+        username: dbUser.username,
+        full_name: dbUser.full_name,
+        initials: dbUser.initials,
+        role: dbUser.role,
+      };
+      return next();
+    }
+  } catch (e) {
+    return next(e);
+  }
+
   const role = normalizeRole(readHeader(req, config.auth.roleHeader)) || bootstrapRoleFor(username);
   const id = Number(readHeader(req, config.auth.userIdHeader));
-  if (!role || !username) {
-    logSecurity(req, 'auth_failure', 'Authenticated proxy request is missing identity claims');
+  if (!role) {
+    logSecurity(req, 'auth_failure', 'Authenticated proxy request is missing role claim and no linked PFMS user exists', { username });
     return next(unauthorized());
   }
 

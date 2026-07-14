@@ -3,9 +3,6 @@
 -- Run with: npm run db:deploy
 -- =============================================================
 
--- -- Extensions --
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 -- -- 1. users --
 CREATE TABLE IF NOT EXISTS users (
   id          SERIAL PRIMARY KEY,

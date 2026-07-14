@@ -28,7 +28,7 @@ const ROLE_ALLOWED_INIT = {
   'Project Director': ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'standards', 'pd-approvals'],
   Finance:            ['portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists'],
   Leader:             ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
-  Admin:              ['dashboard', 'portfolio', 'project', 'standards', 'admin-pool', 'admin-permissions', 'admin-audit'],
+  Admin:              ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals', 'admin-users', 'admin-pool', 'admin-permissions', 'admin-audit', 'admin-wipe'],
 };
 
 export default function App() {
@@ -183,9 +183,11 @@ export default function App() {
     standards:    <Standards navigate={navigate} role={role} />,
     assists:      <Assists navigate={navigate} />,
     'pd-approvals':      <PdApprovals navigate={navigate} session={session} />,
+    'admin-users':       <AdminPanel tab="users"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
     'admin-pool':        <AdminPanel tab="pool"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
     'admin-permissions': <AdminPanel tab="permissions" roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
     'admin-audit':       <AdminPanel tab="audit"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
+    'admin-wipe':        <AdminPanel tab="wipe"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
   };
 
   return (

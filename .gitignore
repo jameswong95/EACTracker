@@ -13,3 +13,7 @@ build/
 infra/main.json
 infra/parameters/*.json
 
+# TLS material is provisioned on hosts, never committed.
+deploy/certs/*
+!deploy/certs/.gitkeep
+

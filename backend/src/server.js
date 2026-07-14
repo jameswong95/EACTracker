@@ -37,6 +37,7 @@ import materialMiscRouter from './routes/materialMisc.js';
 import fixedRatesRouter from './routes/fixedRates.js';
 import settingsRouter from './routes/settings.js';
 import fxRatesRouter from './routes/fxRates.js';
+import adminRouter      from './routes/admin.js';
 import { materialsRouter, subConRouter, othersRouter } from './routes/costItems.js';
 
 const app = express();
@@ -94,12 +95,12 @@ app.get('/api/ready', async (_req, res) => {
 app.get('/api/auth/session', authenticate, async (req, res, next) => {
   const username = req.user?.username || '';
   const namePart = username.split('@')[0] || username;
-  const fullName = namePart
+  const fullName = req.user?.full_name || namePart
     .split(/[._-]+/)
     .filter(Boolean)
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ') || username;
-  const initials = fullName
+  const initials = req.user?.initials || fullName
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -155,6 +156,7 @@ app.use('/api/settings',   settingsRouter);
 app.use('/api/fx-rates',   fxRatesRouter);
 app.use('/api/sub-con',    subConRouter);
 app.use('/api/others',     othersRouter);
+app.use('/api/admin',      adminRouter);
 
 app.use('/api', (req, res) => {
   logSecurity(req, 'not_found', 'Unknown API route requested');

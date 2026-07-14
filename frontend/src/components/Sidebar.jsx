@@ -133,11 +133,18 @@ const NAV = {
     { id: 'standards',  label: 'Standards',         icon: 'standards'  },
   ],
   Admin: [
+    { id: 'dashboard',         label: 'Dashboard',     icon: 'dashboard' },
+    { id: 'tenders',           label: 'Tenders',       icon: 'reports'   },
     { id: 'portfolio',         label: 'Portfolio',    icon: 'portfolio' },
+    { id: 'sap-import',        label: 'SAP Import',   icon: 'sap'       },
     { id: 'standards',         label: 'Standards',    icon: 'standards' },
+    { id: 'assists',           label: 'AI Assist',    icon: 'assists'   },
+    { id: 'pd-approvals',      label: 'PD Approvals', icon: 'approvals' },
+    { id: 'admin-users',       label: 'Users',        icon: 'shield'    },
     { id: 'admin-pool',        label: 'Resource Pool', icon: 'settings'  },
     { id: 'admin-permissions', label: 'Permissions', icon: 'shield'    },
     { id: 'admin-audit',       label: 'Audit Trail', icon: 'standards' },
+    { id: 'admin-wipe',        label: 'Data Wipe',    icon: 'shield'    },
   ],
 };
 
@@ -215,7 +222,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
       </div>
 
       {/* Project context */}
-      {inProjectView && activeProject && (role === 'Project Manager' || role === 'Project Director' || role === 'Finance' || role === 'Leader') && (
+      {inProjectView && activeProject && (role === 'Project Manager' || role === 'Project Director' || role === 'Finance' || role === 'Leader' || role === 'Admin') && (
         <>
           {!collapsed && <div className="sidebar-section" style={{ marginTop: 4 }}>Project</div>}
           {!collapsed && (

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useResourcePool, useAudit } from '../data/store.js';
+import { api } from '../data/api.js';
 
 const ALL_SCREENS = [
   { id: 'dashboard',    label: 'Dashboard' },
@@ -14,6 +15,7 @@ const ALL_SCREENS = [
 ];
 
 const ROLE_LABELS = ['Project Manager', 'Project Director', 'Finance', 'Leader'];
+const USER_ROLES = ['Project Manager', 'Project Director', 'Finance', 'Leader', 'Admin'];
 
 function gradeColor(g) {
   if (g === 'E5') return 'var(--bad)';
@@ -320,10 +322,316 @@ function AuditTab() {
   );
 }
 
+function UsersTab() {
+  const emptyForm = { id: null, display_name: '', email: '', role: 'Project Manager', is_active: true };
+  const [users, setUsers] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  async function loadUsers() {
+    setLoading(true);
+    setError('');
+    try {
+      setUsers(await api.get('/api/users'));
+    } catch (e) {
+      setError(e.message || 'Unable to load users');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadUsers(); }, []);
+
+  function editUser(user) {
+    setForm({
+      id: user.id,
+      display_name: user.full_name,
+      email: user.username,
+      role: user.role,
+      is_active: user.is_active,
+    });
+    setError('');
+    setMessage('');
+  }
+
+  function resetForm() {
+    setForm(emptyForm);
+    setError('');
+    setMessage('');
+  }
+
+  async function saveUser(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setMessage('');
+    const payload = {
+      display_name: form.display_name.trim(),
+      email: form.email.trim().toLowerCase(),
+      role: form.role,
+      is_active: form.is_active,
+    };
+    try {
+      const saved = form.id
+        ? await api.put(`/api/users/${form.id}`, payload)
+        : await api.post('/api/users', payload);
+      setMessage(`${saved.full_name} saved`);
+      setForm(emptyForm);
+      await loadUsers();
+    } catch (e) {
+      setError(e.message || 'Unable to save user');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <form onSubmit={saveUser} style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(170px, .8fr) auto',
+        gap: 10,
+        alignItems: 'end',
+        marginBottom: 18,
+      }}>
+        <label style={{ display: 'grid', gap: 6, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+          Display Name
+          <input
+            value={form.display_name}
+            onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
+            required
+            maxLength={160}
+            style={{ padding: '9px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 6, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+          SSO Email
+          <input
+            value={form.email}
+            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+            required
+            type="email"
+            maxLength={254}
+            placeholder="name@company.com"
+            style={{ padding: '9px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 6, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+          Role
+          <select
+            value={form.role}
+            onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+            style={{ padding: '9px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+          >
+            {USER_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+          </select>
+        </label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))}
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            Active
+          </label>
+          <button className="btn btn-primary" type="submit" disabled={saving}>
+            {saving ? 'Saving...' : form.id ? 'Update' : 'Add User'}
+          </button>
+          {form.id && <button className="btn btn-ghost" type="button" onClick={resetForm}>Cancel</button>}
+        </div>
+      </form>
+
+      {error && (
+        <div style={{ marginBottom: 12, color: 'var(--bad-text)', background: 'var(--bad-bg)', border: '1px solid rgba(240,88,88,.2)', borderRadius: 6, padding: '9px 11px', fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+      {message && (
+        <div style={{ marginBottom: 12, color: 'var(--ok-text)', background: 'var(--ok-bg)', border: '1px solid rgba(34,197,139,.2)', borderRadius: 6, padding: '9px 11px', fontSize: 13 }}>
+          {message}
+        </div>
+      )}
+
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface-2)' }}>
+              {['Display Name', 'SSO Email', 'Role', 'Status', ''].map(h => (
+                <th key={h} style={{
+                  padding: '8px 12px', textAlign: h ? 'left' : 'right', fontWeight: 600,
+                  color: 'var(--text-2)', fontSize: 11, textTransform: 'uppercase',
+                  letterSpacing: '0.06em', borderBottom: '1px solid var(--border)',
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr><td colSpan={5} style={{ padding: 18, color: 'var(--text-3)' }}>Loading users...</td></tr>
+            )}
+            {!loading && users.length === 0 && (
+              <tr><td colSpan={5} style={{ padding: 18, color: 'var(--text-3)' }}>No users yet</td></tr>
+            )}
+            {!loading && users.map((user, i) => (
+              <tr key={user.id} style={{
+                borderBottom: i < users.length - 1 ? '1px solid var(--border)' : 'none',
+                background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)',
+              }}>
+                <td style={{ padding: '10px 12px', fontWeight: 600 }}>{user.full_name}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--text-2)' }}>{user.username}</td>
+                <td style={{ padding: '10px 12px' }}>{user.role}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  <span className={user.is_active ? 'badge badge-ok' : 'badge badge-bad'}>
+                    {user.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => editUser(user)}>
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function WipeDataTab() {
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const canSubmit = confirmation.trim() === 'delete' && !busy;
+
+  async function wipeData() {
+    setError('');
+    setResult(null);
+    if (confirmation.trim() !== 'delete') {
+      setError('Type delete to enable the wipe.');
+      return;
+    }
+    const ok = window.confirm('This will permanently wipe application data. This cannot be undone.');
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      const response = await api.post('/api/admin/wipe-data', { confirmation: 'delete' });
+      setResult(response);
+      setConfirmation('');
+      localStorage.removeItem('pfms-project');
+      localStorage.removeItem('pfms-screen');
+    } catch (e) {
+      setError(e.message || 'Unable to wipe data');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 720 }}>
+      <div style={{
+        border: '1px solid rgba(240,88,88,.35)',
+        background: 'var(--bad-bg)',
+        color: 'var(--bad-text)',
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 18,
+      }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>Permanent data wipe</div>
+        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+          This removes project, tender, import, cost, approval, revenue recognition, settings and audit data. User accounts and the resource master are kept so Admin access is not lost.
+        </div>
+      </div>
+
+      <label style={{
+        display: 'block',
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '.08em',
+        color: 'var(--text-3)',
+        marginBottom: 8,
+      }}>
+        Type delete to confirm
+      </label>
+      <input
+        value={confirmation}
+        onChange={e => { setConfirmation(e.target.value); setError(''); setResult(null); }}
+        disabled={busy}
+        placeholder="delete"
+        style={{
+          width: '100%',
+          maxWidth: 360,
+          padding: '10px 12px',
+          borderRadius: 6,
+          border: '1px solid var(--border)',
+          background: 'var(--surface)',
+          color: 'var(--text)',
+          fontSize: 14,
+          marginBottom: 12,
+        }}
+      />
+
+      <div>
+        <button
+          type="button"
+          className="btn btn-danger"
+          disabled={!canSubmit}
+          onClick={wipeData}
+          style={{
+            opacity: canSubmit ? 1 : 0.5,
+            cursor: canSubmit ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {busy ? 'Wiping data...' : 'Wipe all data'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{
+          marginTop: 14,
+          padding: '10px 12px',
+          border: '1px solid rgba(240,88,88,.25)',
+          borderRadius: 6,
+          background: 'var(--bad-bg)',
+          color: 'var(--bad-text)',
+          fontSize: 13,
+        }}>
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div style={{
+          marginTop: 14,
+          padding: '10px 12px',
+          border: '1px solid var(--border)',
+          borderRadius: 6,
+          background: 'var(--surface-2)',
+          color: 'var(--text-2)',
+          fontSize: 13,
+        }}>
+          Wipe complete. {result.wipedTableCount} tables were cleared.
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TAB_META = {
+  users:       { title: 'Users',         sub: 'Link SSO email addresses to PFMS roles' },
   pool:        { title: 'Resource Pool', sub: 'Available resources and their functions' },
   permissions: { title: 'Permissions',   sub: 'Control screen access per role' },
   audit:       { title: 'Audit Trail',   sub: 'System activity log' },
+  wipe:        { title: 'Data Wipe',     sub: 'Admin-only destructive data reset' },
 };
 
 export default function AdminPanel({ tab = 'pool', roleAllowed, setRoleAllowed }) {
@@ -337,9 +645,11 @@ export default function AdminPanel({ tab = 'pool', roleAllowed, setRoleAllowed }
         </div>
       </div>
 
+      {tab === 'users'       && <UsersTab />}
       {tab === 'pool'        && <ResourcePoolTab />}
       {tab === 'permissions' && <PermissionsTab roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />}
       {tab === 'audit'       && <AuditTab />}
+      {tab === 'wipe'        && <WipeDataTab />}
     </div>
   );
 }
