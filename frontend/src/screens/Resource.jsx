@@ -4,6 +4,7 @@ import { useProject, useResourcePool, useRates, useResourceRequests, fmt, MONTHS
 import { api } from '../data/api.js';
 import { CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
+import Select from '../components/Select.jsx';
 
 let nextId = 100;
 
@@ -158,7 +159,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const canEdit = role !== 'Project Director';
   const { requests, reload: reloadRequests } = useResourceRequests(p.id);
   // Plan starts at (startYear, startMonth); the timeline extends indefinitely to the
-  // right. All labour is parked under the PM/MISC category (shown in the breadcrumb).
+  // right. All labour is parked under the PM category (shown in the breadcrumb).
   const startYear  = p.startYear  ?? 2026;
   const startMonth = p.startMonth ?? 0;    // 0 = January
   const startAbs   = startYear * 12 + startMonth;
@@ -421,6 +422,52 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
     else qGroups.push({ absQuarter: mm.absQuarter, start: i, span: 1, year: mm.year, q: mm.q });
   });
 
+  const resourceMobileRows = rows.map(row => {
+    const rowTotal = months.reduce((s, _, i) => s + (row.fte[i] || 0), 0);
+    const rowCost = months.reduce((s, _, i) => s + (row.fte[i] || 0) * rateOf(row.grade), 0);
+    return {
+      ...row,
+      initials: row.role.split(' ').map(n => n[0]).join('').slice(0, 2),
+      rowTotal,
+      rowCost,
+      quarters: qGroups.map(g => {
+        const quarterMonths = Array.from({ length: g.span }, (_, offset) => {
+          const i = g.start + offset;
+          const mm = months[i];
+          const fte = row.fte[i] || 0;
+          return { index: i, label: `${MONTHS[mm.m].slice(0, 3)} ${String(mm.year).slice(2)}`, fte, locked: isLocked(i) };
+        });
+        const quarterFte = quarterMonths.reduce((sum, m) => sum + m.fte, 0);
+        const quarterCost = quarterMonths.reduce((sum, m) => sum + m.fte * rateOf(row.grade), 0);
+        return { ...g, months: quarterMonths, totalFte: quarterFte, cost: quarterCost, locked: lockedQuarters.has(g.absQuarter) };
+      }),
+    };
+  });
+
+  const requestMobileRows = reqRows.map(rq => {
+    const rowTotal = rq.fte.reduce((s, v) => s + (v || 0), 0);
+    const rowCost = rq.fte.reduce((s, v) => s + (v || 0) * rateOf(rq.grade), 0);
+    return {
+      ...rq,
+      rowTotal,
+      rowCost,
+      quarters: qGroups.map(g => {
+        const quarterMonths = Array.from({ length: g.span }, (_, offset) => {
+          const i = g.start + offset;
+          const mm = months[i];
+          const fte = rq.fte[i] || 0;
+          return { index: i, label: `${MONTHS[mm.m].slice(0, 3)} ${String(mm.year).slice(2)}`, fte };
+        });
+        return {
+          ...g,
+          months: quarterMonths,
+          totalFte: quarterMonths.reduce((sum, m) => sum + m.fte, 0),
+          cost: quarterMonths.reduce((sum, m) => sum + m.fte * rateOf(rq.grade), 0),
+        };
+      }),
+    };
+  });
+
   return (
     <div className="screen">
       <div className="module-inline-header">
@@ -477,10 +524,10 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
         </div>
       </div>
 
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card resource-plan-card">
         {/* Card header */}
-        <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ flex: 1 }}>
+        <div className="resource-plan-head" style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="resource-plan-title" style={{ flex: 1 }}>
             <h4>FTE plan by person</h4>
             {importErr && <div style={{ fontSize: 11, color: 'var(--bad)', marginTop: 3 }}>{importErr}</div>}
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
@@ -491,6 +538,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
             </div>
           </div>
 
+          <div className="resource-plan-actions">
           {canEdit && (
             <button className="btn btn-ghost btn-sm" onClick={() => setHorizon(h => h + 12)} title="Show more months">
               + Months
@@ -522,6 +570,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
               Add person
             </button>
           )}
+          </div>
         </div>
 
         {/* Add person panel */}
@@ -569,15 +618,146 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
           </div>
         )}
 
-        {/* Table */}
+        {/* Mobile / tablet plan cards */}
+        <div className="resource-mobile-plan">
+          {resourceMobileRows.length === 0 && (
+            <div className="resource-mobile-empty">No people added yet. Add a person from the resource pool to start planning.</div>
+          )}
+
+          {resourceMobileRows.map(row => (
+            <article key={row.id} className="resource-person-card">
+              <div className="resource-person-head">
+                <div className="resource-person-avatar">{row.initials}</div>
+                <div className="resource-person-main">
+                  <div className="resource-person-name">{row.role}</div>
+                  <div className="resource-person-sub">{row.fn || 'Unassigned function'} · {row.grade}</div>
+                </div>
+                <div className="resource-person-total">
+                  <strong>{row.rowTotal > 0 ? row.rowTotal.toFixed(1) : '—'}</strong>
+                  <span>FTE</span>
+                </div>
+              </div>
+
+              <div className="resource-person-metrics">
+                <div><span>Labour cost</span><strong>{row.rowCost ? fmt(row.rowCost) : '—'}</strong></div>
+                <div><span>Visible months</span><strong>{months.length}</strong></div>
+              </div>
+
+              <div className="resource-quarter-list">
+                {row.quarters.map(q => (
+                  <section key={q.absQuarter} className={`resource-quarter-card ${q.locked ? 'is-locked' : 'is-open'}`}>
+                    <div className="resource-quarter-head">
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => toggleQuarter(q.absQuarter)}
+                        className="resource-quarter-status"
+                        title={q.locked ? 'Locked (Committed) - tap to unlock' : 'Unlocked (ETC) - tap to lock'}
+                      >
+                        {q.locked ? 'Locked' : 'Unlocked'} · Q{q.q} {q.year}
+                      </button>
+                      <div className="resource-quarter-total">
+                        {q.totalFte ? q.totalFte.toFixed(1) : '—'} FTE
+                      </div>
+                    </div>
+                    <div className="resource-month-grid">
+                      {q.months.map(m => (
+                        <label key={m.index} className={`resource-month-chip ${m.locked ? 'is-locked' : 'is-open'}`}>
+                          <span>{m.label}</span>
+                          {m.locked ? (
+                            <strong>{m.fte ? m.fte.toFixed(1) : '—'}</strong>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.5"
+                              value={m.fte || ''}
+                              placeholder="0"
+                              disabled={!canEdit}
+                              onChange={e => updateFte(row.id, m.index, e.target.value)}
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="resource-quarter-cost">{q.cost ? fmt(q.cost) : 'No cost planned'}</div>
+                  </section>
+                ))}
+              </div>
+
+              {canEdit && confirmingId !== row.id && (
+                <button className="btn btn-ghost btn-sm resource-person-remove" onClick={() => setConfirmingId(row.id)}>
+                  Remove person
+                </button>
+              )}
+              {confirmingId === row.id && (
+                <div className="resource-mobile-confirm">
+                  <span>Remove <strong>{row.role}</strong>?</span>
+                  <div>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingId(null)}>Cancel</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => removeRow(row.id)}>Remove</button>
+                  </div>
+                </div>
+              )}
+            </article>
+          ))}
+
+          {requestMobileRows.length > 0 && (
+            <section className="resource-request-section">
+              <div className="resource-request-title">Open resource requests</div>
+              {requestMobileRows.map(rq => (
+                <article key={rq.id} className="resource-request-card">
+                  <div className="resource-person-head">
+                    <div className="resource-request-badge">REQ</div>
+                    <div className="resource-person-main">
+                      <div className="resource-person-name">{rq.function_title}{rq.grade ? ` · ${rq.grade}` : ''}</div>
+                      <div className="resource-person-sub">{reqRangeLabel(rq) || 'Requested headcount'} · Forecast</div>
+                    </div>
+                    <div className="resource-person-total">
+                      <strong>{rq.rowTotal ? rq.rowTotal.toFixed(1) : '—'}</strong>
+                      <span>FTE</span>
+                    </div>
+                  </div>
+                  <div className="resource-person-metrics">
+                    <div><span>Requested cost</span><strong>{rq.rowCost ? fmt(rq.rowCost) : '—'}</strong></div>
+                    <div><span>Headcount</span><strong>{rq.hc || 1}</strong></div>
+                  </div>
+                  <div className="resource-quarter-list">
+                    {rq.quarters.filter(q => q.totalFte > 0).map(q => (
+                      <section key={q.absQuarter} className="resource-quarter-card is-request">
+                        <div className="resource-quarter-head">
+                          <div className="resource-quarter-status">Forecast · Q{q.q} {q.year}</div>
+                          <div className="resource-quarter-total">{q.totalFte.toFixed(1)} FTE</div>
+                        </div>
+                        <div className="resource-month-grid">
+                          {q.months.filter(m => m.fte > 0).map(m => (
+                            <div key={m.index} className="resource-month-chip is-request">
+                              <span>{m.label}</span>
+                              <strong>{m.fte.toFixed(1)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="resource-quarter-cost">{q.cost ? fmt(q.cost) : 'No cost planned'}</div>
+                      </section>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </section>
+          )}
+        </div>
+
+        {/* Desktop table */}
         <div
+          className="resource-table-wrap"
           style={{ overflowX: 'auto' }}
           onScroll={e => {
             const el = e.currentTarget;
             if (el.scrollWidth - el.scrollLeft - el.clientWidth < 240) setHorizon(h => h + 6);
           }}
         >
-          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: tableW }}>
+          <table data-responsive="scroll" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: tableW }}>
             <colgroup>
               <col style={{ width: nameColW }} />
               {months.map((_, i) => <col key={i} style={{ width: monthColW }} />)}
@@ -785,14 +965,14 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
 
               {/* Footer: cost totals */}
               <tr style={{ background: 'var(--accent-light)', fontWeight: 600, color: 'var(--accent)' }}>
-                <td style={{ padding: '10px 20px', fontSize: 13, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>Est. labour cost ($K)</td>
+                <td style={{ padding: '10px 20px', fontSize: 13, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>Est. labour cost</td>
                 {colCost.map((t, i) => (
                   <td key={i} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t === 0 ? 'var(--accent-mid)' : 'var(--accent)' }}>
-                    {t > 0 ? t.toFixed(0) : '—'}
+                    {t > 0 ? fmt(t * 1000) : '—'}
                   </td>
                 ))}
                 <td style={{ padding: '10px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 14, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyR }}>
-                  {totalCostK.toFixed(0)}
+                  {fmt(totalCostK * 1000)}
                 </td>
               </tr>
 
@@ -811,14 +991,14 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
                     </td>
                   </tr>
                   <tr style={{ background: 'var(--surface)', fontWeight: 600, color: 'var(--accent)' }}>
-                    <td style={{ padding: '8px 20px', fontSize: 12, background: 'var(--surface)', ...stickyL }}>Requested cost ($K · ETC)</td>
+                    <td style={{ padding: '8px 20px', fontSize: 12, background: 'var(--surface)', ...stickyL }}>Requested cost (ETC)</td>
                     {reqColCost.map((t, i) => (
                       <td key={i} style={{ padding: '8px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontStyle: 'italic', color: t === 0 ? 'var(--text-3)' : 'var(--accent)' }}>
-                        {t > 0 ? t.toFixed(0) : '—'}
+                        {t > 0 ? fmt(t * 1000) : '—'}
                       </td>
                     ))}
                     <td style={{ padding: '8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, background: 'var(--surface)', ...stickyR }}>
-                      {reqCostK.toFixed(0)}
+                      {fmt(reqCostK * 1000)}
                     </td>
                   </tr>
                 </>
@@ -965,19 +1145,21 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               Grade
-              <select className="input" style={{ marginTop: 4 }} value={form.grade}
-                onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}>
-                <option value="">—</option>
-                {grades.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
+              <Select
+                value={form.grade}
+                options={[{ value: '', label: '—' }, ...grades.map(g => ({ value: g, label: g }))]}
+                onChange={v => setForm(f => ({ ...f, grade: v }))}
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
               From (month)
-              <select className="input" style={{ marginTop: 4 }} value={form.need_month}
-                onChange={e => setForm(f => ({ ...f, need_month: e.target.value }))}>
-                <option value="">—</option>
-                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-              </select>
+              <Select
+                value={form.need_month}
+                options={[{ value: '', label: '—' }, ...MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))]}
+                onChange={v => setForm(f => ({ ...f, need_month: v }))}
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               From (year)
@@ -987,11 +1169,12 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
             </label>
             <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
               To (month)
-              <select className="input" style={{ marginTop: 4 }} value={form.need_end_month}
-                onChange={e => setForm(f => ({ ...f, need_end_month: e.target.value }))}>
-                <option value="">—</option>
-                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-              </select>
+              <Select
+                value={form.need_end_month}
+                options={[{ value: '', label: '—' }, ...MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))]}
+                onChange={v => setForm(f => ({ ...f, need_end_month: v }))}
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               To (year)

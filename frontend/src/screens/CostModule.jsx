@@ -1,15 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useProject, useCostModule, useEtc, useCostSchedule, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
 import { CAT_COLORS } from '../components/Charts.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import Icon from '../components/Icon.jsx';
 
-// Shared screen for the Material and Sub-Con modules. Each is a project-level
-// purchase register: PO number (optional), description, goods received date (optional)
-// and amount. A goods received date makes the item Committed in the Cost/Forecast tab;
-// without one it is treated as ETC (Forecast). Everything entered here rolls up
-// into a single category (Material or Sub-Con) — no sub-job assignment needed.
+// Shared screen for the Material, Sub-Con and Other LOB/MISC modules. These are
+// project-level planning registers; SAP import remains the committed-cost source.
 export default function CostModule({ module, title, etcKey, category, descPlaceholder, projectId, navigate, role, embedded = false }) {
   const { project: p, loading } = useProject(projectId);
   const { items, reload } = useCostModule(module, projectId);
@@ -17,27 +14,27 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
   const { schedule, reload: reloadSchedule } = useCostSchedule(module, projectId);
   const canEdit = role !== 'Project Director';
 
-  const [form, setForm] = useState({ po_number: '', description: '', purchase_date: '', amount: '' });
+  const [form, setForm] = useState({ description: '', estimated_received_date: '', amount: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [view, setView] = useState('register');
 
-  const committedTotal = items.reduce((s, it) => s + (it.purchase_date ? Number(it.amount || 0) : 0), 0);
-  const etcTotal       = items.reduce((s, it) => s + (it.purchase_date ? 0 : Number(it.amount || 0)), 0);
+  const plannedTotal = items.reduce((s, it) => s + Number(it.amount || 0), 0);
+  const datedTotal   = items.reduce((s, it) => s + (it.estimated_received_date ? Number(it.amount || 0) : 0), 0);
 
   async function addItem() {
     if (!form.description) { setErr('Description is required'); return; }
+    if (!form.estimated_received_date) { setErr('Estimated received date is required'); return; }
     setBusy(true); setErr(null);
     try {
       await api.post(`/api/${module}`, {
         project_id: projectId,
-        po_number: form.po_number || null,
         description: form.description,
-        purchase_date: form.purchase_date || null,
+        estimated_received_date: form.estimated_received_date || null,
         amount: Number(form.amount) || 0,
         created_by: null,
       });
-      setForm({ po_number: '', description: '', purchase_date: '', amount: '' });
+      setForm({ description: '', estimated_received_date: '', amount: '' });
       reload();
     } catch (e) { setErr(e.message || 'Failed to add'); }
     finally { setBusy(false); }
@@ -91,14 +88,14 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
           <div className="cost-summary-sub">Purchase register</div>
         </div>
         <div className="cost-summary-card committed">
-          <div className="cost-summary-label">Committed</div>
-          <div className="kpi-value num">{fmt(committedTotal)}</div>
-          <div className="cost-summary-sub">Goods received</div>
+          <div className="cost-summary-label">Estimated received</div>
+          <div className="kpi-value num">{fmt(datedTotal)}</div>
+          <div className="cost-summary-sub">Scheduled by date</div>
         </div>
         <div className="cost-summary-card forecast">
           <div className="cost-summary-label">ETC (Forecast)</div>
-          <div className="kpi-value num">{fmt(etcTotal)}</div>
-          <div className="cost-summary-sub">Awaiting goods received</div>
+          <div className="kpi-value num">{fmt(plannedTotal)}</div>
+          <div className="cost-summary-sub">Local register forecast</div>
         </div>
       </div>
 
@@ -114,7 +111,7 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
         </div>
       )}
 
-      <div className="cost-viewbar">
+      <div className={`cost-viewbar ${view === 'timeline' ? 'is-timeline' : 'is-register'}`}>
         {[['register', 'Register'], ['timeline', 'Timeline']].map(([k, l]) => (
           <button key={k} type="button" onClick={() => setView(k)} className={view === k ? 'active' : ''}>{l}</button>
         ))}
@@ -132,16 +129,12 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
           <div className="cost-section-title">Add line item</div>
           <div className="cost-entry-grid">
             <label className="field">
-              <span className="field-label">PO number <span style={{ color: 'var(--text-3)', fontWeight: 500, textTransform: 'none' }}>(optional)</span></span>
-              <input className="input" placeholder="e.g. PO-001" value={form.po_number} onChange={e => setForm(f => ({ ...f, po_number: e.target.value }))} />
-            </label>
-            <label className="field">
               <span className="field-label">Description</span>
               <input className="input" placeholder={descPlaceholder || 'Description'} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </label>
             <label className="field">
-              <span className="field-label">Goods received date <span style={{ color: 'var(--text-3)', fontWeight: 500, textTransform: 'none' }}>(optional)</span></span>
-              <DatePicker value={form.purchase_date} onChange={v => setForm(f => ({ ...f, purchase_date: v }))} placeholder="Select date" title="Date goods were received (leave empty for ETC)" />
+              <span className="field-label">Estimated received date</span>
+              <DatePicker value={form.estimated_received_date} onChange={v => setForm(f => ({ ...f, estimated_received_date: v }))} placeholder="Select date" title="Estimated date the line item will be received" />
             </label>
             <label className="field">
               <span className="field-label">Amount</span>
@@ -150,19 +143,18 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
             <button className="btn btn-primary btn-sm" onClick={addItem} disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
           <div className="cost-form-note">
-            A goods received date marks the item as <strong>Committed</strong>; leave it empty to keep it in <strong>ETC (Forecast)</strong>.
+            The estimated received date places the amount on the timeline. Committed cost comes from SAP import, not this local register.
           </div>
         </div>
       )}
 
       <div className="card cost-table-card">
         <div className="table-wrap">
-          <table>
+          <table className="cost-register-table">
             <thead>
               <tr>
-                <th>PO number</th>
                 <th>Description</th>
-                <th>Goods received date</th>
+                <th>Estimated received date</th>
                 <th>Bucket</th>
                 <th className="num">Amount</th>
                 {canEdit && <th />}
@@ -170,50 +162,38 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
             </thead>
             <tbody>
               {items.length === 0 && (
-                <tr><td colSpan={canEdit ? 6 : 5} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No line items yet</td></tr>
+                <tr><td colSpan={canEdit ? 5 : 4} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No line items yet</td></tr>
               )}
               {items.map(it => {
-                const committed = !!it.purchase_date;
                 return (
-                  <tr key={it.id}>
-                    <td>
-                      {canEdit ? (
-                        <input className="input" defaultValue={it.po_number || ''} placeholder="—"
-                          onBlur={async e => {
-                            const nv = e.target.value.trim() || null;
-                            if (nv === (it.po_number || null)) return;
-                            const ok = await patchItem(it.id, { po_number: nv });
-                            if (!ok) e.target.value = it.po_number || '';
-                          }} style={{ maxWidth: 130 }} />
-                      ) : (it.po_number || '—')}
-                    </td>
-                    <td>
+                  <tr key={it.id} className="cost-register-row">
+                    <td className="cost-register-desc">
                       {canEdit ? (
                         <input className="input" defaultValue={it.description}
                           onBlur={e => e.target.value !== it.description && patchItem(it.id, { description: e.target.value })} />
                       ) : it.description}
                     </td>
-                    <td>
+                    <td className="cost-register-date">
                       {canEdit ? (
-                        <DatePicker value={it.purchase_date ? String(it.purchase_date).slice(0, 10) : ''}
-                          onChange={v => patchItem(it.id, { purchase_date: v || null })} placeholder="—" style={{ maxWidth: 160 }} />
-                      ) : (it.purchase_date ? String(it.purchase_date).slice(0, 10) : '—')}
+                        <DatePicker value={it.estimated_received_date ? String(it.estimated_received_date).slice(0, 10) : ''}
+                          onChange={v => patchItem(it.id, { estimated_received_date: v || null })} placeholder="—" style={{ maxWidth: 160 }} />
+                      ) : (it.estimated_received_date ? String(it.estimated_received_date).slice(0, 10) : '—')}
                     </td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600,
-                        color: committed ? 'var(--warn)' : 'var(--accent)' }}>
+                    <td className="cost-register-bucket">
+                      <span className="cost-register-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600,
+                        color: 'var(--accent)' }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor' }} />
-                        {committed ? 'Committed' : 'ETC'}
+                        Forecast
                       </span>
                     </td>
-                    <td className="num">
+                    <td className="num cost-register-amount">
                       {canEdit ? (
                         <input className="input num" type="number" defaultValue={Number(it.amount)}
                           onBlur={e => Number(e.target.value) !== Number(it.amount) && patchItem(it.id, { amount: Number(e.target.value) || 0 })} style={{ maxWidth: 120, textAlign: 'right' }} />
                       ) : fmt(it.amount)}
                     </td>
                     {canEdit && (
-                      <td>
+                      <td className="cost-register-action">
                         <button className="btn btn-ghost btn-sm" onClick={() => removeItem(it.id)} title="Delete"><Icon name="x" size={13} /></button>
                       </td>
                     )}
@@ -236,12 +216,47 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
 // /schedule endpoint.
 function TimelineGrid({ items, schedule, module, canEdit, reloadSchedule, onError }) {
   const [year, setYear] = useState(new Date().getFullYear());
+  const [yearTouched, setYearTouched] = useState(false);
+
+  function estimatedParts(item) {
+    if (!item.estimated_received_date) return null;
+    const d = new Date(`${String(item.estimated_received_date).slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
 
   const cells = useMemo(() => {
     const m = {};
-    for (const s of schedule) m[`${s.entity_id}-${s.year}-${s.month}`] = Number(s.amount) || 0;
+    const estimatedIds = new Set(items.filter(it => estimatedParts(it)).map(it => String(it.id)));
+    for (const s of schedule) {
+      if (estimatedIds.has(String(s.entity_id))) continue;
+      m[`${s.entity_id}-${s.year}-${s.month}`] = Number(s.amount) || 0;
+    }
+    for (const it of items) {
+      const est = estimatedParts(it);
+      if (!est) continue;
+      m[`${it.id}-${est.year}-${est.month}`] = Number(it.amount) || 0;
+    }
     return m;
-  }, [schedule]);
+  }, [schedule, items]);
+
+  useEffect(() => {
+    if (yearTouched || !items.length) return;
+    const currentYear = new Date().getFullYear();
+    const years = new Set();
+    for (const it of items) {
+      const est = estimatedParts(it);
+      if (est) years.add(est.year);
+    }
+    for (const s of schedule) years.add(Number(s.year));
+    if (!years.size || years.has(currentYear)) return;
+    setYear(Math.min(...years));
+  }, [items, schedule, yearTouched]);
+
+  function moveYear(delta) {
+    setYearTouched(true);
+    setYear(y => y + delta);
+  }
 
   async function setCell(itemId, month, value) {
     try {
@@ -253,30 +268,80 @@ function TimelineGrid({ items, schedule, module, canEdit, reloadSchedule, onErro
   const colTotals = MONTHS.map((_, i) =>
     items.reduce((s, it) => s + (cells[`${it.id}-${year}-${i + 1}`] || 0), 0));
   const yearTotal = colTotals.reduce((a, b) => a + b, 0);
+  const mobileMonths = MONTHS.map((name, i) => {
+    const month = i + 1;
+    const entries = items
+      .map(it => ({
+        item: it,
+        amount: cells[`${it.id}-${year}-${month}`] || 0,
+        estimated: estimatedParts(it),
+      }))
+      .filter(row => row.amount || row.estimated?.month === month);
+    return { name, month, total: colTotals[i], entries };
+  });
+  const lineColW = 320;
+  const monthColW = 96;
+  const tableW = lineColW + MONTHS.length * monthColW;
 
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ flex: 1 }}>
+    <div className="card timeline-card">
+      <div className="timeline-head">
+        <div className="timeline-title-block">
           <h4>Upcoming cost by month</h4>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-            Plan each line item's spend across the year — the footer shows the monthly forecast total.
+          <div className="timeline-subtitle">
+            Estimated received dates place the full amount automatically; manual cells can split the plan across months.
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setYear(y => y - 1)}>‹</button>
-          <span style={{ fontWeight: 700, fontSize: 13, minWidth: 42, textAlign: 'center' }}>{year}</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => setYear(y => y + 1)}>›</button>
+        <div className="timeline-year-controls">
+          <button className="btn btn-ghost btn-sm" onClick={() => moveYear(-1)}>‹</button>
+          <span className="timeline-year">{year}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => moveYear(1)}>›</button>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>Year total {fmt(yearTotal)}</div>
+        <div className="timeline-year-total">Year total {fmt(yearTotal)}</div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720 }}>
+      <div className="timeline-mobile-list">
+        {items.length === 0 ? (
+          <div className="timeline-empty">No line items yet</div>
+        ) : mobileMonths.map(m => (
+          <section key={m.month} className={`timeline-month-card${m.total ? ' has-total' : ''}`}>
+            <div className="timeline-month-head">
+              <div>
+                <div className="timeline-month-name">{m.name}</div>
+                <div className="timeline-month-year">{year}</div>
+              </div>
+              <div className="timeline-month-total">{m.total ? fmt(m.total) : '—'}</div>
+            </div>
+            {m.entries.length ? (
+              <div className="timeline-month-lines">
+                {m.entries.map(({ item, amount, estimated }) => (
+                  <div key={item.id} className="timeline-month-line">
+                    <div className="timeline-month-desc">
+                      <span>{item.description}</span>
+                      {estimated && (
+                        <small>Est. {String(item.estimated_received_date).slice(0, 10)}</small>
+                      )}
+                    </div>
+                    <div className="timeline-month-amount">{amount ? fmt(amount) : '—'}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="timeline-month-empty">No planned cost</div>
+            )}
+          </section>
+        ))}
+      </div>
+      <div className="timeline-table-wrap">
+        <table data-responsive="scroll" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: tableW, minWidth: '100%' }}>
+          <colgroup>
+            <col style={{ width: lineColW }} />
+            {MONTHS.map(m => <col key={m} style={{ width: monthColW }} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '8px 12px', position: 'sticky', left: 0, background: 'var(--surface)', minWidth: 200 }}>Line item</th>
+              <th style={{ textAlign: 'left', padding: '8px 12px', position: 'sticky', left: 0, background: 'var(--surface)', width: lineColW }}>Line item</th>
               {MONTHS.map(m => (
-                <th key={m} style={{ padding: '8px 4px', fontSize: 10.5, color: 'var(--text-3)', textAlign: 'right', minWidth: 62 }}>{m}</th>
+                <th key={m} style={{ padding: '8px 8px', fontSize: 10.5, color: 'var(--text-3)', textAlign: 'center', width: monthColW }}>{m}</th>
               ))}
             </tr>
           </thead>
@@ -286,21 +351,32 @@ function TimelineGrid({ items, schedule, module, canEdit, reloadSchedule, onErro
             )}
             {items.map(it => (
               <tr key={it.id} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '6px 12px', fontSize: 13, position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+                <td style={{ padding: '6px 12px', fontSize: 13, position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: lineColW }}>
                   {it.description}
+                  {it.estimated_received_date && (
+                    <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
+                      Est. {String(it.estimated_received_date).slice(0, 10)}
+                    </div>
+                  )}
                 </td>
                 {MONTHS.map((m, i) => {
                   const month = i + 1;
                   const val = cells[`${it.id}-${year}-${month}`] || 0;
+                  const isEstimatedDriven = !!estimatedParts(it);
                   return (
-                    <td key={m} style={{ padding: 2 }}>
-                      {canEdit ? (
+                    <td key={m} style={{ padding: '3px 8px', width: monthColW, textAlign: 'center' }}>
+                      {canEdit && !isEstimatedDriven ? (
                         <input className="input num" type="number" defaultValue={val || ''} placeholder="0"
                           key={`${it.id}-${year}-${month}-${val}`}
                           onBlur={e => Number(e.target.value || 0) !== Number(val) && setCell(it.id, month, e.target.value)}
-                          style={{ width: 60, textAlign: 'right', padding: '4px 6px', fontSize: 12 }} />
+                          style={{ width: '100%', textAlign: 'center', padding: '4px 8px', fontSize: 12, boxSizing: 'border-box' }} />
                       ) : (
-                        <div style={{ width: 60, textAlign: 'right', fontSize: 12, color: val ? 'var(--text)' : 'var(--text-3)' }}>{val ? fmt(val) : '—'}</div>
+                        <div
+                          title={isEstimatedDriven ? 'Driven by estimated received date' : undefined}
+                          style={{ width: '100%', textAlign: 'center', fontSize: 12, boxSizing: 'border-box', color: val ? 'var(--text)' : 'var(--text-3)' }}
+                        >
+                          {val ? fmt(val) : '—'}
+                        </div>
                       )}
                     </td>
                   );
@@ -310,9 +386,9 @@ function TimelineGrid({ items, schedule, module, canEdit, reloadSchedule, onErro
           </tbody>
           <tfoot>
             <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface-2)' }}>
-              <td style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, position: 'sticky', left: 0, background: 'var(--surface-2)' }}>Monthly forecast</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, position: 'sticky', left: 0, background: 'var(--surface-2)', width: lineColW }}>Monthly forecast</td>
               {colTotals.map((t, i) => (
-                <td key={i} style={{ padding: '8px 4px', textAlign: 'right', fontSize: 11.5, fontWeight: 600, color: t ? 'var(--accent)' : 'var(--text-3)' }}>
+                <td key={i} style={{ padding: '8px 8px', width: monthColW, textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: t ? 'var(--accent)' : 'var(--text-3)' }}>
                   {t ? fmt(t) : '—'}
                 </td>
               ))}

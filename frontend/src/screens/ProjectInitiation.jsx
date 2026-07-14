@@ -2,14 +2,17 @@ import React, { useMemo, useState } from 'react';
 import { useProject, useProjectInitiation, fmt } from '../data/store.js';
 import { api } from '../data/api.js';
 import Icon from '../components/Icon.jsx';
+import Select from '../components/Select.jsx';
 
 const KINDS = [
   { id: 'resource', label: 'Resource' },
   { id: 'material', label: 'Material' },
   { id: 'subcon', label: 'Sub-Con' },
-  { id: 'others', label: 'Others LOB/MISC' },
+  { id: 'others', label: 'Other LOB/MISC' },
 ];
 const CATS = ['PM', 'MISC'];
+const KIND_OPTIONS = KINDS.map(k => ({ value: k.id, label: k.label }));
+const CAT_OPTIONS = CATS.map(c => ({ value: c, label: c }));
 
 const BLANK = { kind: 'resource', category: 'PM', sub_job_label: '', description: '', qty: '1', unit_cost: '', notes: '' };
 
@@ -130,15 +133,11 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr .75fr 1fr 1.6fr .7fr .9fr auto', gap: 8, alignItems: 'end' }}>
             <label className="field">
               <span className="field-label">Kind</span>
-              <select className="input" value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))}>
-                {KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
-              </select>
+              <Select value={form.kind} options={KIND_OPTIONS} onChange={v => setForm(f => ({ ...f, kind: v }))} />
             </label>
             <label className="field">
               <span className="field-label">Category</span>
-              <select className="input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <Select value={form.category} options={CAT_OPTIONS} onChange={v => setForm(f => ({ ...f, category: v }))} />
             </label>
             <label className="field">
               <span className="field-label">Sub-job</span>
@@ -192,9 +191,7 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
                     <tr key={it.id}>
                       <td>
                         {canEdit ? (
-                          <select className="input" value={it.category} onChange={e => patchItem(it.id, { category: e.target.value })} style={{ maxWidth: 90 }}>
-                            {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
+                          <Select value={it.category} options={CAT_OPTIONS} onChange={v => patchItem(it.id, { category: v })} style={{ maxWidth: 100 }} />
                         ) : it.category}
                       </td>
                       <td>

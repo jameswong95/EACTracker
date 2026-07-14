@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useRates, useProjects, useResourcePool, useFixedRates, useFxRates, fmt } from '../data/store.js';
 import { api } from '../data/api.js';
 import Icon from '../components/Icon.jsx';
+import Select from '../components/Select.jsx';
 
 const WBS_TREE = [
   {
@@ -228,9 +229,7 @@ function PoolTab({ editable = false }) {
                   </td>
                   <td>
                     {editable ? (
-                      <select className="input" defaultValue={r.grade} onChange={e => patchPerson(r.id, { grade: e.target.value })} style={{ maxWidth: 90 }}>
-                        {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
-                      </select>
+                      <Select value={r.grade} options={gradeOptions.map(g => ({ value: g, label: g }))} onChange={grade => patchPerson(r.id, { grade })} style={{ maxWidth: 100 }} />
                     ) : <span className="badge badge-accent" style={{ fontWeight: 800 }}>{r.grade}</span>}
                   </td>
                   {editable && <td><button className="btn btn-ghost btn-sm" onClick={() => removePerson(r.id)} title="Deactivate"><Icon name="x" size={13} /></button></td>}
@@ -241,10 +240,12 @@ function PoolTab({ editable = false }) {
                   <td><input className="input" placeholder="r16" value={adding.id} onChange={e => setAdding(a => ({ ...a, id: e.target.value }))} style={{ maxWidth: 70 }} /></td>
                   <td><input className="input" placeholder="Full name" value={adding.name} onChange={e => setAdding(a => ({ ...a, name: e.target.value }))} style={{ maxWidth: 220 }} /></td>
                   <td>
-                    <select className="input" value={adding.grade} onChange={e => setAdding(a => ({ ...a, grade: e.target.value }))} style={{ maxWidth: 90 }}>
-                      <option value="">Grade</option>
-                      {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
+                    <Select
+                      value={adding.grade}
+                      options={[{ value: '', label: 'Grade' }, ...gradeOptions.map(g => ({ value: g, label: g }))]}
+                      onChange={grade => setAdding(a => ({ ...a, grade }))}
+                      style={{ maxWidth: 100 }}
+                    />
                   </td>
                   <td><button className="btn btn-primary btn-sm" onClick={addPerson}>Add</button></td>
                 </tr>
@@ -767,23 +768,29 @@ function PurchasesTab() {
       <div className="card card-p mb-3" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search description, vendor, project, WBS..."
           style={{ flex: 1, minWidth: 220, padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit' }} />
-        <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="">All categories</option>
-          {Object.entries(PURCHASE_CATEGORIES).map(([k, info]) => <option key={k} value={k}>{info.label}</option>)}
-        </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="">All statuses</option>
-          <option value="planned">Planned</option>
-          <option value="committed">Committed</option>
-          <option value="received">Received</option>
-        </select>
-        <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="">All projects</option>
-          {projects.map(pid => <option key={pid} value={pid}>{pid}</option>)}
-        </select>
+        <Select
+          value={catFilter}
+          options={[{ value: '', label: 'All categories' }, ...Object.entries(PURCHASE_CATEGORIES).map(([value, info]) => ({ value, label: info.label }))]}
+          onChange={setCatFilter}
+          style={{ width: 170 }}
+        />
+        <Select
+          value={statusFilter}
+          options={[
+            { value: '', label: 'All statuses' },
+            { value: 'planned', label: 'Planned' },
+            { value: 'committed', label: 'Committed' },
+            { value: 'received', label: 'Received' },
+          ]}
+          onChange={setStatusFilter}
+          style={{ width: 150 }}
+        />
+        <Select
+          value={projectFilter}
+          options={[{ value: '', label: 'All projects' }, ...projects.map(pid => ({ value: pid, label: pid }))]}
+          onChange={setProjectFilter}
+          style={{ width: 160 }}
+        />
         <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{filtered.length} of {rows.length}</span>
       </div>
 

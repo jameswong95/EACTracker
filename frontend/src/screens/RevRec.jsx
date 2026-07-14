@@ -151,13 +151,6 @@ function RevRecBody({ p, navigate, role, reload }) {
             {remaining >= 0 ? `${fmt(remaining)} remaining` : `${fmt(Math.abs(remaining))} over contract`}
           </div>
         </div>
-        <div className="kpi-tile">
-          <div className="kpi-label">Method</div>
-          <div style={{ marginTop: 10 }}>
-            <span className="badge badge-accent">Monthly value</span>
-          </div>
-          <div className="kpi-sub">PM-entered per month</div>
-        </div>
       </div>
 
       {/* Recognition summary — Planned / Actual / Forecast / Planned (Tender) */}

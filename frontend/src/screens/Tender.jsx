@@ -4,14 +4,22 @@ import { api } from '../data/api.js';
 import StLabour from './tender/StLabour.jsx';
 import Prelim from './tender/Prelim.jsx';
 import Icon from '../components/Icon.jsx';
+import Select from '../components/Select.jsx';
 
 const KINDS = [
   { id: 'resource', label: 'Resource' },
   { id: 'material', label: 'Material' },
   { id: 'subcon',   label: 'Sub-Con' },
-  { id: 'others',   label: 'Others LOB/MISC' },
+  { id: 'others',   label: 'Other LOB/MISC' },
 ];
 const CATS = ['PM', 'MISC'];
+const KIND_OPTIONS = KINDS.map(k => ({ value: k.id, label: k.label }));
+const CAT_OPTIONS = CATS.map(c => ({ value: c, label: c }));
+const TENDER_STATUS_OPTIONS = ['draft', 'submitted', 'awarded', 'lost'].map(s => ({ value: s, label: s }));
+const VO_STATUS_OPTIONS = [
+  { value: 'potential', label: 'Potential' },
+  { value: 'confirmed', label: 'Confirmed' },
+];
 
 const SUB_TABS = [
   { id: 'estimate', label: 'Estimate' },
@@ -184,9 +192,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
         </div>
         <div className="grow" />
         {canEdit && tender && (
-          <select className="input" value={tender.status} onChange={e => setStatus(e.target.value)} style={{ maxWidth: 140 }}>
-            {['draft', 'submitted', 'awarded', 'lost'].map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <Select value={tender.status} options={TENDER_STATUS_OPTIONS} onChange={setStatus} style={{ width: 140 }} />
         )}
         {canEdit && tender && tender.status !== 'awarded' && (
           <button className="btn btn-primary btn-sm" onClick={initiateProject} title="Award tender and initiate the project (inherits blended margin)">Award &amp; initiate</button>
@@ -287,12 +293,8 @@ export default function Tender({ tenderId, navigate, role, session }) {
         <div className="card card-p" style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Add tender line</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.7fr 1fr 1.6fr 0.7fr 0.9fr auto', gap: 8, alignItems: 'center' }}>
-            <select className="input" value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))}>
-              {KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
-            </select>
-            <select className="input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-              {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <Select value={form.kind} options={KIND_OPTIONS} onChange={v => setForm(f => ({ ...f, kind: v }))} />
+            <Select value={form.category} options={CAT_OPTIONS} onChange={v => setForm(f => ({ ...f, category: v }))} />
             <input className="input" placeholder="Sub-job (label)" value={form.sub_job_label} onChange={e => setForm(f => ({ ...f, sub_job_label: e.target.value }))} />
             <input className="input" placeholder="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             <input className="input" type="number" placeholder="Qty" value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} />
@@ -336,9 +338,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
                     <tr key={it.id}>
                       <td>
                         {canEdit ? (
-                          <select className="input" value={it.category} onChange={e => patchItem(it.id, { category: e.target.value })} style={{ maxWidth: 90 }}>
-                            {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
+                          <Select value={it.category} options={CAT_OPTIONS} onChange={v => patchItem(it.id, { category: v })} style={{ maxWidth: 100 }} />
                         ) : it.category}
                       </td>
                       <td>
@@ -430,10 +430,7 @@ function VoPanel({ vos, voTotals, gpPct, canEdit, voForm, setVoForm, addVo, patc
             <input className="input" placeholder="Ref (VO-01)" value={voForm.ref} onChange={e => setVoForm(f => ({ ...f, ref: e.target.value }))} />
             <input className="input" placeholder="Description" value={voForm.description} onChange={e => setVoForm(f => ({ ...f, description: e.target.value }))} />
             <input className="input num" type="number" placeholder="Amount" value={voForm.amount} onChange={e => setVoForm(f => ({ ...f, amount: e.target.value }))} style={{ textAlign: 'right' }} />
-            <select className="input" value={voForm.status} onChange={e => setVoForm(f => ({ ...f, status: e.target.value }))}>
-              <option value="potential">Potential</option>
-              <option value="confirmed">Confirmed</option>
-            </select>
+            <Select value={voForm.status} options={VO_STATUS_OPTIONS} onChange={v => setVoForm(f => ({ ...f, status: v }))} />
             <button className="btn btn-primary btn-sm" onClick={addVo} disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
@@ -476,10 +473,7 @@ function VoPanel({ vos, voTotals, gpPct, canEdit, voForm, setVoForm, addVo, patc
                   </td>
                   <td>
                     {canEdit ? (
-                      <select className="input" value={v.status} onChange={e => patchVo(v.id, { status: e.target.value })} style={{ maxWidth: 130 }}>
-                        <option value="potential">Potential</option>
-                        <option value="confirmed">Confirmed</option>
-                      </select>
+                      <Select value={v.status} options={VO_STATUS_OPTIONS} onChange={status => patchVo(v.id, { status })} style={{ maxWidth: 140 }} />
                     ) : (
                       <span className={`badge badge-${v.status === 'confirmed' ? 'ok' : 'warn'}`} style={{ fontSize: 10 }}>{v.status}</span>
                     )}

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { api } from '../data/api.js';
 import { useSapImports, fmt, MONTHS } from '../data/store.js';
 import Icon from '../components/Icon.jsx';
+import Select from '../components/Select.jsx';
 
 const STEPS = ['Upload', 'Preview', 'Commit', 'Done'];
 
@@ -258,10 +259,12 @@ export default function SapImport({ navigate, session }) {
                   <div className="flex gap-3 items-center mb-4">
                     <label style={{ fontSize: 12, color: 'var(--text-2)' }}>
                       Month
-                      <select className="input" value={periodMonth} onChange={e => setPeriodMonth(+e.target.value)}
-                        style={{ marginLeft: 8, width: 120 }}>
-                        {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                      </select>
+                      <Select
+                        value={String(periodMonth)}
+                        options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+                        onChange={v => setPeriodMonth(+v)}
+                        style={{ marginLeft: 8, width: 120 }}
+                      />
                     </label>
                     <label style={{ fontSize: 12, color: 'var(--text-2)' }}>
                       Year

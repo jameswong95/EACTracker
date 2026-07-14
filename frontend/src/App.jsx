@@ -69,6 +69,10 @@ export default function App() {
       raf = 0;
       if (!mq.matches) return;
       document.querySelectorAll('table').forEach(table => {
+        if (table.dataset.responsive === 'scroll') {
+          table.classList.remove('rtable');
+          return;
+        }
         const ths = table.querySelectorAll('thead th');
         if (!ths.length) return;
         const labels = Array.from(ths).map(th =>

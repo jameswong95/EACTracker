@@ -37,7 +37,7 @@ function HealthBadge({ status }) {
 }
 
 // PRD §4.6: Standard sub-job categories
-const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Others LOB/MISC'];
+const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Other LOB/MISC'];
 
 function buildCategoryBreakdown(projects) {
   const weights = [0.12, 0.32, 0.28, 0.18, 0.10];
@@ -572,9 +572,9 @@ export default function Portfolio({ navigate, role, session }) {
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{filtered.length} of {baseList.length}</span>
           </div>
 
-          <div className="card" style={{ borderRadius: '0 0 var(--r) var(--r)' }}>
+          <div className="card portfolio-table-card" style={{ borderRadius: '0 0 var(--r) var(--r)' }}>
             <div className="table-wrap">
-              <table>
+              <table className="portfolio-project-table">
                 <thead>
                   <tr>
                     <Th col="name"        label="Project" />
@@ -601,16 +601,17 @@ export default function Portfolio({ navigate, role, session }) {
                     return (
                       <tr key={p.id} onClick={() => navigate('project', p.id)}
                         className={health === 'bad' ? 'row-bad' : health === 'warn' ? 'row-warn' : ''}>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.id} · PM: {p.pm}</div>
+                        <td className="portfolio-project-cell">
+                          <div className="portfolio-project-title">{p.name}</div>
+                          <div className="portfolio-project-sub">{p.id} · PM: {p.pm}</div>
                         </td>
-                        <td style={{ padding: '10px 6px', textAlign: 'center' }}>
-                          <span className={`dot dot-${health}`} title={healthLabel(health)} />
+                        <td className="portfolio-health-cell" style={{ padding: '10px 6px', textAlign: 'center' }}>
+                          <span className={`dot dot-${health} portfolio-health-dot`} title={healthLabel(health)} />
+                          <span className="portfolio-health-label"><HealthBadge status={health} /></span>
                         </td>
-                        <td className="num">{fmt(p.budget)}</td>
-                        <td className="num" style={{ fontWeight: 600 }}>{fmt(p.eac)}</td>
-                        <td>
+                        <td className="num portfolio-metric">{fmt(p.budget)}</td>
+                        <td className="num portfolio-metric portfolio-eac-cell" style={{ fontWeight: 600 }}>{fmt(p.eac)}</td>
+                        <td className="portfolio-variance-cell">
                           <span style={{ color: varCol, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
                             {eacVar >= 0 ? '+' : ''}{fmtShort(eacVar)}
                             <span style={{ fontWeight: 400, fontSize: 11, marginLeft: 4, opacity: 0.8 }}>
@@ -618,12 +619,12 @@ export default function Portfolio({ navigate, role, session }) {
                             </span>
                           </span>
                         </td>
-                        <td className="num">{fmt(p.actual)}</td>
-                        <td className="num">{fmt(p.committed)}</td>
-                        <td className="num">{fmt(etc)}</td>
-                        <td><Sparkline data={p.trend} width={72} height={24} /></td>
-                        <td>
-                          <button className="btn btn-ghost btn-sm"
+                        <td className="num portfolio-metric">{fmt(p.actual)}</td>
+                        <td className="num portfolio-metric">{fmt(p.committed)}</td>
+                        <td className="num portfolio-metric">{fmt(etc)}</td>
+                        <td className="portfolio-trend-cell"><Sparkline data={p.trend} width={72} height={24} /></td>
+                        <td className="portfolio-action-cell">
+                          <button className="btn btn-ghost btn-sm portfolio-view-btn"
                             onClick={e => { e.stopPropagation(); navigate('project', p.id); }}>
                             View <Icon name="arrowRight" size={13} />
                           </button>

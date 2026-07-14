@@ -4,6 +4,7 @@ import { api } from '../data/api.js';
 import CostModule from './CostModule.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import Icon from '../components/Icon.jsx';
+import Select from '../components/Select.jsx';
 
 const GR_STATUS = {
   not_ordered: { label: 'Not ordered', color: 'var(--text-3)' },
@@ -11,12 +12,11 @@ const GR_STATUS = {
   partial:     { label: 'Part GR',     color: 'var(--warn)' },
   received:    { label: 'Received',    color: 'var(--ok)' },
 };
+const GR_STATUS_OPTIONS = Object.entries(GR_STATUS).map(([value, status]) => ({ value, label: status.label }));
 
 // Material module.
-//   * Asset List  - live document of physical assets. PO present => Committed
-//     (from SAP); PO absent => Forecast. Carries vendor payment structure and a
-//     month-by-month dollar-planning timeline.
-//   * Purchase register - the existing PO/description line-item register.
+//   * Asset List  - live document of physical assets for local forecast planning.
+//   * Purchase register - material forecast lines with estimated received dates.
 export default function Material({ projectId, navigate, role, session }) {
   const { project: p } = useProject(projectId);
   const [tab, setTab] = useState('assets');
@@ -47,7 +47,7 @@ export default function Material({ projectId, navigate, role, session }) {
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('project', projectId)}><Icon name="arrowLeft" size={13} /> Back</button>
       </div>
 
-      <div className="material-nav" role="tablist" aria-label="Material views">
+      <div className={`material-nav ${tab === 'register' ? 'is-register' : 'is-assets'}`} role="tablist" aria-label="Material views">
         {TABS.map(([k, l]) => (
           <button
             key={k}
@@ -76,7 +76,7 @@ export default function Material({ projectId, navigate, role, session }) {
 
 const BLANK = {
   asset_tag: '', description: '', serial_no: '', location: '', vendor: '',
-  po_number: '', gr_status: 'not_ordered', amount: '', need_by: '',
+  gr_status: 'not_ordered', amount: '', need_by: '',
   advance_pct: '', milestone_pct: '', retention_pct: '',
 };
 
@@ -108,7 +108,6 @@ function AssetList({ projectId, role, session, threshold }) {
         serial_no: form.serial_no || null,
         location: form.location || null,
         vendor: form.vendor || null,
-        po_number: form.po_number || null,
         gr_status: form.gr_status,
         amount: Number(form.amount) || 0,
         need_by: form.need_by || null,
@@ -137,8 +136,6 @@ function AssetList({ projectId, role, session, threshold }) {
     catch (e) { setErr(e.message || 'Save failed'); }
   }
 
-  const isCommitted = (a) => !!(a.po_number && a.po_number.trim());
-
   return (
     <>
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 20 }}>
@@ -148,14 +145,14 @@ function AssetList({ projectId, role, session, threshold }) {
           <div className="kpi-sub">live document</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Committed (PO / SAP)</div>
+          <div className="kpi-label">Committed (SAP)</div>
           <div className="kpi-value num" style={{ color: 'var(--warn)' }}>{fmt(totals.committed_amount)}</div>
-          <div className="kpi-sub">assets with a PO number</div>
+          <div className="kpi-sub">from SAP import</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Forecast (no PO)</div>
+          <div className="kpi-label">Forecast</div>
           <div className="kpi-value num" style={{ color: 'var(--accent)' }}>{fmt(totals.forecast_amount)}</div>
-          <div className="kpi-sub">still to be ordered</div>
+          <div className="kpi-sub">local asset plan</div>
         </div>
       </div>
 
@@ -167,25 +164,22 @@ function AssetList({ projectId, role, session, threshold }) {
       )}
 
       {canEdit && (
-        <div className="card card-p" style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Add asset</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.8fr 1fr 1fr 1fr 0.9fr 1fr 0.9fr auto', gap: 8, alignItems: 'end' }}>
+        <div className="card card-p asset-entry-card">
+          <div className="asset-entry-title">Add asset</div>
+          <div className="asset-entry-grid">
             <Field label="Tag"><input className="input" value={form.asset_tag} onChange={e => setForm(f => ({ ...f, asset_tag: e.target.value }))} /></Field>
             <Field label="Description"><input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
             <Field label="Serial no"><input className="input" value={form.serial_no} onChange={e => setForm(f => ({ ...f, serial_no: e.target.value }))} /></Field>
             <Field label="Location"><input className="input" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} /></Field>
             <Field label="Vendor"><input className="input" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} /></Field>
-            <Field label="PO number"><input className="input" placeholder="(forecast if blank)" value={form.po_number} onChange={e => setForm(f => ({ ...f, po_number: e.target.value }))} /></Field>
             <Field label="GR status">
-              <select className="input" value={form.gr_status} onChange={e => setForm(f => ({ ...f, gr_status: e.target.value }))}>
-                {Object.entries(GR_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
+              <Select value={form.gr_status} options={GR_STATUS_OPTIONS} onChange={v => setForm(f => ({ ...f, gr_status: v }))} />
             </Field>
             <Field label="Amount"><input className="input num" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} style={{ textAlign: 'right' }} /></Field>
-            <button className="btn btn-primary btn-sm" onClick={addAsset} disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
+            <button className="btn btn-primary btn-sm asset-entry-button" onClick={addAsset} disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
-            A <strong>PO number</strong> marks the asset <strong>Committed</strong> (from SAP); leave it blank to keep it in <strong>Forecast</strong>.
+          <div className="asset-entry-note">
+            GR status is an indicator only. Committed cost comes from SAP import.
           </div>
         </div>
       )}
@@ -201,7 +195,6 @@ function AssetList({ projectId, role, session, threshold }) {
                 <th>Serial</th>
                 <th>Location</th>
                 <th>Vendor</th>
-                <th>PO</th>
                 <th>GR</th>
                 <th>Bucket</th>
                 <th className="num">Amount</th>
@@ -211,10 +204,9 @@ function AssetList({ projectId, role, session, threshold }) {
             </thead>
             <tbody>
               {assets.length === 0 && (
-                <tr><td colSpan={canEdit ? 12 : 11} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No assets yet</td></tr>
+                <tr><td colSpan={canEdit ? 11 : 10} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No assets yet</td></tr>
               )}
               {assets.map(a => {
-                const committed = isCommitted(a);
                 const gr = GR_STATUS[a.gr_status] || GR_STATUS.not_ordered;
                 const open = expanded === a.id;
                 return (
@@ -226,20 +218,17 @@ function AssetList({ projectId, role, session, threshold }) {
                       <td>{canEdit ? <input className="input" defaultValue={a.serial_no || ''} onBlur={e => (e.target.value || null) !== a.serial_no && patchAsset(a.id, { serial_no: e.target.value || null })} style={{ maxWidth: 110 }} /> : (a.serial_no || '—')}</td>
                       <td>{canEdit ? <input className="input" defaultValue={a.location || ''} onBlur={e => (e.target.value || null) !== a.location && patchAsset(a.id, { location: e.target.value || null })} style={{ maxWidth: 110 }} /> : (a.location || '—')}</td>
                       <td>{canEdit ? <input className="input" defaultValue={a.vendor || ''} onBlur={e => (e.target.value || null) !== a.vendor && patchAsset(a.id, { vendor: e.target.value || null })} style={{ maxWidth: 110 }} /> : (a.vendor || '—')}</td>
-                      <td>{canEdit ? <input className="input" defaultValue={a.po_number || ''} placeholder="—" onBlur={e => (e.target.value || null) !== a.po_number && patchAsset(a.id, { po_number: e.target.value || null })} style={{ maxWidth: 100 }} /> : (a.po_number || '—')}</td>
                       <td>
                         {canEdit ? (
-                          <select className="input" value={a.gr_status} onChange={e => patchAsset(a.id, { gr_status: e.target.value })} style={{ maxWidth: 120 }}>
-                            {Object.entries(GR_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                          </select>
+                          <Select value={a.gr_status} options={GR_STATUS_OPTIONS} onChange={v => patchAsset(a.id, { gr_status: v })} style={{ maxWidth: 140 }} />
                         ) : (
                           <span style={{ color: gr.color, fontWeight: 600, fontSize: 12 }}>{gr.label}</span>
                         )}
                       </td>
                       <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: committed ? 'var(--warn)' : 'var(--accent)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor' }} />
-                          {committed ? 'Committed' : 'Forecast'}
+                          Forecast
                         </span>
                         {Number(a.amount) > 0 && Number(a.amount) < threshold && (
                           <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }} title={`Below the ${fmt(threshold)} asset threshold`}>below threshold</div>
@@ -251,7 +240,7 @@ function AssetList({ projectId, role, session, threshold }) {
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={canEdit ? 12 : 11} style={{ background: 'var(--surface-2)', padding: '14px 18px' }}>
+                        <td colSpan={canEdit ? 11 : 10} style={{ background: 'var(--surface-2)', padding: '14px 18px' }}>
                           <AssetDetail
                             asset={a} canEdit={canEdit} patchAsset={patchAsset}
                             year={year} setYear={setYear}
@@ -487,10 +476,11 @@ function MiscMaterials({ projectId, role, session, threshold, reloadSettings }) 
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Add misc line</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.8fr 0.8fr 0.7fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
             <Field label="From catalog">
-              <select className="input" value={form.rate_code} onChange={e => pickRate(e.target.value)}>
-                <option value="">— free line —</option>
-                {rates.filter(r => r.code).map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
-              </select>
+              <Select
+                value={form.rate_code}
+                options={[{ value: '', label: '— free line —' }, ...rates.filter(r => r.code).map(r => ({ value: r.code, label: r.label }))]}
+                onChange={pickRate}
+              />
             </Field>
             <Field label="Description"><input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
             <Field label="Unit"><input className="input" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} /></Field>

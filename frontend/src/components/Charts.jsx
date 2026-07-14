@@ -20,7 +20,7 @@ export const CAT_COLORS = {
   'Material':         '#008C95',
   'Subcon':           '#C99000',
   'Spares':           '#7030A0',
-  'Others LOB/MISC':  '#6B7280',
+  'Other LOB/MISC':   '#6B7280',
 };
 
 export function fmtShort(v) {

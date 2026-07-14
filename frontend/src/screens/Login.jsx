@@ -8,6 +8,7 @@ const ROLE_BADGE = {
   Leader:             { color: '#7030A0',           bg: 'rgba(112,48,160,0.12)' },
   Admin:              { color: 'var(--bad-text)',   bg: 'var(--bad-bg)'   },
 };
+const DEFAULT_ROLE_BADGE = { color: 'var(--text-2)', bg: 'var(--surface-3)' };
 const ROLE_ORDER = { Admin: 0, Leader: 1, Finance: 2, 'Project Director': 3, 'Project Manager': 4 };
 
 export default function Login({ onSignIn }) {
@@ -62,12 +63,12 @@ export default function Login({ onSignIn }) {
   }
 
   return (
-    <div style={{
+    <div className="login-screen" style={{
       minHeight: '100vh', display: 'flex',
       background: 'var(--bg)', color: 'var(--text)',
     }}>
       {/* ── Left: brand panel ─────────────────────────────── */}
-      <div style={{
+      <div className="login-brand-panel" style={{
         flex: '0 0 42%', minWidth: 360,
         background: 'var(--surface-2)',
         borderRight: '1px solid var(--border)',
@@ -100,12 +101,12 @@ export default function Login({ onSignIn }) {
       </div>
 
       {/* ── Right: sign-in panel ─────────────────────────── */}
-      <div style={{
+      <div className="login-main-panel" style={{
         flex: 1, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         padding: 48,
       }}>
-        <div style={{ width: '100%', maxWidth: 420 }}>
+        <div className="login-card" style={{ width: '100%', maxWidth: 420 }}>
           <h2 style={{ marginBottom: 6 }}>Sign in</h2>
           <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 24 }}>
             Use your company username, or pick an account below.
@@ -166,7 +167,7 @@ export default function Login({ onSignIn }) {
           </div>
 
           {/* Quick-pick user list (dev / demo) */}
-          <div style={{
+          <div className="login-user-list" style={{
             display: 'flex', flexDirection: 'column', gap: 4,
             maxHeight: 280, overflowY: 'auto',
             border: '1px solid var(--border)', borderRadius: 'var(--r)',
@@ -181,9 +182,10 @@ export default function Login({ onSignIn }) {
               </div>
             )}
             {!loading && users.map(u => {
-              const badge = ROLE_BADGE[u.role] || ROLE_BADGE.PM;
+              const badge = ROLE_BADGE[u.role] || DEFAULT_ROLE_BADGE;
               return (
                 <button
+                  className="login-user-row"
                   key={u.id}
                   type="button"
                   onClick={() => signIn(u)}
@@ -210,7 +212,7 @@ export default function Login({ onSignIn }) {
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{u.full_name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{u.username}</div>
                   </div>
-                  <span style={{
+                  <span className="login-role-badge" style={{
                     fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
                     padding: '3px 8px', borderRadius: 'var(--r-sm)',
                     color: badge.color, background: badge.bg,
