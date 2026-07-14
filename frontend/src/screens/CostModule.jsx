@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useProject, useCostModule, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
+import { firstError, nonNegativeNumber, requiredText } from '../data/validation.js';
 import { CAT_COLORS } from '../components/Charts.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import Icon from '../components/Icon.jsx';
@@ -46,8 +47,12 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
     .sort()[0];
 
   async function addItem() {
-    if (!form.description) { setErr('Description is required'); return; }
-    if (!form.estimated_received_date) { setErr('Estimated received date is required'); return; }
+    const validationError = firstError(
+      requiredText(form.description, 'Description'),
+      requiredText(form.estimated_received_date, 'Estimated received date'),
+      nonNegativeNumber(form.amount, 'Amount')
+    );
+    if (validationError) { setErr(validationError); return; }
     setBusy(true); setErr(null);
     try {
       await api.post(`/api/${module}`, {
@@ -64,6 +69,12 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
   }
 
   async function patchItem(id, patch) {
+    const validationError = firstError(
+      Object.prototype.hasOwnProperty.call(patch, 'description') ? requiredText(patch.description, 'Description') : null,
+      Object.prototype.hasOwnProperty.call(patch, 'estimated_received_date') ? requiredText(patch.estimated_received_date, 'Estimated received date') : null,
+      Object.prototype.hasOwnProperty.call(patch, 'amount') ? nonNegativeNumber(patch.amount, 'Amount') : null
+    );
+    if (validationError) { setErr(validationError); return false; }
     setErr(null);
     try { await api.patch(`/api/${module}/${id}`, patch); reload(); return true; }
     catch (e) { setErr(e.message || 'Update failed'); return false; }
@@ -76,7 +87,11 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
 
   async function addSubItem(parentId) {
     const subForm = subForms[parentId] || { description: '', estimated_received_date: '', amount: '' };
-    if (!subForm.description) { setErr('Sub-item description is required'); return; }
+    const validationError = firstError(
+      requiredText(subForm.description, 'Sub-item description'),
+      nonNegativeNumber(subForm.amount, 'Sub-item amount')
+    );
+    if (validationError) { setErr(validationError); return; }
     setErr(null);
     try {
       await api.post(`/api/${module}/${parentId}/sub-items`, {
@@ -91,6 +106,11 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
   }
 
   async function patchSubItem(parentId, subId, patch) {
+    const validationError = firstError(
+      Object.prototype.hasOwnProperty.call(patch, 'description') ? requiredText(patch.description, 'Sub-item description') : null,
+      Object.prototype.hasOwnProperty.call(patch, 'amount') ? nonNegativeNumber(patch.amount, 'Sub-item amount') : null
+    );
+    if (validationError) { setErr(validationError); return false; }
     setErr(null);
     try { await api.patch(`/api/${module}/${parentId}/sub-items/${subId}`, patch); reload(); return true; }
     catch (e) { setErr(e.message || 'Sub-item update failed'); return false; }

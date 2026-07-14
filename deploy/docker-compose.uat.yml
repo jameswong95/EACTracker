@@ -1,0 +1,63 @@
+services:
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET}
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      - frontend
+      - backend
+      - oauth2-proxy
+    networks: [app]
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    restart: unless-stopped
+    command:
+      - --http-address=0.0.0.0:4180
+      - --provider=oidc
+      - --oidc-issuer-url=${OAUTH2_PROXY_OIDC_ISSUER_URL}
+      - --client-id=${OAUTH2_PROXY_CLIENT_ID}
+      - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET}
+      - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET}
+      - --email-domain=*
+      - --scope=openid profile email
+      - --set-xauthrequest=true
+      - --oidc-groups-claim=roles
+      - --pass-access-token=false
+      - --pass-authorization-header=false
+    networks: [app]
+
+  frontend:
+    image: ${ACR_LOGIN_SERVER}/eactracker-frontend:${FRONTEND_IMAGE_TAG}
+    restart: unless-stopped
+    networks: [app]
+
+  backend:
+    image: ${ACR_LOGIN_SERVER}/eactracker-backend:${BACKEND_IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-1}
+      AUTH_MODE: proxy
+      AUTH_PROXY_SECRET: ${AUTH_PROXY_SECRET}
+      TRUST_PROXY: "1"
+      CORS_ORIGIN: ""
+      LOG_SQL: "0"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [app]
+
+networks:
+  app:
+    driver: bridge
+

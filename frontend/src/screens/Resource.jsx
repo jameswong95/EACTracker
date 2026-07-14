@@ -2,10 +2,38 @@ import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useProject, useResourcePool, useRates, useResourceRequests, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
+import { spreadsheetFileError } from '../data/files.js';
+import { firstError, monthNumber, periodRange, requiredText, yearNumber } from '../data/validation.js';
 import { CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
 
 let nextId = 100;
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ',') {
+      row.push(cell); cell = '';
+    } else if (ch === '\n') {
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else if (ch !== '\r') {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some(v => v !== '') || rows.length === 0) rows.push(row);
+  return rows;
+}
 
 /* ── Searchable person picker ── */
 function PersonSelect({ available, onSelect, onCancel }) {
@@ -249,12 +277,19 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
     const file = e.target.files[0];
     if (!file) return;
     setImportErr(null);
+    const fileError = spreadsheetFileError(file, { label: 'Resource plan', extensions: ['xlsx', 'xls', 'csv'] });
+    if (fileError) { setImportErr(fileError); e.target.value = ''; return; }
     const reader = new FileReader();
     reader.onload = ev => {
       try {
-        const wb   = XLSX.read(ev.target.result, { type: 'array' });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const isCsv = /\.csv$/i.test(file.name || '');
+        const data = isCsv
+          ? parseCsv(String(ev.target.result || ''))
+          : (() => {
+              const wb = XLSX.read(ev.target.result, { type: 'array' });
+              const ws = wb.Sheets[wb.SheetNames[0]];
+              return XLSX.utils.sheet_to_json(ws, { header: 1 });
+            })();
         const hdrs = (data[0] || []).map(h => String(h).trim());
         const nameCol  = hdrs.findIndex(h => /name/i.test(h));
         const gradeCol = hdrs.findIndex(h => /grade/i.test(h));
@@ -285,7 +320,8 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
         });
       } catch { setImportErr('Could not parse file. Download the template to see expected format.'); }
     };
-    reader.readAsArrayBuffer(file);
+    if (/\.csv$/i.test(file.name || '')) reader.readAsText(file);
+    else reader.readAsArrayBuffer(file);
     e.target.value = '';
   }
 
@@ -524,7 +560,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
             </div>
           </div>
 
-          <input ref={importRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleResourceImport} />
+          <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleResourceImport} />
           {canEdit && (
             <button className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => { setImportErr(null); importRef.current.click(); }}>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -933,8 +969,24 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
   }
 
   async function submit() {
-    if (!form.function_title.trim()) { setErr('Role / function is required.'); return; }
-    if (!form.remarks.trim())        { setErr('A justification (remarks) is required.'); return; }
+    const fromPairError = (form.need_month && !form.need_year) || (!form.need_month && form.need_year)
+      ? 'From period needs both month and year'
+      : null;
+    const toPairError = (form.need_end_month && !form.need_end_year) || (!form.need_end_month && form.need_end_year)
+      ? 'To period needs both month and year'
+      : null;
+    const validationError = firstError(
+      requiredText(form.function_title, 'Role / function', { max: 160 }),
+      requiredText(form.remarks, 'Justification', { max: 1000 }),
+      monthNumber(form.need_month, 'From month'),
+      yearNumber(form.need_year, 'From year'),
+      monthNumber(form.need_end_month, 'To month'),
+      yearNumber(form.need_end_year, 'To year'),
+      fromPairError,
+      toPairError,
+      periodRange(form.need_year, form.need_month, form.need_end_year, form.need_end_month)
+    );
+    if (validationError) { setErr(validationError); return; }
     setBusy(true); setErr(null);
     try {
       await api.post('/api/resource-requests', {

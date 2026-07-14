@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { api } from '../data/api.js';
+import { spreadsheetFileError } from '../data/files.js';
 import { useSapImports, fmt, MONTHS } from '../data/store.js';
 import Icon from '../components/Icon.jsx';
 import Select from '../components/Select.jsx';
@@ -27,6 +28,8 @@ export default function SapImport({ navigate, session }) {
 
   async function handleFile(f) {
     if (!f) return;
+    const fileError = spreadsheetFileError(f, { label: 'SAP import' });
+    if (fileError) { setError(fileError); return; }
     setFile(f);
     setError(null);
     setPreview(null);

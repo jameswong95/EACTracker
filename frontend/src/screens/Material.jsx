@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useProject, useMaterialAssets, useMaterialMisc, useFixedRates, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
+import { firstError, nonNegativeNumber, requiredText, yearNumber } from '../data/validation.js';
 import CostModule from './CostModule.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import Icon from '../components/Icon.jsx';
@@ -100,7 +101,14 @@ function AssetList({ projectId, role, session }) {
   }, [schedule]);
 
   async function addAsset() {
-    if (!form.description.trim()) { setErr('Description is required'); return; }
+    const validationError = firstError(
+      requiredText(form.description, 'Description'),
+      nonNegativeNumber(form.amount, 'Amount'),
+      nonNegativeNumber(form.advance_pct, 'Advance %', { max: 100 }),
+      nonNegativeNumber(form.milestone_pct, 'Milestone %', { max: 100 }),
+      nonNegativeNumber(form.retention_pct, 'Retention %', { max: 100 })
+    );
+    if (validationError) { setErr(validationError); return; }
     setBusy(true); setErr(null);
     try {
       await api.post('/api/material-assets', {
@@ -125,6 +133,14 @@ function AssetList({ projectId, role, session }) {
   }
 
   async function patchAsset(id, patch) {
+    const validationError = firstError(
+      Object.prototype.hasOwnProperty.call(patch, 'description') ? requiredText(patch.description, 'Description') : null,
+      Object.prototype.hasOwnProperty.call(patch, 'amount') ? nonNegativeNumber(patch.amount, 'Amount') : null,
+      Object.prototype.hasOwnProperty.call(patch, 'advance_pct') ? nonNegativeNumber(patch.advance_pct, 'Advance %', { max: 100 }) : null,
+      Object.prototype.hasOwnProperty.call(patch, 'milestone_pct') ? nonNegativeNumber(patch.milestone_pct, 'Milestone %', { max: 100 }) : null,
+      Object.prototype.hasOwnProperty.call(patch, 'retention_pct') ? nonNegativeNumber(patch.retention_pct, 'Retention %', { max: 100 }) : null
+    );
+    if (validationError) { setErr(validationError); return false; }
     setErr(null);
     try { await api.patch(`/api/material-assets/${id}`, patch); reload(); return true; }
     catch (e) { setErr(e.message || 'Update failed'); return false; }
@@ -134,6 +150,11 @@ function AssetList({ projectId, role, session }) {
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
   async function setCell(assetId, month, value) {
+    const validationError = firstError(
+      yearNumber(year, 'Year', { required: true }),
+      nonNegativeNumber(value, 'Planned amount')
+    );
+    if (validationError) { setErr(validationError); return; }
     try { await api.put(`/api/material-assets/${assetId}/schedule`, { year, month, amount: Number(value) || 0 }); reload(); }
     catch (e) { setErr(e.message || 'Save failed'); }
   }

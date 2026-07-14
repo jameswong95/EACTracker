@@ -1,5 +1,6 @@
-// Small fetch wrapper — uses Vite proxy so paths begin with /api
-const BASE = '';
+// Small fetch wrapper. Same-origin by default; set VITE_API_BASE_URL when the
+// frontend is deployed separately from the backend.
+const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 async function request(path, opts = {}) {
   const res = await fetch(BASE + path, {

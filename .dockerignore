@@ -1,0 +1,15 @@
+.git
+.agents
+.claude
+.impeccable
+.playwright-mcp
+**/node_modules
+**/.env
+**/.env.local
+frontend/dist
+backend/uploads
+*.log
+Sample*.xlsx
+~$*.xlsx
+chart_not_correct.png
+tooltip.png

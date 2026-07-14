@@ -1,0 +1,36 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  ACR_NAME: acreactracker
+  ACR_LOGIN_SERVER: acreactracker.azurecr.io
+  TAG: '$(Build.BuildNumber)-$(Build.SourceVersion)'
+
+steps:
+  - checkout: self
+
+  - task: AzureCLI@2
+    displayName: Build and push images
+    inputs:
+      azureSubscription: sc-eactracker-uat
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        SHORT_SHA="${BUILD_SOURCEVERSION:0:12}"
+        IMAGE_TAG="${BUILD_BUILDNUMBER}-${SHORT_SHA}"
+        az acr login --name "$(ACR_NAME)"
+        docker build -f backend/Dockerfile -t "$(ACR_LOGIN_SERVER)/eactracker-backend:${IMAGE_TAG}" .
+        docker build -f frontend/Dockerfile -t "$(ACR_LOGIN_SERVER)/eactracker-frontend:${IMAGE_TAG}" .
+        docker push "$(ACR_LOGIN_SERVER)/eactracker-backend:${IMAGE_TAG}"
+        docker push "$(ACR_LOGIN_SERVER)/eactracker-frontend:${IMAGE_TAG}"
+        echo "IMAGE_TAG=${IMAGE_TAG}" > deployment-metadata.env
+
+  - publish: deployment-metadata.env
+    artifact: deployment-metadata
+

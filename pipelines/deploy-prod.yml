@@ -1,0 +1,31 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: imageTag
+    type: string
+
+stages:
+  - stage: DeployProd
+    jobs:
+      - deployment: Deploy
+        environment: eactracker-prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  displayName: Deploy to Production VM
+                  inputs:
+                    azureSubscription: sc-eactracker-prod
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      echo "Approved production image tag: ${{ parameters.imageTag }}"
+                      echo "Run production deployment on VM:"
+                      echo "/opt/eactracker/deploy/scripts/deploy-compose.sh prod ${{ parameters.imageTag }} ${{ parameters.imageTag }}"
+

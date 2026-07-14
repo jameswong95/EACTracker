@@ -1,0 +1,28 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+
+  handle /oauth2/* {
+    reverse_proxy oauth2-proxy:4180
+  }
+
+  handle /api/* {
+    forward_auth oauth2-proxy:4180 {
+      uri /oauth2/auth
+      copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Groups
+    }
+
+    reverse_proxy backend:4000 {
+      header_up x-auth-proxy-secret {$AUTH_PROXY_SECRET}
+    }
+  }
+
+  handle {
+    forward_auth oauth2-proxy:4180 {
+      uri /oauth2/auth
+      copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Groups
+    }
+
+    reverse_proxy frontend:8080
+  }
+}
+

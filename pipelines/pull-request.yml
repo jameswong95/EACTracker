@@ -1,0 +1,39 @@
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+
+  - script: |
+      cd backend
+      npm ci
+      npm run migrate:list
+      npm audit --omit=dev
+    displayName: Backend validation
+    continueOnError: true
+
+  - script: |
+      cd frontend
+      npm ci
+      npm run build
+      npm audit
+    displayName: Frontend build and audit
+    continueOnError: true
+
+  - script: |
+      docker build -f backend/Dockerfile -t eactracker-backend:pr .
+      docker build -f frontend/Dockerfile -t eactracker-frontend:pr .
+    displayName: Docker build validation
+
