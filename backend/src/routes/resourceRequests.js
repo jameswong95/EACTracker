@@ -37,15 +37,23 @@ r.post('/', ah(async (req, res) => {
   if (mo != null && (mo < 1 || mo > 12)) {
     return res.status(400).json({ error: 'need_month must be 1-12' });
   }
+  const endMo = b.need_end_month != null && b.need_end_month !== '' ? parseInt(b.need_end_month, 10) : null;
+  if (endMo != null && (endMo < 1 || endMo > 12)) {
+    return res.status(400).json({ error: 'need_end_month must be 1-12' });
+  }
+  const needYear = b.need_year != null && b.need_year !== '' ? parseInt(b.need_year, 10) : null;
+  const endYear = b.need_end_year != null && b.need_end_year !== '' ? parseInt(b.need_end_year, 10) : null;
+  if (needYear && mo && endYear && endMo && (endYear * 12 + endMo) < (needYear * 12 + mo)) {
+    return res.status(400).json({ error: 'end date must be after start date' });
+  }
   const ins = await query(
     `INSERT INTO resource_requests
-       (project_id, function_title, grade, headcount, need_year, need_month, remarks, created_by)
-     VALUES ($1,$2,$3,COALESCE($4,1),$5,$6,$7,$8)
+       (project_id, function_title, grade, headcount, need_year, need_month, need_end_year, need_end_month, remarks, created_by)
+     VALUES ($1,$2,$3,COALESCE($4,1),$5,$6,$7,$8,$9,$10)
      RETURNING *`,
     [b.project_id, String(b.function_title).trim(), b.grade || null,
      b.headcount != null ? b.headcount : 1,
-     b.need_year != null && b.need_year !== '' ? parseInt(b.need_year, 10) : null,
-     mo, String(b.remarks).trim(), b.created_by || null]
+     needYear, mo, endYear, endMo, String(b.remarks).trim(), b.created_by || null]
   );
   res.status(201).json(ins.rows[0]);
 }));
@@ -58,8 +66,22 @@ r.patch('/:id', ah(async (req, res) => {
   const b = req.body;
   const editable = new Set([
     'function_title', 'grade', 'headcount', 'need_year', 'need_month',
+    'need_end_year', 'need_end_month',
     'remarks', 'status', 'resolution_note',
   ]);
+  const mo = b.need_month != null && b.need_month !== '' ? parseInt(b.need_month, 10) : null;
+  const endMo = b.need_end_month != null && b.need_end_month !== '' ? parseInt(b.need_end_month, 10) : null;
+  if (mo != null && (mo < 1 || mo > 12)) {
+    return res.status(400).json({ error: 'need_month must be 1-12' });
+  }
+  if (endMo != null && (endMo < 1 || endMo > 12)) {
+    return res.status(400).json({ error: 'need_end_month must be 1-12' });
+  }
+  const needYear = b.need_year != null && b.need_year !== '' ? parseInt(b.need_year, 10) : null;
+  const endYear = b.need_end_year != null && b.need_end_year !== '' ? parseInt(b.need_end_year, 10) : null;
+  if (needYear && mo && endYear && endMo && (endYear * 12 + endMo) < (needYear * 12 + mo)) {
+    return res.status(400).json({ error: 'end date must be after start date' });
+  }
   const sets = []; const vals = []; let i = 1;
   for (const [k, v] of Object.entries(b)) {
     if (!editable.has(k)) continue;

@@ -150,7 +150,7 @@ export default function Tenders({ navigate, session }) {
           <div className="kpi-value num">{fmt(totals.subcon)}</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Others</div>
+          <div className="kpi-label">Other LOB and MISC</div>
           <div className="kpi-value num">{fmt(totals.others)}</div>
         </div>
         <div className="kpi-tile">
@@ -177,7 +177,7 @@ export default function Tenders({ navigate, session }) {
                 <th className="num">Resource</th>
                 <th className="num">Material</th>
                 <th className="num">Sub-Con</th>
-                <th className="num">Others</th>
+                <th className="num">Other LOB and MISC</th>
                 <th className="num">Total</th>
                 <th className="num">Lines</th>
                 <th />

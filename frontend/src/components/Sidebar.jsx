@@ -147,7 +147,7 @@ const PROJECT_SUB = [
   { id: 'resource', label: 'Resource Plan',  icon: 'resource' },
   { id: 'material', label: 'Material',       icon: 'financials' },
   { id: 'sub-con',  label: 'Sub-Con',        icon: 'reconciliation' },
-  { id: 'others',   label: 'Other LOB/MISC', icon: 'reports' },
+  { id: 'others',   label: 'Other LOB and MISC', icon: 'reports' },
   { id: 'revrec',   label: 'Rev. Rec.',      icon: 'revrec' },
 ];
 

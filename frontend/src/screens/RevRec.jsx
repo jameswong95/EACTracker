@@ -14,8 +14,8 @@ export default function RevRec({ projectId, navigate, role }) {
         <div className="skel" style={{ width: 100, height: 28, borderRadius: 6 }} />
       </div>
       <div className="skel skel-title" style={{ width: 260, marginBottom: 24 }} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
-        {Array(4).fill(0).map((_, i) => <div key={i} className="skel skel-kpi" />)}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
+        {Array(3).fill(0).map((_, i) => <div key={i} className="skel skel-kpi" />)}
       </div>
       <div className="skel skel-card" style={{ marginBottom: 16 }} />
       <div className="skel" style={{ height: 320, borderRadius: 'var(--r)' }} />
@@ -131,7 +131,7 @@ function RevRecBody({ p, navigate, role, reload }) {
       </div>
 
       {/* KPI tiles */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 20 }}>
         <div className="kpi-tile">
           <div className="kpi-label">Contract value</div>
           <div className="kpi-value num">{fmt(rr.forecastFull)}</div>
@@ -193,7 +193,7 @@ function RevRecBody({ p, navigate, role, reload }) {
           { label: 'Resource', value: Number(t.resource_amount) || 0, color: '#2F6BBD' },
           { label: 'Material', value: Number(t.material_amount) || 0, color: '#008C95' },
           { label: 'Sub-Con',  value: Number(t.subcon_amount)   || 0, color: '#C99000' },
-          { label: 'Others',   value: Number(t.others_amount)   || 0, color: '#6B7280' },
+          { label: 'Other LOB and MISC', value: Number(t.others_amount) || 0, color: '#6B7280' },
         ];
         const tenderTotal = Number(t.total_amount) || 0;
         const statusBadge = { draft: 'neutral', submitted: 'accent', awarded: 'ok', lost: 'bad' }[status] || 'neutral';

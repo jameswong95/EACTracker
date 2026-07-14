@@ -4,7 +4,6 @@ import { useProject, useResourcePool, useRates, useResourceRequests, fmt, MONTHS
 import { api } from '../data/api.js';
 import { CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
-import Select from '../components/Select.jsx';
 
 let nextId = 100;
 
@@ -157,11 +156,13 @@ export default function Resource({ projectId, navigate, role, session }) {
 
 function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const canEdit = role !== 'Project Director';
+  const canDeleteResources = role === 'Project Manager' || role === 'Project Director';
   const { requests, reload: reloadRequests } = useResourceRequests(p.id);
   // Plan starts at (startYear, startMonth); the timeline extends indefinitely to the
   // right. All labour is parked under the PM category (shown in the breadcrumb).
-  const startYear  = p.startYear  ?? 2026;
-  const startMonth = p.startMonth ?? 0;    // 0 = January
+  const projectStartMatch = String(p.startDate || '').slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const startYear  = p.startYear  ?? (projectStartMatch ? Number(projectStartMatch[1]) : 2026);
+  const startMonth = p.startMonth ?? (projectStartMatch ? Number(projectStartMatch[2]) - 1 : 0); // 0 = January
   const startAbs   = startYear * 12 + startMonth;
 
   const nowYear  = new Date().getFullYear();
@@ -213,12 +214,14 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const [adding, setAdding]           = useState(false);
   const [pendingPerson, setPendingPerson] = useState(null);
   const [pendingFn, setPendingFn]     = useState('');
-  const [confirmingId, setConfirmingId] = useState(null);
+  const [deletePersonTarget, setDeletePersonTarget] = useState(null);
   const [saveStatus, setSaveStatus]   = useState(null);
   const [importErr, setImportErr]     = useState(null);
   const saveTimer    = useRef();
   const firstRender  = useRef(true);
   const importRef    = useRef(null);
+  const timelineRef  = useRef(null);
+  const centeredCurrentMonth = useRef(false);
 
   function monthLabel(i) { const mm = monthMeta(i); return `${MONTHS[mm.m]}-${String(mm.year).slice(2)}`; }
 
@@ -348,10 +351,11 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   }
 
   function removeRow(rowId) {
+    if (!canDeleteResources) return;
     const row = rows.find(r => r.id === rowId);
     if (row?.dbId) api.del(`/api/resources/${row.dbId}`).catch(console.error);
     setRows(prev => prev.filter(r => r.id !== rowId));
-    setConfirmingId(null);
+    setDeletePersonTarget(null);
   }
 
   const rateOf = (grade) => { const rt = RATES.find(x => x.grade === grade); return rt ? rt.monthly : 0; };
@@ -362,26 +366,39 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const colCost = months.map((_, i) => rows.reduce((s, r) => s + (r.fte[i] || 0) * rateOf(r.grade) / 1000, 0));
 
   // Open placeholder resource requests -> forecast rows in the timeline. Each
-  // request contributes its headcount FTE for every month in its need window
-  // (from need_year/need_month to need_end_year/need_end_month, inclusive). If
-  // no end is set it runs to the end of the visible horizon. Requested cost is
-  // always treated as ETC (forecast), never committed.
+  // request contributes its headcount FTE for every month in its fixed need
+  // window (from need_year/need_month to need_end_year/need_end_month,
+  // inclusive). If no end is set, it is treated as a one-month request so
+  // totals never change just because the visible timeline horizon expands.
   const openReqs = (requests || []).filter(r => r.status === 'open');
   const reqRows = openReqs.map(rq => {
     const hc = Number(rq.headcount) || 1;
-    const fromAbs = (Number(rq.need_year) || startYear) * 12 + ((Number(rq.need_month) || 1) - 1);
+    const fromYear = Number(rq.need_year) || startYear;
+    const fromMonth = Number(rq.need_month) || (fromYear === startYear ? startMonth + 1 : 1);
+    const fromAbs = fromYear * 12 + (fromMonth - 1);
     const startI = Math.max(0, fromAbs - startAbs);
-    let endI = months.length - 1;
+    let endAbs = fromAbs;
     if (rq.need_end_year && rq.need_end_month) {
-      endI = Number(rq.need_end_year) * 12 + (Number(rq.need_end_month) - 1) - startAbs;
+      endAbs = Number(rq.need_end_year) * 12 + (Number(rq.need_end_month) - 1);
     }
+    if (endAbs < fromAbs) endAbs = fromAbs;
+    const endI = endAbs - startAbs;
     const fte = months.map((_, i) => (i >= startI && i <= endI ? hc : 0));
-    return { ...rq, fte, hc };
+    const totalMonths = Math.max(0, endAbs - fromAbs + 1);
+    return {
+      ...rq,
+      fte,
+      hc,
+      requestStartAbs: fromAbs,
+      requestEndAbs: endAbs,
+      totalFte: hc * totalMonths,
+      totalCostK: hc * rateOf(rq.grade) * totalMonths / 1000,
+    };
   });
   const reqColFte   = months.map((_, i) => reqRows.reduce((s, r) => s + (r.fte[i] || 0), 0));
   const reqColCost  = months.map((_, i) => reqRows.reduce((s, r) => s + (r.fte[i] || 0) * rateOf(r.grade) / 1000, 0));
-  const reqCostK    = reqColCost.reduce((a, b) => a + b, 0);
-  const reqFteTotal = reqColFte.reduce((a, b) => a + b, 0);
+  const reqCostK    = reqRows.reduce((a, r) => a + r.totalCostK, 0);
+  const reqFteTotal = reqRows.reduce((a, r) => a + r.totalFte, 0);
 
   // SAP COM_CST is the committed/actual commitment source. Resource-plan
   // locked quarters only control editability; unlocked quarters remain ETC.
@@ -400,6 +417,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const monthColW = 72;
   const totalColW = 76;
   const tableW = nameColW + months.length * monthColW + totalColW;
+  const currentMonthIndex = Math.max(0, nowAbs - startAbs);
   const stickyL = {
     position: 'sticky',
     left: 0,
@@ -422,51 +440,19 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
     else qGroups.push({ absQuarter: mm.absQuarter, start: i, span: 1, year: mm.year, q: mm.q });
   });
 
-  const resourceMobileRows = rows.map(row => {
-    const rowTotal = months.reduce((s, _, i) => s + (row.fte[i] || 0), 0);
-    const rowCost = months.reduce((s, _, i) => s + (row.fte[i] || 0) * rateOf(row.grade), 0);
-    return {
-      ...row,
-      initials: row.role.split(' ').map(n => n[0]).join('').slice(0, 2),
-      rowTotal,
-      rowCost,
-      quarters: qGroups.map(g => {
-        const quarterMonths = Array.from({ length: g.span }, (_, offset) => {
-          const i = g.start + offset;
-          const mm = months[i];
-          const fte = row.fte[i] || 0;
-          return { index: i, label: `${MONTHS[mm.m].slice(0, 3)} ${String(mm.year).slice(2)}`, fte, locked: isLocked(i) };
-        });
-        const quarterFte = quarterMonths.reduce((sum, m) => sum + m.fte, 0);
-        const quarterCost = quarterMonths.reduce((sum, m) => sum + m.fte * rateOf(row.grade), 0);
-        return { ...g, months: quarterMonths, totalFte: quarterFte, cost: quarterCost, locked: lockedQuarters.has(g.absQuarter) };
-      }),
-    };
-  });
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el || centeredCurrentMonth.current) return;
+    centeredCurrentMonth.current = true;
 
-  const requestMobileRows = reqRows.map(rq => {
-    const rowTotal = rq.fte.reduce((s, v) => s + (v || 0), 0);
-    const rowCost = rq.fte.reduce((s, v) => s + (v || 0) * rateOf(rq.grade), 0);
-    return {
-      ...rq,
-      rowTotal,
-      rowCost,
-      quarters: qGroups.map(g => {
-        const quarterMonths = Array.from({ length: g.span }, (_, offset) => {
-          const i = g.start + offset;
-          const mm = months[i];
-          const fte = rq.fte[i] || 0;
-          return { index: i, label: `${MONTHS[mm.m].slice(0, 3)} ${String(mm.year).slice(2)}`, fte };
-        });
-        return {
-          ...g,
-          months: quarterMonths,
-          totalFte: quarterMonths.reduce((sum, m) => sum + m.fte, 0),
-          cost: quarterMonths.reduce((sum, m) => sum + m.fte * rateOf(rq.grade), 0),
-        };
-      }),
-    };
-  });
+    requestAnimationFrame(() => {
+      const viewportW = el.clientWidth;
+      const monthViewportW = Math.max(monthColW, viewportW - nameColW - totalColW);
+      const targetLeft = currentMonthIndex * monthColW + (monthColW / 2) - (monthViewportW / 2);
+      const maxLeft = Math.max(0, el.scrollWidth - viewportW);
+      el.scrollLeft = Math.max(0, Math.min(targetLeft, maxLeft));
+    });
+  }, [currentMonthIndex, monthColW, nameColW, totalColW]);
 
   return (
     <div className="screen">
@@ -524,10 +510,10 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
         </div>
       </div>
 
-      <div className="card resource-plan-card">
+      <div className="card" style={{ overflow: 'hidden' }}>
         {/* Card header */}
-        <div className="resource-plan-head" style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div className="resource-plan-title" style={{ flex: 1 }}>
+        <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ flex: 1 }}>
             <h4>FTE plan by person</h4>
             {importErr && <div style={{ fontSize: 11, color: 'var(--bad)', marginTop: 3 }}>{importErr}</div>}
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
@@ -537,13 +523,6 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
               <span style={{ color: 'var(--accent)', fontWeight: 600, marginLeft: 4 }}>Unlocked = ETC</span>
             </div>
           </div>
-
-          <div className="resource-plan-actions">
-          {canEdit && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setHorizon(h => h + 12)} title="Show more months">
-              + Months
-            </button>
-          )}
 
           <input ref={importRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleResourceImport} />
           {canEdit && (
@@ -570,7 +549,6 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
               Add person
             </button>
           )}
-          </div>
         </div>
 
         {/* Add person panel */}
@@ -618,146 +596,16 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
           </div>
         )}
 
-        {/* Mobile / tablet plan cards */}
-        <div className="resource-mobile-plan">
-          {resourceMobileRows.length === 0 && (
-            <div className="resource-mobile-empty">No people added yet. Add a person from the resource pool to start planning.</div>
-          )}
-
-          {resourceMobileRows.map(row => (
-            <article key={row.id} className="resource-person-card">
-              <div className="resource-person-head">
-                <div className="resource-person-avatar">{row.initials}</div>
-                <div className="resource-person-main">
-                  <div className="resource-person-name">{row.role}</div>
-                  <div className="resource-person-sub">{row.fn || 'Unassigned function'} · {row.grade}</div>
-                </div>
-                <div className="resource-person-total">
-                  <strong>{row.rowTotal > 0 ? row.rowTotal.toFixed(1) : '—'}</strong>
-                  <span>FTE</span>
-                </div>
-              </div>
-
-              <div className="resource-person-metrics">
-                <div><span>Labour cost</span><strong>{row.rowCost ? fmt(row.rowCost) : '—'}</strong></div>
-                <div><span>Visible months</span><strong>{months.length}</strong></div>
-              </div>
-
-              <div className="resource-quarter-list">
-                {row.quarters.map(q => (
-                  <section key={q.absQuarter} className={`resource-quarter-card ${q.locked ? 'is-locked' : 'is-open'}`}>
-                    <div className="resource-quarter-head">
-                      <button
-                        type="button"
-                        disabled={!canEdit}
-                        onClick={() => toggleQuarter(q.absQuarter)}
-                        className="resource-quarter-status"
-                        title={q.locked ? 'Locked (Committed) - tap to unlock' : 'Unlocked (ETC) - tap to lock'}
-                      >
-                        {q.locked ? 'Locked' : 'Unlocked'} · Q{q.q} {q.year}
-                      </button>
-                      <div className="resource-quarter-total">
-                        {q.totalFte ? q.totalFte.toFixed(1) : '—'} FTE
-                      </div>
-                    </div>
-                    <div className="resource-month-grid">
-                      {q.months.map(m => (
-                        <label key={m.index} className={`resource-month-chip ${m.locked ? 'is-locked' : 'is-open'}`}>
-                          <span>{m.label}</span>
-                          {m.locked ? (
-                            <strong>{m.fte ? m.fte.toFixed(1) : '—'}</strong>
-                          ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              max="10"
-                              step="0.5"
-                              value={m.fte || ''}
-                              placeholder="0"
-                              disabled={!canEdit}
-                              onChange={e => updateFte(row.id, m.index, e.target.value)}
-                            />
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                    <div className="resource-quarter-cost">{q.cost ? fmt(q.cost) : 'No cost planned'}</div>
-                  </section>
-                ))}
-              </div>
-
-              {canEdit && confirmingId !== row.id && (
-                <button className="btn btn-ghost btn-sm resource-person-remove" onClick={() => setConfirmingId(row.id)}>
-                  Remove person
-                </button>
-              )}
-              {confirmingId === row.id && (
-                <div className="resource-mobile-confirm">
-                  <span>Remove <strong>{row.role}</strong>?</span>
-                  <div>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingId(null)}>Cancel</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => removeRow(row.id)}>Remove</button>
-                  </div>
-                </div>
-              )}
-            </article>
-          ))}
-
-          {requestMobileRows.length > 0 && (
-            <section className="resource-request-section">
-              <div className="resource-request-title">Open resource requests</div>
-              {requestMobileRows.map(rq => (
-                <article key={rq.id} className="resource-request-card">
-                  <div className="resource-person-head">
-                    <div className="resource-request-badge">REQ</div>
-                    <div className="resource-person-main">
-                      <div className="resource-person-name">{rq.function_title}{rq.grade ? ` · ${rq.grade}` : ''}</div>
-                      <div className="resource-person-sub">{reqRangeLabel(rq) || 'Requested headcount'} · Forecast</div>
-                    </div>
-                    <div className="resource-person-total">
-                      <strong>{rq.rowTotal ? rq.rowTotal.toFixed(1) : '—'}</strong>
-                      <span>FTE</span>
-                    </div>
-                  </div>
-                  <div className="resource-person-metrics">
-                    <div><span>Requested cost</span><strong>{rq.rowCost ? fmt(rq.rowCost) : '—'}</strong></div>
-                    <div><span>Headcount</span><strong>{rq.hc || 1}</strong></div>
-                  </div>
-                  <div className="resource-quarter-list">
-                    {rq.quarters.filter(q => q.totalFte > 0).map(q => (
-                      <section key={q.absQuarter} className="resource-quarter-card is-request">
-                        <div className="resource-quarter-head">
-                          <div className="resource-quarter-status">Forecast · Q{q.q} {q.year}</div>
-                          <div className="resource-quarter-total">{q.totalFte.toFixed(1)} FTE</div>
-                        </div>
-                        <div className="resource-month-grid">
-                          {q.months.filter(m => m.fte > 0).map(m => (
-                            <div key={m.index} className="resource-month-chip is-request">
-                              <span>{m.label}</span>
-                              <strong>{m.fte.toFixed(1)}</strong>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="resource-quarter-cost">{q.cost ? fmt(q.cost) : 'No cost planned'}</div>
-                      </section>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </section>
-          )}
-        </div>
-
-        {/* Desktop table */}
+        {/* Table */}
         <div
-          className="resource-table-wrap"
+          ref={timelineRef}
           style={{ overflowX: 'auto' }}
           onScroll={e => {
             const el = e.currentTarget;
             if (el.scrollWidth - el.scrollLeft - el.clientWidth < 240) setHorizon(h => h + 6);
           }}
         >
-          <table data-responsive="scroll" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: tableW }}>
+          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: tableW }}>
             <colgroup>
               <col style={{ width: nameColW }} />
               {months.map((_, i) => <col key={i} style={{ width: monthColW }} />)}
@@ -822,14 +670,12 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
             <tbody>
               {rows.map(row => {
                 const initials = row.role.split(' ').map(n => n[0]).join('').slice(0, 2);
-                const isConfirming = confirmingId === row.id;
                 const rowTotal = months.reduce((s, _, i) => s + (row.fte[i] || 0), 0);
 
                 return (
                   <React.Fragment key={row.id}>
                     <tr style={{
-                      borderBottom: isConfirming ? 'none' : '1px solid var(--border)',
-                      background: isConfirming ? 'rgba(240,88,88,0.04)' : '',
+                      borderBottom: '1px solid var(--border)',
                       transition: 'background .15s',
                     }}>
                       <td style={{ padding: '8px 12px 8px 20px', background: 'var(--surface)', ...stickyL }}>
@@ -844,8 +690,8 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
                             <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.role}</div>
                             {row.fn && <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.fn}</div>}
                           </div>
-                          {canEdit && !isConfirming && (
-                            <button className="btn btn-icon" onClick={() => setConfirmingId(row.id)}
+                          {canDeleteResources && (
+                            <button className="btn btn-icon" onClick={() => setDeletePersonTarget(row)}
                               title={`Remove ${row.role}`} style={{ color: 'var(--text-3)', padding: '4px', flexShrink: 0 }}>
                               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M3 3.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8"/>
@@ -880,28 +726,6 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
                         {rowTotal > 0 ? rowTotal.toFixed(1) : '—'}
                       </td>
                     </tr>
-
-                    {isConfirming && (
-                      <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bad-bg)' }}>
-                        <td colSpan={months.length + 2} style={{ padding: 0, background: 'var(--bad-bg)' }}>
-                          <div style={{
-                            position: 'sticky', left: 0, zIndex: 1, width: 'fit-content', maxWidth: '100%',
-                            padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12,
-                          }}>
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--bad)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M7 1L13.06 12H.94L7 1Z"/><path d="M7 5v3M7 10v.5"/>
-                            </svg>
-                            <span style={{ fontSize: 13, color: 'var(--bad-text)', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                              Remove <strong>{row.role}</strong> from this project?
-                            </span>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingId(null)}>Cancel</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => removeRow(row.id)}>Remove</button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>
                 );
               })}
@@ -917,7 +741,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
               {/* Open placeholder resource requests — read-only forecast rows */}
               {reqRows.map(rq => {
                 const rangeLabel = reqRangeLabel(rq);
-                const rowTotal = rq.fte.reduce((s, v) => s + (v || 0), 0);
+                const rowTotal = rq.totalFte || 0;
                 return (
                   <tr key={`req-${rq.id}`} style={{ borderBottom: '1px dashed var(--border-2)', background: 'var(--accent-light)' }}>
                     <td style={{ padding: '8px 12px 8px 20px', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>
@@ -965,14 +789,14 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
 
               {/* Footer: cost totals */}
               <tr style={{ background: 'var(--accent-light)', fontWeight: 600, color: 'var(--accent)' }}>
-                <td style={{ padding: '10px 20px', fontSize: 13, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>Est. labour cost</td>
+                <td style={{ padding: '10px 20px', fontSize: 13, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyL }}>Est. labour cost ($K)</td>
                 {colCost.map((t, i) => (
                   <td key={i} style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t === 0 ? 'var(--accent-mid)' : 'var(--accent)' }}>
-                    {t > 0 ? fmt(t * 1000) : '—'}
+                    {t > 0 ? t.toFixed(0) : '—'}
                   </td>
                 ))}
                 <td style={{ padding: '10px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 14, background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))', ...stickyR }}>
-                  {fmt(totalCostK * 1000)}
+                  {totalCostK.toFixed(0)}
                 </td>
               </tr>
 
@@ -991,14 +815,14 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
                     </td>
                   </tr>
                   <tr style={{ background: 'var(--surface)', fontWeight: 600, color: 'var(--accent)' }}>
-                    <td style={{ padding: '8px 20px', fontSize: 12, background: 'var(--surface)', ...stickyL }}>Requested cost (ETC)</td>
+                    <td style={{ padding: '8px 20px', fontSize: 12, background: 'var(--surface)', ...stickyL }}>Requested cost ($K · ETC)</td>
                     {reqColCost.map((t, i) => (
                       <td key={i} style={{ padding: '8px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontStyle: 'italic', color: t === 0 ? 'var(--text-3)' : 'var(--accent)' }}>
-                        {t > 0 ? fmt(t * 1000) : '—'}
+                        {t > 0 ? t.toFixed(0) : '—'}
                       </td>
                     ))}
                     <td style={{ padding: '8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, background: 'var(--surface)', ...stickyR }}>
-                      {fmt(reqCostK * 1000)}
+                      {reqCostK.toFixed(0)}
                     </td>
                   </tr>
                 </>
@@ -1006,6 +830,47 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
             </tbody>
           </table>
         </div>
+        {canDeleteResources && deletePersonTarget && (
+          <div className="modal-overlay" role="presentation" onMouseDown={() => setDeletePersonTarget(null)}>
+            <div className="modal" role="dialog" aria-modal="true" aria-labelledby="remove-resource-title" onMouseDown={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h3 id="remove-resource-title" style={{ margin: 0 }}>Remove person?</h3>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+                    This removes the person from this project resource plan.
+                  </div>
+                </div>
+                <button className="btn btn-icon" onClick={() => setDeletePersonTarget(null)} aria-label="Close">
+                  <Icon name="x" size={14} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                      background: 'var(--accent-light)', border: '1px solid rgba(232,150,31,.2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 800, color: 'var(--accent)',
+                    }}>
+                      {deletePersonTarget.role.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>{deletePersonTarget.role}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+                        {[deletePersonTarget.fn, deletePersonTarget.grade].filter(Boolean).join(' · ') || 'No function set'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-ghost btn-sm" onClick={() => setDeletePersonTarget(null)}>Cancel</button>
+                <button className="btn btn-danger btn-sm" onClick={() => removeRow(deletePersonTarget.id)}>Remove person</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Placeholder headcount requests (resourcing asks, no real name) */}
@@ -1057,6 +922,7 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
   const [err, setErr]       = useState(null);
   const [resolvingId, setResolvingId] = useState(null);
   const [resolveNote, setResolveNote] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const grades = (RATES || []).map(r => r.grade);
   const openCount = requests.filter(r => r.status === 'open').length;
@@ -1099,9 +965,13 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
     finally { setBusy(false); }
   }
 
-  async function del(id) {
+  async function del(rq) {
     setBusy(true);
-    try { await api.del(`/api/resource-requests/${id}`); reload(); }
+    try {
+      await api.del(`/api/resource-requests/${rq.id}`);
+      setDeleteTarget(null);
+      reload();
+    }
     catch (e) { setErr(e?.message || 'Could not delete request.'); }
     finally { setBusy(false); }
   }
@@ -1145,40 +1015,37 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               Grade
-              <Select
-                value={form.grade}
-                options={[{ value: '', label: '—' }, ...grades.map(g => ({ value: g, label: g }))]}
-                onChange={v => setForm(f => ({ ...f, grade: v }))}
-                style={{ marginTop: 4 }}
-              />
+              <select className="input" style={{ marginTop: 4 }} value={form.grade}
+                onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}>
+                <option value="">—</option>
+                {grades.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
             </label>
             <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
               From (month)
-              <Select
-                value={form.need_month}
-                options={[{ value: '', label: '—' }, ...MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))]}
-                onChange={v => setForm(f => ({ ...f, need_month: v }))}
-                style={{ marginTop: 4 }}
-              />
+              <select className="input" style={{ marginTop: 4 }} value={form.need_month}
+                onChange={e => setForm(f => ({ ...f, need_month: e.target.value }))}>
+                <option value="">—</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               From (year)
-              <input className="input" type="number" min="2024" max="2035" style={{ marginTop: 4 }}
+              <input className="input" type="number" min="2024" max="2040" style={{ marginTop: 4 }}
                 placeholder={String(new Date().getFullYear())} value={form.need_year}
                 onChange={e => setForm(f => ({ ...f, need_year: e.target.value }))} />
             </label>
             <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
               To (month)
-              <Select
-                value={form.need_end_month}
-                options={[{ value: '', label: '—' }, ...MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))]}
-                onChange={v => setForm(f => ({ ...f, need_end_month: v }))}
-                style={{ marginTop: 4 }}
-              />
+              <select className="input" style={{ marginTop: 4 }} value={form.need_end_month}
+                onChange={e => setForm(f => ({ ...f, need_end_month: e.target.value }))}>
+                <option value="">—</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               To (year)
-              <input className="input" type="number" min="2024" max="2035" style={{ marginTop: 4 }}
+              <input className="input" type="number" min="2024" max="2040" style={{ marginTop: 4 }}
                 placeholder={String(new Date().getFullYear())} value={form.need_end_year}
                 onChange={e => setForm(f => ({ ...f, need_end_year: e.target.value }))} />
             </label>
@@ -1251,7 +1118,7 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
                     <button className="btn btn-ghost btn-sm" onClick={() => { setResolvingId(rq.id); setResolveNote(''); }}>Respond</button>
                   )}
                   {isOpen && !canResolve && canRaise && (
-                    <button className="btn btn-icon" title="Withdraw request" disabled={busy} onClick={() => del(rq.id)} style={{ color: 'var(--text-3)' }}>
+                    <button className="btn btn-icon" title="Withdraw request" disabled={busy} onClick={() => setDeleteTarget(rq)} style={{ color: 'var(--text-3)' }}>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M3 3.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8"/>
                       </svg>
@@ -1264,6 +1131,50 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
               </div>
             );
           })}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="modal-overlay" role="presentation" onMouseDown={() => !busy && setDeleteTarget(null)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="withdraw-request-title" onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 id="withdraw-request-title" style={{ margin: 0 }}>Withdraw request?</h3>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+                  This removes the request from the forecast timeline.
+                </div>
+              </div>
+              <button className="btn btn-icon" onClick={() => setDeleteTarget(null)} disabled={busy} aria-label="Close">
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                background: 'var(--surface-2)',
+                padding: 14,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 750, color: 'var(--text)' }}>
+                  {deleteTarget.function_title}{deleteTarget.grade ? ` · ${deleteTarget.grade}` : ''}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>
+                  {reqRangeLabel(deleteTarget) || 'No date range set'}
+                </div>
+                {deleteTarget.remarks && (
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 8, lineHeight: 1.5 }}>
+                    {deleteTarget.remarks}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(null)} disabled={busy}>Cancel</button>
+              <button className="btn btn-danger btn-sm" onClick={() => del(deleteTarget)} disabled={busy}>
+                {busy ? 'Withdrawing...' : 'Withdraw request'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

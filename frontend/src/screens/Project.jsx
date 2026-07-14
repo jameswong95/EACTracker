@@ -38,7 +38,7 @@ function Tip({ text, children }) {
   );
 }
 
-const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Other LOB/MISC'];
+const CATEGORIES = ['PM', 'Material', 'Subcon', 'Spares', 'Other LOB and MISC'];
 
 // Live health, same thresholds as Portfolio
 function liveHealth(p) {
@@ -52,7 +52,7 @@ function liveHealth(p) {
 // Map wbs_suffix to category (PRD §4.6)
 function suffixToCategory(suffix) {
   if (!suffix) return null;
-  const map = { '1-1': 'PM', '1-2': 'Material', '1-3': 'Subcon', '1-4': 'Spares', '1-5': 'Other LOB/MISC' };
+  const map = { '1-1': 'PM', '1-2': 'Material', '1-3': 'Subcon', '1-4': 'Spares', '1-5': 'Other LOB and MISC' };
   // Exact match first, then last two dash-separated segments (e.g. '002-1-2' → '1-2')
   const s = String(suffix);
   if (map[s]) return map[s];
@@ -71,11 +71,11 @@ function HealthBadge({ status }) {
   const col = healthColor(status);
   return (
     <span className="project-health-badge" style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-      background: col + '18', color: col, border: `1px solid ${col}40`,
+      '--health-color': col,
+      '--health-bg': col + '18',
+      '--health-border': col + '40',
     }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: col, display: 'inline-block' }} />
+      <span className="project-health-dot" />
       {healthLabel(status)}
     </span>
   );
@@ -337,45 +337,14 @@ function bucketFor(costCategory) {
   return ROLLUP_BUCKETS.find(b => b.match(c)) || null;
 }
 
-function monthAbs(year, month) {
-  return Number(year) * 12 + Number(month) - 1;
-}
-
-function monthFromAbs(abs) {
-  return { year: Math.floor(abs / 12), month: (abs % 12) + 1 };
-}
-
-function completeMonthlySeries(months) {
-  if (!months.length) return [];
-  const startAbs = Math.min(...months.map(m => monthAbs(m.year, m.month)));
-  const endAbs = Math.max(...months.map(m => monthAbs(m.year, m.month)));
-  const byMonth = new Map(months.map(m => [monthAbs(m.year, m.month), m]));
-  const series = [];
-
-  for (let abs = startAbs; abs <= endAbs; abs++) {
-    const { year, month } = monthFromAbs(abs);
-    const src = byMonth.get(abs);
-    series.push({
-      key: `${year}-${month}`,
-      year,
-      month,
-      label: `${MONTH_ABBR[month - 1]} '${String(year).slice(2)}`,
-      labour: src?.labour || 0,
-      material: src?.material || 0,
-      subcon: src?.subcon || 0,
-      total: src?.total || 0,
-    });
-  }
-
-  return series;
-}
-
-// Monthly stacked spend bars with a cumulative total-spend trajectory line overlay.
+// Stacked monthly bars with a cumulative total-spend trajectory line overlay.
 function PlannedSpendChart({ months, height = 220 }) {
-  const padL = 44, padR = 8, padT = 12, padB = 36;
+  const padL = 44, padR = 8, padT = 12, padB = 38;
   const n = months.length;
-  const colW = n <= 12 ? 72 : n <= 36 ? 58 : 48;
-  const innerW = n * colW;
+  const visibleMonths = 12;
+  const colW = 112;
+  const barW = 72;
+  const innerW = Math.max(n, visibleMonths) * colW;
   const totalW = padL + innerW + padR;
   const H = height - padT - padB;
 
@@ -401,9 +370,9 @@ function PlannedSpendChart({ months, height = 220 }) {
   }
 
   return (
-    <div className="planned-spend-chart-scroll" style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
       <svg viewBox={`0 0 ${totalW} ${height}`} width={totalW} height={height}
-        style={{ width: totalW, minWidth: totalW, height, display: 'block' }}>
+        style={{ width: totalW, height, minWidth: totalW, display: 'block' }}>
         {/* gridlines + left axis */}
         {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
           const y = padT + H - f * H;
@@ -416,8 +385,8 @@ function PlannedSpendChart({ months, height = 220 }) {
         })}
         {/* stacked bars */}
         {months.map((m, i) => {
-          const x = padL + i * colW + colW * 0.16;
-          const bw = colW * 0.68;
+          const x = padL + i * colW + (colW - barW) / 2;
+          const bw = barW;
           let yCursor = padT + H;
           return (
             <g key={i}>
@@ -428,11 +397,11 @@ function PlannedSpendChart({ months, height = 220 }) {
                 yCursor -= h;
                 return <rect key={b.key} x={x} y={yCursor} width={bw} height={Math.max(h, 0.5)} fill={b.color} opacity={0.9} />;
               })}
-              <text x={x + bw / 2} y={height - 8} textAnchor="middle" fontSize="9" fill="var(--text-3)">
-                {m.label}
+              <text x={x + bw / 2} y={height - 20} textAnchor="middle" fontSize="9" fill="var(--text-3)">
+                {MONTH_ABBR[m.month - 1]} '{String(m.year).slice(2)}
               </text>
-              <text x={x + bw / 2} y={height - 20} textAnchor="middle" fontSize="9" fontWeight="700" fill="var(--text-2)">
-                {fmtAxis(m.total)}
+              <text x={x + bw / 2} y={height - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill={m.total ? 'var(--text-2)' : 'var(--text-3)'}>
+                {m.total ? fmtAxis(m.total) : '-'}
               </text>
             </g>
           );
@@ -460,10 +429,25 @@ function PlannedSpendRollup({ projectId }) {
       if (!acc[key]) acc[key] = { year: v.year, month: v.month, labour: 0, material: 0, subcon: 0 };
       acc[key][b.key] += (Number(v.amount_k) || 0) * 1000; // amount_k is thousands
     });
-    const arr = Object.values(acc)
+    const populated = Object.values(acc)
       .map(m => ({ ...m, total: m.labour + m.material + m.subcon }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
-    return completeMonthlySeries(arr);
+    if (!populated.length) return [];
+    const firstAbs = populated[0].year * 12 + (populated[0].month - 1);
+    const last = populated[populated.length - 1];
+    const lastAbs = last.year * 12 + (last.month - 1);
+    const byAbs = {};
+    populated.forEach(m => { byAbs[m.year * 12 + (m.month - 1)] = m; });
+    const arr = [];
+    for (let abs = firstAbs; abs <= lastAbs; abs++) {
+      const year = Math.floor(abs / 12);
+      const month = (abs % 12) + 1;
+      arr.push(byAbs[abs] || { year, month, labour: 0, material: 0, subcon: 0, total: 0 });
+    }
+    // mark first month of each year for the axis label
+    let lastYear = null;
+    arr.forEach(m => { m.showYear = m.year !== lastYear; lastYear = m.year; });
+    return arr;
   }, [data]);
 
   const totals = React.useMemo(() => {
@@ -478,8 +462,8 @@ function PlannedSpendRollup({ projectId }) {
   if (loading) return null;
 
   return (
-    <div className="card planned-spend-card" style={{ marginBottom: 24 }}>
-      <div className="planned-spend-header" style={{ padding: '12px 20px 10px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+    <div className="card" style={{ marginBottom: 24 }}>
+      <div style={{ padding: '12px 20px 10px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Planned Spend by Month</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
@@ -506,7 +490,7 @@ function PlannedSpendRollup({ projectId }) {
         </div>
       ) : (
         <>
-          <div className="planned-spend-kpis" style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
             {[
               { label: 'Labour',       value: totals.labour,   color: CAT_COLORS['PM'] },
               { label: 'Material',     value: totals.material, color: CAT_COLORS['Material'] },
@@ -515,7 +499,7 @@ function PlannedSpendRollup({ projectId }) {
               { label: 'Peak month',   text: totals.peak ? `${MONTH_ABBR[totals.peak.month - 1]} ${totals.peak.year}` : '—',
                 sub: totals.peak ? fmtShort(totals.peak.total) : '', color: 'var(--text-1)' },
             ].map((k, i, a) => (
-              <div className="planned-spend-kpi" key={k.label} style={{ flex: 1, padding: '12px 20px', borderRight: i < a.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div key={k.label} style={{ flex: 1, padding: '12px 20px', borderRight: i < a.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <div className="kpi-label">{k.label}</div>
                 <div className="kpi-value" style={{ fontSize: k.strong ? 20 : 17, color: k.color }}>
                   {k.text != null ? k.text : fmtShort(k.value)}
@@ -524,7 +508,7 @@ function PlannedSpendRollup({ projectId }) {
               </div>
             ))}
           </div>
-          <div className="planned-spend-chart-shell" style={{ padding: '14px 16px' }}>
+          <div style={{ padding: '14px 16px' }}>
             <PlannedSpendChart months={months} />
           </div>
         </>
@@ -628,7 +612,7 @@ function TabRevenueCash({ p }) {
   const gpT        = buildGpTimeline(p, labels, asAtIdx);
 
   return (
-    <div className="revcash-page" style={{ padding: '24px 28px' }}>
+    <div style={{ padding: '24px 28px' }}>
       {/* Summary panel (PRD §5.2.2) */}
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 24 }}>
         {[
@@ -667,16 +651,16 @@ function TabRevenueCash({ p }) {
           : v >= bgp * 0.85 ? C.attn
           : C.adverse;
         return (
-          <div className="card gp-correlation-card" style={{ marginBottom: 24 }}>
+          <div className="card" style={{ marginBottom: 24 }}>
             <div style={{ padding: '12px 20px 10px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Gross Profit Correlation</div>
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
                 Recognition GP reflects revenue recognised vs cost incurred. Forecast GP updates live when ETC is changed in the Forecast tab.
               </div>
             </div>
-            <div className="gp-correlation-grid" style={{ display: 'flex', gap: 0 }}>
+            <div style={{ display: 'flex', gap: 0 }}>
               {tiles.map((t, i) => (
-                <div key={i} className="gp-correlation-tile" style={{ flex: 1, padding: '14px 20px', borderRight: i < 2 ? '1px solid var(--border)' : 'none' }}>
+                <div key={i} style={{ flex: 1, padding: '14px 20px', borderRight: i < 2 ? '1px solid var(--border)' : 'none' }}>
                   <div className="kpi-label">{t.label}</div>
                   <div className="kpi-value" style={{ fontSize: 22, color: col(t.value) }}>
                     {t.value != null ? t.value.toFixed(1) + '%' : '—'}
@@ -690,20 +674,20 @@ function TabRevenueCash({ p }) {
       })()}
 
       {/* Timeline visualizations (PRD §5.2 + §5.3) — ACTUAL | FORECAST, side by side */}
-      <div className="revcash-chart-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
 
         {/* 1. Revenue Recognition vs Budget vs Cash Inflow */}
-        <div className="card revcash-chart-card">
-          <div className="revcash-card-header" style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)' }}>
+        <div className="card">
+          <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>Revenue Recognition vs Budget vs Cash Inflow</div>
-            <div className="revcash-card-subtitle" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
               With timeline — cumulative (S$M)
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.fav, display: 'inline-block' }} />
               <span>On track</span>
             </div>
           </div>
-          <div className="revcash-chart-body" style={{ display: 'flex', gap: 12, padding: '12px 16px' }}>
-            <div className="revcash-chart-main" style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 12, padding: '12px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="chart-legend" style={{ marginBottom: 8 }}>
                 {[
                   { color: C.budget,    label: 'Budgeted Revenue (cumulative)', dashed: true },
@@ -734,19 +718,19 @@ function TabRevenueCash({ p }) {
                 height={230}
               />
             </div>
-            <div className="revcash-side-stats" style={{ width: 128, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="revcash-asat" style={{ fontSize: 10.5, color: 'var(--text-3)' }}>As at <strong style={{ color: 'var(--text-2)' }}>{fmtAsAt()}</strong></div>
-              <div className="revcash-stat">
+            <div style={{ width: 128, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>As at <strong style={{ color: 'var(--text-2)' }}>{fmtAsAt()}</strong></div>
+              <div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Revenue Recognised</div>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtShort(rev)}</div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{cv > 0 ? `${((rev / cv) * 100).toFixed(1)}%` : '—'}</div>
               </div>
-              <div className="revcash-stat">
+              <div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Cash Received</div>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtShort(cash)}</div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{cv > 0 ? `${((cash / cv) * 100).toFixed(1)}%` : '—'}</div>
               </div>
-              <div className="revcash-stat">
+              <div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Variance (Cash vs Rev)</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: cashRevVar >= 0 ? C.fav : C.adverse }}>
                   {cashRevVar >= 0 ? '' : '('}{fmtShort(Math.abs(cashRevVar))}{cashRevVar >= 0 ? '' : ')'}
@@ -760,10 +744,10 @@ function TabRevenueCash({ p }) {
         </div>
 
         {/* 2. Actual GP vs Budget GP */}
-        <div className="card revcash-chart-card">
-          <div className="revcash-card-header" style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)' }}>
+        <div className="card">
+          <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>Actual GP vs Budget GP</div>
-            <div className="revcash-card-subtitle" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
               With timeline — GP %
               <span style={{ width: 7, height: 7, borderRadius: '50%',
                 background: gpT.forecastGp >= gpT.budgetGp * 0.95 ? C.fav : gpT.forecastGp >= gpT.budgetGp * 0.85 ? C.attn : C.adverse,
@@ -771,8 +755,8 @@ function TabRevenueCash({ p }) {
               <span>{gpT.forecastGp >= gpT.budgetGp * 0.95 ? 'On track' : gpT.forecastGp >= gpT.budgetGp * 0.85 ? 'At risk' : 'Off track'}</span>
             </div>
           </div>
-          <div className="revcash-chart-body" style={{ display: 'flex', gap: 12, padding: '12px 16px' }}>
-            <div className="revcash-chart-main" style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 12, padding: '12px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="chart-legend" style={{ marginBottom: 8 }}>
                 {[
                   { color: C.budget, label: 'GP % (Budget)', dashed: true },
@@ -799,17 +783,17 @@ function TabRevenueCash({ p }) {
                 height={230}
               />
             </div>
-            <div className="revcash-side-stats" style={{ width: 128, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="revcash-asat" style={{ fontSize: 10.5, color: 'var(--text-3)' }}>As at <strong style={{ color: 'var(--text-2)' }}>{fmtAsAt()}</strong></div>
-              <div className="revcash-stat">
+            <div style={{ width: 128, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>As at <strong style={{ color: 'var(--text-2)' }}>{fmtAsAt()}</strong></div>
+              <div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>GP % (Actual)</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: C.fav }}>{gpT.recognitionGp.toFixed(1)}%</div>
               </div>
-              <div className="revcash-stat">
+              <div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>GP % (Budget)</div>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>{gpT.budgetGp.toFixed(1)}%</div>
               </div>
-              <div className="revcash-stat">
+              <div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Variance</div>
                 <div style={{ fontSize: 15, fontWeight: 700,
                   color: (gpT.forecastGp - gpT.budgetGp) >= 0 ? C.fav : C.adverse }}>
@@ -862,7 +846,7 @@ function TabCost({ p }) {
     'Material': Number(derived.material_etc) || 0,
     'Subcon':   Number(derived.subcon_etc)   || 0,
     'Spares':   0,
-    'Other LOB/MISC': 0,
+    'Other LOB and MISC': 0,
   };
   const cats = buildCategories(p.subjobs).map(c => {
     const etc       = c.name in etcByCategory       ? etcByCategory[c.name]       : c.etc;
@@ -945,9 +929,13 @@ function TabCost({ p }) {
             Actual + Committed as % of budget. ETC shown as remaining forecast.
           </div>
           {cats.filter(c => c.budget > 0).map(c => {
-            const spentPct  = Math.min(100, ((c.actual + c.committed) / c.budget) * 100);
-            const etcPct    = Math.min(100 - spentPct, (c.etc / c.budget) * 100);
-            const overrun   = (c.actual + c.committed) > c.budget;
+            const spent = c.actual + c.committed;
+            const eac = spent + c.etc;
+            const spentPct = Math.min(100, (spent / c.budget) * 100);
+            const forecastPct = Math.min(Math.max(0, 100 - spentPct), (c.etc / c.budget) * 100);
+            const overrunPct = Math.min(100, Math.max(0, ((eac - c.budget) / c.budget) * 100));
+            const hasOverrun = eac > c.budget;
+            const remaining = c.budget - eac;
             return (
               <div key={c.name} style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -955,16 +943,20 @@ function TabCost({ p }) {
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: c.color, display: 'inline-block' }} />
                     {c.name}
                   </span>
-                  <span style={{ fontSize: 11, color: overrun ? C.adverse : 'var(--text-3)' }}>
-                    {spentPct.toFixed(0)}% spent · {fmtShort(c.budget - c.actual - c.committed - c.etc)} remaining
+                  <span style={{ fontSize: 11, color: hasOverrun ? C.adverse : 'var(--text-3)' }}>
+                    {spentPct.toFixed(0)}% spent · {hasOverrun ? `${fmtShort(Math.abs(remaining))} over` : `${fmtShort(remaining)} remaining`}
                   </span>
                 </div>
                 <div style={{ height: 10, borderRadius: 4, background: 'var(--border)', overflow: 'hidden', position: 'relative' }}>
                   <div style={{ position: 'absolute', left: 0, top: 0, height: '100%',
-                    width: `${spentPct}%`, background: overrun ? C.adverse : c.color, borderRadius: '4px 0 0 4px', transition: 'width 0.4s' }} />
-                  {etcPct > 0 && (
+                    width: `${spentPct}%`, background: c.color, borderRadius: '4px 0 0 4px', transition: 'width 0.4s' }} />
+                  {forecastPct > 0 && (
                     <div style={{ position: 'absolute', left: `${spentPct}%`, top: 0, height: '100%',
-                      width: `${etcPct}%`, background: C.forecast, opacity: 0.45 }} />
+                      width: `${forecastPct}%`, background: hasOverrun ? C.adverse : C.forecast, opacity: hasOverrun ? 0.85 : 0.45 }} />
+                  )}
+                  {overrunPct > 0 && (
+                    <div style={{ position: 'absolute', right: 0, top: 0, height: '100%',
+                      width: `${Math.min(overrunPct, 18)}%`, background: C.adverse }} />
                   )}
                 </div>
               </div>
@@ -979,14 +971,14 @@ function TabCost({ p }) {
         <div className="card card-p">
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>EAC vs Budget Variance</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 16 }}>
-            Positive = under budget &nbsp;·&nbsp; Negative = overrun
+            Left = overrun &nbsp;·&nbsp; Right = under budget
           </div>
           {(() => {
             const active = cats.filter(c => c.budget > 0);
             const maxAbs = Math.max(...active.map(c => Math.abs(c.budget - c.eac)), 1);
             return active.map(c => {
               const variance = c.budget - c.eac;
-              const pct = Math.min(100, (Math.abs(variance) / maxAbs) * 100);
+              const pct = Math.min(50, (Math.abs(variance) / maxAbs) * 50);
               const col = variance >= 0 ? C.fav : Math.abs(variance) / c.budget > 0.25 ? C.adverse : C.attn;
               return (
                 <div key={c.name} style={{ marginBottom: 14 }}>
@@ -999,11 +991,20 @@ function TabCost({ p }) {
                       {variance >= 0 ? '+' : ''}{fmtShort(variance)}
                     </span>
                   </div>
-                  <div style={{ height: 10, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{ height: 10, borderRadius: 4, background: 'var(--border)', overflow: 'hidden', position: 'relative' }}>
                     <div style={{
-                      height: '100%', width: `${pct}%`,
-                      background: col, borderRadius: 4, transition: 'width 0.4s',
-                      marginLeft: variance >= 0 ? 0 : 'auto',
+                      position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1,
+                      background: 'var(--border-2)', zIndex: 2,
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      height: '100%',
+                      left: variance >= 0 ? '50%' : `${50 - pct}%`,
+                      width: `${pct}%`,
+                      background: col,
+                      borderRadius: 4,
+                      transition: 'width 0.4s, left 0.4s',
                     }} />
                   </div>
                 </div>
@@ -1168,17 +1169,17 @@ export default function Project({ projectId, navigate, role, session }) {
       <div className="proj-header">
         <div className="proj-header-top">
           <div className="proj-identity">
-            <div className="proj-back-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <button className="btn btn-ghost btn-sm"
                 onClick={() => navigate('portfolio')}><Icon name="arrowLeft" size={13} /> Portfolio</button>
             </div>
             <div className="proj-title">{p.name}</div>
             <div className="proj-meta">
-              <span className="proj-meta-item proj-meta-id"><Icon name="hash" size={13} /> <span className="proj-meta-text">{p.id}</span></span>
-              {p.customer && <span className="proj-meta-item proj-meta-customer"><Icon name="building" size={13} /> <span className="proj-meta-text">{p.customer}</span></span>}
-              <span className="proj-meta-item proj-meta-people"><Icon name="users" size={13} /> <span className="proj-meta-text">PMs: {p.pm}</span></span>
-              <span className="proj-meta-item proj-meta-people"><Icon name="user" size={13} /> <span className="proj-meta-text">PD: {p.pd}</span></span>
-              {p.department && <span className="proj-meta-item proj-meta-department"><Icon name="tag" size={13} /> <span className="proj-meta-text">{p.department}</span></span>}
+              <span className="proj-meta-item"><Icon name="hash" size={13} /> {p.id}</span>
+              {p.customer && <span className="proj-meta-item"><Icon name="building" size={13} /> {p.customer}</span>}
+              <span className="proj-meta-item"><Icon name="users" size={13} /> PMs: {p.pm}</span>
+              <span className="proj-meta-item"><Icon name="user" size={13} /> PD: {p.pd}</span>
+              {p.department && <span className="proj-meta-item"><Icon name="tag" size={13} /> {p.department}</span>}
             </div>
           </div>
           <div className="proj-badges">
@@ -1189,14 +1190,14 @@ export default function Project({ projectId, navigate, role, session }) {
 
         {/* Reporting context */}
         <div className="proj-context">
-          <span className="proj-context-item"><Icon name="calendar" size={13} /> <span>As at: <strong>{fmtAsAt()}</strong></span></span>
-          <span className="proj-context-item"><Icon name="currency" size={13} /> <span>SGD</span></span>
-          <span className="proj-context-item data-freshness"><Icon name="dot" size={10} /> <span>SAP sync: {fmtSapSync(p.lastSapImport)}</span></span>
-          <span className="proj-context-item proj-gp-context">
+          <span className="proj-context-item"><Icon name="calendar" size={13} /> As at: <strong>{fmtAsAt()}</strong></span>
+          <span className="proj-context-item"><Icon name="currency" size={13} /> SGD</span>
+          <span className="proj-context-item data-freshness"><Icon name="dot" size={10} /> SAP sync: {fmtSapSync(p.lastSapImport)}</span>
+          <span className="proj-context-item">
             GP: <strong style={{ color: gp.gpStatus === 'ok' ? C.fav : gp.gpStatus === 'warn' ? C.attn : C.adverse }}>
               {gp.forecastGp}%
             </strong>
-            <span className="proj-gp-detail" style={{ color: 'var(--text-3)', marginLeft: 4 }}>
+            <span style={{ color: 'var(--text-3)', marginLeft: 4 }}>
               (budget: {gp.budgetGp}%, var: {Number(gp.variance) >= 0 ? '+' : ''}{gp.variance}pp)
             </span>
           </span>

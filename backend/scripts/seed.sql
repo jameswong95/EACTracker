@@ -86,7 +86,7 @@ BEGIN
     'PR-2026-031', 'Data Centre Migration',
     '345678901/003-1', '345678901', 'FinCorp Ltd', 'Technology',
     pm_sam, pd_marcus, 'ok',
-    '2026-03-01', '2027-06-30',
+    '2026-03-01', '2036-02-29',
     2200000, 1900000, 1900000, 1920000, 280000, 320000,
     140000, 280000, -140000,
     'progress_claim', '2026-05-08'
@@ -110,9 +110,11 @@ UPDATE projects
    AND (end_date IS NULL OR end_date < '2028-12-31');
 
 UPDATE projects
-   SET end_date = '2035-12-31'
+   SET start_date = '2026-03-01',
+       end_date = '2036-02-29'
  WHERE id = 'PR-2026-031'
-   AND (end_date IS NULL OR end_date < '2035-12-31');
+   AND (start_date IS DISTINCT FROM '2026-03-01'::date
+        OR end_date IS DISTINCT FROM '2036-02-29'::date);
 
 INSERT INTO project_pm_assignments (project_id, user_id, is_lead)
 SELECT id, pm_user_id, TRUE
@@ -144,6 +146,15 @@ INSERT INTO sub_jobs (project_id, wbs_code, wbs_suffix, name, sort_order,
 ON CONFLICT (wbs_code) DO NOTHING;
 
 -- -- milestones --
+DELETE FROM milestones a
+USING milestones b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.name = b.name;
+
+CREATE UNIQUE INDEX IF NOT EXISTS milestones_project_name_unique
+  ON milestones (project_id, name);
+
 INSERT INTO milestones (project_id, name, target_date, is_done, is_warning, sort_order) VALUES
 -- PR-2025-014
 ('PR-2025-014','Kickoff',           '2025-01-20', TRUE,  FALSE, 0),
@@ -161,7 +172,7 @@ INSERT INTO milestones (project_id, name, target_date, is_done, is_warning, sort
 ('PR-2026-031','Design freeze',     '2026-05-31', FALSE, FALSE, 1),
 ('PR-2026-031','Pilot migration',   '2026-09-30', FALSE, FALSE, 2),
 ('PR-2026-031','Full cutover',      '2027-03-31', FALSE, FALSE, 3),
-('PR-2026-031','Closeout',          '2027-06-30', FALSE, FALSE, 4),
+('PR-2026-031','Closeout',          '2036-02-29', FALSE, FALSE, 4),
 -- PR-2026-008
 ('PR-2026-008','Kickoff',           '2025-11-10', TRUE,  FALSE, 0),
 ('PR-2026-008','Gap assessment',    '2026-01-31', TRUE,  FALSE, 1),
@@ -169,6 +180,13 @@ INSERT INTO milestones (project_id, name, target_date, is_done, is_warning, sort
 ('PR-2026-008','Pen test',          '2026-07-31', FALSE, FALSE, 3),
 ('PR-2026-008','Closeout',          '2026-09-30', FALSE, FALSE, 4)
 ON CONFLICT DO NOTHING;
+
+UPDATE milestones
+   SET target_date = '2036-02-29',
+       sort_order = 4
+ WHERE project_id = 'PR-2026-031'
+   AND name = 'Closeout'
+   AND target_date IS DISTINCT FROM '2036-02-29'::date;
 
 -- -- risks --
 INSERT INTO risks (project_id, ref, title, impact, probability, mitigation, status) VALUES
@@ -285,13 +303,13 @@ DECLARE
 BEGIN
   WITH rows(project_id, wbs_code, category, description, amount, estimated_received_date, notes, created_by) AS (VALUES
     ('PR-2025-014','123456789/001-1-2','PM',  'Core network switches and optics',      96000,'2026-04-18'::date,'Estimated receipt for Wave 2 rollout hardware.',u_sara),
-    ('PR-2025-014','123456789/001-1-2','PM',  'Test rig spares and installation kit',   78000,NULL::date,        'Forecast ETC pending final vendor quotation.',u_sara),
+    ('PR-2025-014','123456789/001-1-2','PM',  'Test rig spares and installation kit',   78000,'2026-06-15'::date,'Forecast ETC pending final vendor quotation.',u_sara),
     ('PR-2025-014','123456789/001-1-3','MISC','Site consumables and patch leads',        22000,'2026-05-06'::date,'MISC material drawdown for late-stage works.',u_sara),
     ('PR-2026-022','234567890/002-1-3','PM',  'Access points and mounting kits',         52000,'2026-03-22'::date,'Estimated receipt for Site A deployment.',u_amara),
-    ('PR-2026-022','234567890/002-1-2','MISC','Temporary cabling and labels',            18000,NULL::date,        'MISC forecast for phase 2 cabling recovery.',u_amara),
-    ('PR-2026-031','345678901/003-1-3','PM',  'Migration staging storage',               64000,NULL::date,        'Forecast storage expansion for pilot migration.',u_sam),
+    ('PR-2026-022','234567890/002-1-2','MISC','Temporary cabling and labels',            18000,'2026-06-20'::date,'MISC forecast for phase 2 cabling recovery.',u_amara),
+    ('PR-2026-031','345678901/003-1-3','PM',  'Migration staging storage',               64000,'2026-07-15'::date,'Forecast storage expansion for pilot migration.',u_sam),
     ('PR-2026-008','456789012/004-1-2','PM',  'Endpoint security licences',              48000,'2026-02-14'::date,'Estimated receipt for annual licence tranche.',u_nadia),
-    ('PR-2026-008','456789012/004-1-3','MISC','Training lab tokens and certificates',     14000,NULL::date,        'MISC forecast for audit training materials.',u_nadia)
+    ('PR-2026-008','456789012/004-1-3','MISC','Training lab tokens and certificates',     14000,'2026-06-10'::date,'MISC forecast for audit training materials.',u_nadia)
   )
   INSERT INTO material_items (project_id, sub_job_id, category, description, amount, estimated_received_date, notes, created_by)
   SELECT r.project_id, sj.id, r.category, r.description, r.amount, r.estimated_received_date, r.notes, r.created_by
@@ -304,13 +322,13 @@ BEGIN
 
   WITH rows(project_id, wbs_code, category, description, amount, estimated_received_date, notes, created_by) AS (VALUES
     ('PR-2025-014','123456789/001-1-2','PM',  'Cutover field engineering crew',          58000,'2026-05-02'::date,'Estimated receipt for night cutover support.',u_sara),
-    ('PR-2025-014','123456789/001-1-3','MISC','Ad-hoc site reinstatement support',       24000,NULL::date,        'MISC forecast for closeout punch-list.',u_sara),
+    ('PR-2025-014','123456789/001-1-3','MISC','Ad-hoc site reinstatement support',       24000,'2026-06-12'::date,'MISC forecast for closeout punch-list.',u_sara),
     ('PR-2026-022','234567890/002-1-2','PM',  'Structured cabling subcontractor',         88000,'2026-04-10'::date,'Estimated receipt for cabling crew support.',u_amara),
-    ('PR-2026-022','234567890/002-1-2','PM',  'Additional weekend installation crew',     36000,NULL::date,        'Forecast recovery crew for delayed sites.',u_amara),
+    ('PR-2026-022','234567890/002-1-2','PM',  'Additional weekend installation crew',     36000,'2026-06-25'::date,'Forecast recovery crew for delayed sites.',u_amara),
     ('PR-2026-031','345678901/003-1-2','PM',  'Data migration factory partner',          120000,'2026-05-18'::date,'Estimated receipt for migration partner mobilisation.',u_sam),
-    ('PR-2026-031','345678901/003-1-3','MISC','Decommissioning disposal vendor',          28000,NULL::date,        'MISC forecast for legacy hardware disposal.',u_sam),
+    ('PR-2026-031','345678901/003-1-3','MISC','Decommissioning disposal vendor',          28000,'2026-09-15'::date,'MISC forecast for legacy hardware disposal.',u_sam),
     ('PR-2026-008','456789012/004-1-2','PM',  'Pen-test specialist retainer',             42000,'2026-03-08'::date,'Estimated receipt for security testing retainer.',u_nadia),
-    ('PR-2026-008','456789012/004-1-3','MISC','Independent audit reviewer',               26000,NULL::date,        'MISC forecast for final controls audit.',u_nadia)
+    ('PR-2026-008','456789012/004-1-3','MISC','Independent audit reviewer',               26000,'2026-07-15'::date,'MISC forecast for final controls audit.',u_nadia)
   )
   INSERT INTO sub_con_items (project_id, sub_job_id, category, description, amount, estimated_received_date, notes, created_by)
   SELECT r.project_id, sj.id, r.category, r.description, r.amount, r.estimated_received_date, r.notes, r.created_by
@@ -322,14 +340,14 @@ BEGIN
   );
 
   WITH rows(project_id, wbs_code, description, amount, estimated_received_date, notes, created_by) AS (VALUES
-    ('PR-2025-014','123456789/001-1-3','LOB travel and site allowance',       18500,NULL::date,        'LOB forecast for regional rollout visits.',u_sara),
+    ('PR-2025-014','123456789/001-1-3','LOB travel and site allowance',       18500,'2026-06-18'::date,'LOB forecast for regional rollout visits.',u_sara),
     ('PR-2025-014','123456789/001-1-3','MISC permit and access passes',        6500,'2026-04-25'::date,'MISC estimated site access cost.',u_sara),
     ('PR-2026-022','234567890/002-1-3','LOB site survey expenses',            12000,'2026-03-12'::date,'LOB survey and transport claims.',u_amara),
-    ('PR-2026-022','234567890/002-1-3','MISC overtime meal allowance',         9000,NULL::date,        'MISC forecast tied to weekend recovery plan.',u_amara),
-    ('PR-2026-031','345678901/003-1-3','LOB data centre access fees',         21000,NULL::date,        'LOB forecast for secure migration windows.',u_sam),
+    ('PR-2026-022','234567890/002-1-3','MISC overtime meal allowance',         9000,'2026-06-30'::date,'MISC forecast tied to weekend recovery plan.',u_amara),
+    ('PR-2026-031','345678901/003-1-3','LOB data centre access fees',         21000,'2026-08-15'::date,'LOB forecast for secure migration windows.',u_sam),
     ('PR-2026-031','345678901/003-1-1','MISC client workshop expenses',        8000,'2026-05-03'::date,'MISC estimated workshop logistics.',u_sam),
     ('PR-2026-008','456789012/004-1-3','LOB compliance filing fees',          11000,'2026-04-18'::date,'LOB filing and regulator submission fees.',u_nadia),
-    ('PR-2026-008','456789012/004-1-3','MISC training venue and materials',   16000,NULL::date,        'MISC forecast for security awareness sessions.',u_nadia)
+    ('PR-2026-008','456789012/004-1-3','MISC training venue and materials',   16000,'2026-06-30'::date,'MISC forecast for security awareness sessions.',u_nadia)
   )
   INSERT INTO others_items (project_id, sub_job_id, description, amount, estimated_received_date, notes, created_by)
   SELECT r.project_id, sj.id, r.description, r.amount, r.estimated_received_date, r.notes, r.created_by
@@ -365,6 +383,15 @@ BEGIN
 END $$;
 
 -- -- eac_monthly_rows + values --
+DELETE FROM eac_monthly_rows a
+USING eac_monthly_rows b
+WHERE a.ctid < b.ctid
+  AND a.project_id = b.project_id
+  AND a.cost_category = b.cost_category;
+
+CREATE UNIQUE INDEX IF NOT EXISTS eac_monthly_rows_project_category_unique
+  ON eac_monthly_rows (project_id, cost_category);
+
 DO $$
 DECLARE
   r1  INT; r2  INT; r3  INT; r4  INT;   -- PR-2025-014 row ids
@@ -504,7 +531,7 @@ END $$;
 -- -- adaptive planned-spend chart seed coverage --
 -- PR-2026-008 remains short (~11 months) for monthly display.
 -- PR-2026-022 spans ~3 years for quarterly display.
--- PR-2026-031 spans ~10 years for yearly display.
+-- PR-2026-031 spans exactly 10 years (2026-03-01 to 2036-02-29) for yearly display.
 WITH rows(project_id, label, year, month, amount_k, is_locked) AS (VALUES
   -- PR-2026-022 quarterly-mode coverage through 2028.
   ('PR-2026-022','Labour (blended)',      2027,1, 35,FALSE),
@@ -525,7 +552,7 @@ WITH rows(project_id, label, year, month, amount_k, is_locked) AS (VALUES
   ('PR-2026-022','Sub-contractor',        2028,1, 12,FALSE),
   ('PR-2026-022','Sub-contractor',        2028,7, 10,FALSE),
 
-  -- PR-2026-031 long programme coverage through 2035.
+  -- PR-2026-031 long programme coverage through final closeout in 2036.
   ('PR-2026-031','Labour (blended)',      2027,1, 46,FALSE),
   ('PR-2026-031','Labour (blended)',      2027,7, 44,FALSE),
   ('PR-2026-031','Labour (blended)',      2028,1, 42,FALSE),
@@ -544,6 +571,7 @@ WITH rows(project_id, label, year, month, amount_k, is_locked) AS (VALUES
   ('PR-2026-031','Labour (blended)',      2034,7, 16,FALSE),
   ('PR-2026-031','Labour (blended)',      2035,1, 14,FALSE),
   ('PR-2026-031','Labour (blended)',      2035,7, 12,FALSE),
+  ('PR-2026-031','Labour (blended)',      2036,1, 10,FALSE),
   ('PR-2026-031','Migration Services',    2027,3, 70,FALSE),
   ('PR-2026-031','Migration Services',    2027,9, 80,FALSE),
   ('PR-2026-031','Migration Services',    2028,3, 90,FALSE),
@@ -562,6 +590,7 @@ WITH rows(project_id, label, year, month, amount_k, is_locked) AS (VALUES
   ('PR-2026-031','Migration Services',    2034,9, 18,FALSE),
   ('PR-2026-031','Migration Services',    2035,3, 15,FALSE),
   ('PR-2026-031','Migration Services',    2035,9, 12,FALSE),
+  ('PR-2026-031','Migration Services',    2036,2, 10,FALSE),
   ('PR-2026-031','Hardware / Infra',      2027,2, 35,FALSE),
   ('PR-2026-031','Hardware / Infra',      2028,2, 42,FALSE),
   ('PR-2026-031','Hardware / Infra',      2029,2, 48,FALSE),
@@ -571,10 +600,12 @@ WITH rows(project_id, label, year, month, amount_k, is_locked) AS (VALUES
   ('PR-2026-031','Hardware / Infra',      2033,2, 26,FALSE),
   ('PR-2026-031','Hardware / Infra',      2034,2, 20,FALSE),
   ('PR-2026-031','Hardware / Infra',      2035,2, 16,FALSE),
+  ('PR-2026-031','Hardware / Infra',      2036,2, 10,FALSE),
   ('PR-2026-031','Contingency',           2028,12,20,FALSE),
   ('PR-2026-031','Contingency',           2030,12,25,FALSE),
   ('PR-2026-031','Contingency',           2032,12,20,FALSE),
-  ('PR-2026-031','Contingency',           2034,12,15,FALSE)
+  ('PR-2026-031','Contingency',           2034,12,15,FALSE),
+  ('PR-2026-031','Contingency',           2036,2,  8,FALSE)
 )
 INSERT INTO eac_monthly_values (row_id, project_id, year, month, amount_k, is_locked)
 SELECT rrow.id, r.project_id, r.year, r.month, r.amount_k, r.is_locked
@@ -621,7 +652,7 @@ BEGIN
     ('PR-2026-022', m9, 'Final acceptance recognition',          475000, FALSE, fin)
   ON CONFLICT DO NOTHING;
 
-  -- PR-2026-031 progress-claim entries (monthly)
+  -- PR-2026-031 progress-claim entries, including long-programme yearly seed coverage.
   INSERT INTO revrec_entries (project_id, period_year, period_month, description, amount, is_locked, created_by) VALUES
     ('PR-2026-031',2026,3, 'Mar progress claim',  70000, TRUE,  fin),
     ('PR-2026-031',2026,4, 'Apr progress claim',  70000, TRUE,  fin),
@@ -638,7 +669,16 @@ BEGIN
     ('PR-2026-031',2027,3, 'Mar 27 forecast',      90000, FALSE, fin),
     ('PR-2026-031',2027,4, 'Apr 27 forecast',      80000, FALSE, fin),
     ('PR-2026-031',2027,5, 'May 27 forecast',      80000, FALSE, fin),
-    ('PR-2026-031',2027,6, 'Jun 27 closeout',      50000, FALSE, fin)
+    ('PR-2026-031',2027,6, 'Jun 27 forecast',      50000, FALSE, fin),
+    ('PR-2026-031',2028,6, 'FY28 programme claim', 65000, FALSE, fin),
+    ('PR-2026-031',2029,6, 'FY29 programme claim', 60000, FALSE, fin),
+    ('PR-2026-031',2030,6, 'FY30 programme claim', 56000, FALSE, fin),
+    ('PR-2026-031',2031,6, 'FY31 programme claim', 52000, FALSE, fin),
+    ('PR-2026-031',2032,6, 'FY32 programme claim', 46000, FALSE, fin),
+    ('PR-2026-031',2033,6, 'FY33 programme claim', 40000, FALSE, fin),
+    ('PR-2026-031',2034,6, 'FY34 programme claim', 34000, FALSE, fin),
+    ('PR-2026-031',2035,6, 'FY35 programme claim', 28000, FALSE, fin),
+    ('PR-2026-031',2036,2, 'Feb 36 closeout',      20000, FALSE, fin)
   ON CONFLICT DO NOTHING;
 
   -- PR-2026-008 — partial milestone-based

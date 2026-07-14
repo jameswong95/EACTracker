@@ -66,9 +66,8 @@ export default function Tender({ tenderId, navigate, role, session }) {
 
   const grandTotal = items.reduce((s, it) => s + Number(it.amount || 0), 0);
 
-  // Blended margin: revenue is computed per-line using the line's own GP%
-  // override where set, otherwise the tender-level GP%. The blended GP% is the
-  // margin implied by total revenue vs total cost across all lines.
+  // Revenue and margin are computed per-line using the line's own GP% override
+  // where set, otherwise the tender-level GP%.
   const blended = useMemo(() => {
     let cost = 0, revenue = 0;
     for (const it of items) {
@@ -85,8 +84,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
       cost += c;
       revenue += revenueFromCost(c, g);
     }
-    const blendedGp = revenue > 0 ? (1 - cost / revenue) * 100 : 0;
-    return { cost, revenue, margin: revenue - cost, blendedGp };
+    return { cost, revenue, margin: revenue - cost };
   }, [items, vos, gpPct]);
 
   async function addItem() {
@@ -162,7 +160,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
   }
 
   async function initiateProject() {
-    if (!window.confirm('Award this tender and create the live project? Tender inputs will be copied into project initiation, Resource Plan, Material, Sub-Con and Others.')) return;
+    if (!window.confirm('Award this tender and create the live project? Tender inputs will be copied into project initiation, Resource Plan, Material, Sub-Con and Other LOB and MISC.')) return;
     try {
       const result = await api.post(`/api/tender/${tender.id}/initiate`, { user_id: session?.id || null });
       reload();
@@ -195,7 +193,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
           <Select value={tender.status} options={TENDER_STATUS_OPTIONS} onChange={setStatus} style={{ width: 140 }} />
         )}
         {canEdit && tender && tender.status !== 'awarded' && (
-          <button className="btn btn-primary btn-sm" onClick={initiateProject} title="Award tender and initiate the project (inherits blended margin)">Award &amp; initiate</button>
+          <button className="btn btn-primary btn-sm" onClick={initiateProject} title="Award tender and initiate the project">Award &amp; initiate</button>
         )}
         {tender && tender.status === 'awarded' && (
           <span className="badge badge-ok" style={{ alignSelf: 'center' }}>Awarded · project initiated</span>
@@ -240,7 +238,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
           <div className="kpi-value num">{fmt(totals.subcon_amount)}</div>
         </div>
         <div className="kpi-tile">
-          <div className="kpi-label">Others estimate</div>
+          <div className="kpi-label">Other LOB and MISC estimate</div>
           <div className="kpi-value num">{fmt(totals.others_amount)}</div>
         </div>
         <div className="kpi-tile">
@@ -250,7 +248,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
         </div>
       </div>
 
-      {/* GP% -> revenue (blended margin). Revenue = cost / (1 - GP%). */}
+      {/* GP% -> revenue. Revenue = cost / (1 - GP%). */}
       <div className="card card-p" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <div>
@@ -266,24 +264,20 @@ export default function Tender({ tenderId, navigate, role, session }) {
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Revenue = cost ÷ (1 − GP%)</div>
           </div>
           <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 6 }}>Cost (est. + confirmed VO)</div>
-            <div style={{ fontWeight: 700, fontSize: 18 }} className="num">{fmt(blended.cost)}</div>
-          </div>
-          <div>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 6 }}>Revenue</div>
             <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--ok)' }} className="num">{fmt(blended.revenue)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 6 }}>Cost (est. + confirmed VO)</div>
+            <div style={{ fontWeight: 700, fontSize: 18 }} className="num">{fmt(blended.cost)}</div>
           </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 6 }}>Margin ($)</div>
             <div style={{ fontWeight: 700, fontSize: 18 }} className="num">{fmt(blended.margin)}</div>
           </div>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 6 }}>Blended GP%</div>
-            <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--accent)' }} className="num">{blended.blendedGp.toFixed(1)}%</div>
-          </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>
-          Blended GP% is the effective margin across all lines (each line may carry its own GP% override). Confirmed VOs are included; potential VOs are excluded.
+          Revenue and margin are calculated across all lines. Confirmed VOs are included; potential VOs are excluded.
         </div>
       </div>
 
@@ -434,7 +428,7 @@ function VoPanel({ vos, voTotals, gpPct, canEdit, voForm, setVoForm, addVo, patc
             <button className="btn btn-primary btn-sm" onClick={addVo} disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
-            Confirmed VOs contribute to the blended margin and totals. Budget/EAC are <strong>not</strong> recalculated automatically.
+            Confirmed VOs contribute to revenue, margin and totals. Budget/EAC are <strong>not</strong> recalculated automatically.
           </div>
         </div>
       )}
