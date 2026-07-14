@@ -20,11 +20,22 @@ if (!sqlFile) {
 
 const sqlPath = resolve(fileURLToPath(import.meta.url), '..', '..', sqlFile);
 const sql     = readFileSync(sqlPath, 'utf8');
+const isProduction = process.env.NODE_ENV === 'production';
+
+function databaseUrl() {
+  const url = process.env.DATABASE_URL;
+  if (isProduction && !url) {
+    console.error('[db] DATABASE_URL is required when NODE_ENV=production.');
+    process.exit(1);
+  }
+  return url || 'postgres://postgres:postgres@127.0.0.1:5432/eac_tracker';
+}
 
 const client = new Client({
-  connectionString:
-    process.env.DATABASE_URL ||
-    'postgres://postgres:Secure!123@127.0.0.1:5432/eac_tracker',
+  connectionString: databaseUrl(),
+  ssl: process.env.DATABASE_SSL === '1'
+    ? { rejectUnauthorized: process.env.DATABASE_SSL_ALLOW_SELF_SIGNED !== '1' }
+    : undefined,
 });
 
 try {

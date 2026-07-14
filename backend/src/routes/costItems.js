@@ -1,6 +1,41 @@
 import { Router } from 'express';
 import { query, tx } from '../db.js';
-import { ah, requireFields, logAudit } from '../util.js';
+import { ah, logAudit } from '../util.js';
+import * as v from '../validation.js';
+
+const LINE_ITEM_FIELDS = new Set(['project_id', 'description', 'amount', 'estimated_received_date', 'notes', 'created_by']);
+const LINE_ITEM_PATCH_FIELDS = new Set(['description', 'amount', 'estimated_received_date', 'notes']);
+const SUB_ITEM_FIELDS = new Set(['description', 'amount', 'estimated_received_date', 'notes', 'created_by']);
+const SUB_ITEM_PATCH_FIELDS = new Set(['description', 'amount', 'estimated_received_date', 'notes']);
+
+function has(body, key) {
+  return Object.prototype.hasOwnProperty.call(body, key);
+}
+
+function cleanLineItem(body, { partial = false } = {}) {
+  v.ensureObject(body);
+  v.validateNoUnknown(body, partial ? LINE_ITEM_PATCH_FIELDS : LINE_ITEM_FIELDS);
+  const out = {};
+  if (!partial || has(body, 'project_id')) out.project_id = v.projectId(body.project_id);
+  if (!partial || has(body, 'description')) out.description = v.text(body.description, 'description', { required: true, max: 300 });
+  if (!partial || has(body, 'amount')) out.amount = v.number(body.amount, 'amount', { min: 0 }) ?? 0;
+  if (!partial || has(body, 'estimated_received_date')) out.estimated_received_date = v.date(body.estimated_received_date, 'estimated_received_date', { required: true });
+  if (!partial || has(body, 'notes')) out.notes = v.text(body.notes, 'notes', { max: 1000 });
+  if (!partial || has(body, 'created_by')) out.created_by = v.userId(body.created_by, 'created_by');
+  return out;
+}
+
+function cleanSubItem(body, { partial = false } = {}) {
+  v.ensureObject(body);
+  v.validateNoUnknown(body, partial ? SUB_ITEM_PATCH_FIELDS : SUB_ITEM_FIELDS);
+  const out = {};
+  if (!partial || has(body, 'description')) out.description = v.text(body.description, 'description', { required: true, max: 300 });
+  if (!partial || has(body, 'amount')) out.amount = v.number(body.amount, 'amount', { min: 0 }) ?? 0;
+  if (!partial || has(body, 'estimated_received_date')) out.estimated_received_date = v.date(body.estimated_received_date, 'estimated_received_date');
+  if (!partial || has(body, 'notes')) out.notes = v.text(body.notes, 'notes', { max: 1000 });
+  if (!partial || has(body, 'created_by')) out.created_by = v.userId(body.created_by, 'created_by');
+  return out;
+}
 
 // Factory: builds a CRUD router for a project-level cost-item register
 // (material_items, sub_con_items or others_items). These registers are planning
@@ -11,10 +46,7 @@ export function makeLineItemRouter(table, entityType) {
 
   // GET /?project_id=...  → all items for a project
   r.get('/', ah(async (req, res) => {
-    const { project_id } = req.query;
-    if (!project_id) {
-      return res.status(400).json({ error: 'project_id required' });
-    }
+    const project_id = v.projectId(req.query.project_id);
     const result = await query(
       `SELECT it.id, it.project_id, it.sub_job_id, it.description,
               it.amount,
@@ -53,16 +85,14 @@ export function makeLineItemRouter(table, entityType) {
 
   // POST /  (create a line item)
   r.post('/', ah(async (req, res) => {
-    const b = req.body;
-    requireFields(b, ['project_id', 'description', 'estimated_received_date']);
+    const b = cleanLineItem(req.body);
     const result = await tx(async (c) => {
       const ins = await c.query(
         `INSERT INTO ${table}
            (project_id, description, amount, estimated_received_date, notes, created_by)
          VALUES ($1,$2,COALESCE($3,0),$4,$5,$6)
          RETURNING *`,
-        [b.project_id, b.description, b.amount,
-         b.estimated_received_date || null, b.notes || null, b.created_by || null]
+        [b.project_id, b.description, b.amount, b.estimated_received_date, b.notes, b.created_by]
       );
       await logAudit(c, { entity_type: entityType, entity_id: ins.rows[0].id, action: 'create' });
       return ins.rows[0];
@@ -72,21 +102,15 @@ export function makeLineItemRouter(table, entityType) {
 
   // PATCH /:id
   r.patch('/:id', ah(async (req, res) => {
-    const editable = new Set([
-      'description', 'amount', 'estimated_received_date', 'notes',
-    ]);
+    const id = v.positiveInt(req.params.id);
+    const b = cleanLineItem(req.body, { partial: true });
     const sets = []; const vals = []; let i = 1;
-    for (const [k, v] of Object.entries(req.body)) {
-      if (editable.has(k)) {
-        if (k === 'estimated_received_date' && !v) {
-          return res.status(400).json({ error: 'estimated_received_date is required' });
-        }
-        sets.push(`${k} = $${i++}`); vals.push(v);
-      }
+    for (const [k, value] of Object.entries(b)) {
+      sets.push(`${k} = $${i++}`); vals.push(value);
     }
     if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
     sets.push(`updated_at = NOW()`);
-    vals.push(req.params.id);
+    vals.push(id);
     const upd = await query(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
     if (!upd.rows[0]) return res.status(404).json({ error: 'item not found' });
     res.json(upd.rows[0]);
@@ -94,12 +118,13 @@ export function makeLineItemRouter(table, entityType) {
 
   // DELETE /:id
   r.delete('/:id', ah(async (req, res) => {
+    const id = v.positiveInt(req.params.id);
     const rowCount = await tx(async (c) => {
       await c.query(
         `DELETE FROM cost_item_sub_items WHERE parent_entity_type = $1 AND parent_id = $2`,
-        [entityType, req.params.id]
+        [entityType, id]
       );
-      const d = await c.query(`DELETE FROM ${table} WHERE id = $1`, [req.params.id]);
+      const d = await c.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
       return d.rowCount;
     });
     if (!rowCount) return res.status(404).json({ error: 'item not found' });
@@ -113,9 +138,9 @@ export function makeLineItemRouter(table, entityType) {
   });
 
   r.post('/:id/sub-items', ah(async (req, res) => {
-    const b = req.body;
-    requireFields(b, ['description']);
-    const exists = await query(`SELECT 1 FROM ${table} WHERE id = $1`, [req.params.id]);
+    const parentId = v.positiveInt(req.params.id);
+    const b = cleanSubItem(req.body);
+    const exists = await query(`SELECT 1 FROM ${table} WHERE id = $1`, [parentId]);
     if (!exists.rowCount) return res.status(404).json({ error: 'item not found' });
     const ins = await query(
       `INSERT INTO cost_item_sub_items
@@ -124,25 +149,24 @@ export function makeLineItemRouter(table, entityType) {
        RETURNING id, parent_entity_type, parent_id, description, amount,
                  to_char(estimated_received_date, 'YYYY-MM-DD') AS estimated_received_date,
                  notes, created_by, created_at, updated_at`,
-      [entityType, req.params.id, b.description, b.amount,
-       b.estimated_received_date || null, b.notes || null, b.created_by || null]
+      [entityType, parentId, b.description, b.amount, b.estimated_received_date, b.notes, b.created_by]
     );
     res.status(201).json(ins.rows[0]);
   }));
 
   // PATCH /:id/sub-items/:subId
   r.patch('/:id/sub-items/:subId', ah(async (req, res) => {
-    const editable = new Set(['description', 'amount', 'estimated_received_date', 'notes']);
+    const parentId = v.positiveInt(req.params.id);
+    const subId = v.positiveInt(req.params.subId, 'subId');
+    const b = cleanSubItem(req.body, { partial: true });
     const sets = []; const vals = []; let i = 1;
-    for (const [k, v] of Object.entries(req.body)) {
-      if (editable.has(k)) {
-        sets.push(`${k} = $${i++}`);
-        vals.push(v === '' ? null : v);
-      }
+    for (const [k, value] of Object.entries(b)) {
+      sets.push(`${k} = $${i++}`);
+      vals.push(value);
     }
     if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
     sets.push(`updated_at = NOW()`);
-    vals.push(entityType, req.params.id, req.params.subId);
+    vals.push(entityType, parentId, subId);
     const upd = await query(
       `UPDATE cost_item_sub_items
           SET ${sets.join(', ')}
@@ -160,12 +184,14 @@ export function makeLineItemRouter(table, entityType) {
 
   // DELETE /:id/sub-items/:subId
   r.delete('/:id/sub-items/:subId', ah(async (req, res) => {
+    const parentId = v.positiveInt(req.params.id);
+    const subId = v.positiveInt(req.params.subId, 'subId');
     const d = await query(
       `DELETE FROM cost_item_sub_items
         WHERE parent_entity_type = $1
           AND parent_id = $2
           AND id = $3`,
-      [entityType, req.params.id, req.params.subId]
+      [entityType, parentId, subId]
     );
     if (!d.rowCount) return res.status(404).json({ error: 'sub item not found' });
     res.status(204).end();
@@ -174,8 +200,7 @@ export function makeLineItemRouter(table, entityType) {
   // GET /schedule?project_id=...  → monthly timeline rows for every line item
   // in this register for the project. Rows: { entity_id, year, month, amount }.
   r.get('/schedule', ah(async (req, res) => {
-    const { project_id } = req.query;
-    if (!project_id) return res.status(400).json({ error: 'project_id required' });
+    const project_id = v.projectId(req.query.project_id);
     const result = await query(
       `SELECT s.entity_id, s.year, s.month, s.amount
          FROM cost_item_schedule s
@@ -190,13 +215,12 @@ export function makeLineItemRouter(table, entityType) {
   // PUT /:id/schedule  { year, month, amount }  → upsert a single month cell.
   // amount 0 (or missing) deletes the cell.
   r.put('/:id/schedule', ah(async (req, res) => {
-    const entityId = Number(req.params.id);
-    const year = Number(req.body.year);
-    const month = Number(req.body.month);
-    const amount = Number(req.body.amount) || 0;
-    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-      return res.status(400).json({ error: 'valid year and month (1-12) required' });
-    }
+    const entityId = v.positiveInt(req.params.id);
+    const body = v.ensureObject(req.body);
+    v.validateNoUnknown(body, new Set(['year', 'month', 'amount']));
+    const year = v.year(body.year, 'year', { required: true });
+    const month = v.month(body.month, 'month', { required: true });
+    const amount = v.number(body.amount, 'amount', { min: 0 }) ?? 0;
     const exists = await query(`SELECT 1 FROM ${table} WHERE id = $1`, [entityId]);
     if (!exists.rowCount) return res.status(404).json({ error: 'item not found' });
     if (amount === 0) {

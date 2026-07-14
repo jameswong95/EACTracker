@@ -6,7 +6,7 @@
 --   • Tender module (standalone pre-kickoff estimate)
 --   • Rev Rec: Forecast column + Planned (Tender) rollup
 -- Idempotent. Run after migrate-003-planning.sql.
---   node scripts/run-sql.mjs scripts/migrate-004-modules.sql
+--   node scripts/run-sql.mjs db/migrations/migrate-004-modules.sql
 -- =============================================================
 
 -- -- 0. shared Category (PM / MISC) on labour assignments --------------

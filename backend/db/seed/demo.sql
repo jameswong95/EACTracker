@@ -1,6 +1,6 @@
 -- =============================================================
 -- EAC Tracker — seed data (idempotent via ON CONFLICT DO NOTHING)
--- Run with: psql $DATABASE_URL -f scripts/seed.sql
+-- Run with: npm run seed
 -- =============================================================
 
 -- -- resource_grades --

@@ -1,8 +1,19 @@
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 import { pool } from './db.js';
+import { config } from './config.js';
+import {
+  apiRateLimit,
+  authenticate,
+  authorize,
+  logSecurity,
+  requestContext,
+  requireExpectedContentType,
+  securityHeaders,
+} from './security.js';
 import projectsRouter   from './routes/projects.js';
 import subJobsRouter    from './routes/subJobs.js';
 import eacRouter        from './routes/eac.js';
@@ -30,17 +41,56 @@ import { materialsRouter, subConRouter, othersRouter } from './routes/costItems.
 
 const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || true, credentials: true }));
-app.use(express.json({ limit: '2mb' }));
+app.disable('x-powered-by');
+if (config.trustProxy) app.set('trust proxy', 1);
+
+app.use(requestContext);
+app.use(securityHeaders);
+
+const corsOptions = config.corsOrigins.length
+  ? {
+      origin(origin, cb) {
+        if (!origin || config.corsOrigins.includes(origin)) return cb(null, true);
+        const err = new Error('CORS origin not allowed');
+        err.status = 403;
+        return cb(err);
+      },
+      credentials: true,
+    }
+  : config.isProduction
+    ? { origin: false }
+    : { origin: true, credentials: true };
+
+app.use(cors(corsOptions));
+app.use('/api', apiRateLimit);
+app.use('/api', requireExpectedContentType);
+app.use(express.json({ limit: config.security.jsonBodyLimit }));
 
 app.get('/api/health', async (_req, res) => {
   try {
     const r = await pool.query('SELECT NOW() AS now, current_database() AS db');
-    res.json({ ok: true, ...r.rows[0] });
+    res.json({
+      ok: true,
+      service: 'pfms-backend',
+      environment: config.nodeEnv,
+      demoAuthEnabled: config.demoAuthEnabled,
+      ...r.rows[0],
+    });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: config.isProduction ? 'database unavailable' : e.message });
   }
 });
+
+app.get('/api/ready', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(503).json({ ok: false, error: config.isProduction ? 'not ready' : e.message });
+  }
+});
+
+app.use('/api', authenticate, authorize);
 
 app.use('/api/projects',   projectsRouter);
 app.use('/api/sub-jobs',   subJobsRouter);
@@ -69,17 +119,61 @@ app.use('/api/fx-rates',   fxRatesRouter);
 app.use('/api/sub-con',    subConRouter);
 app.use('/api/others',     othersRouter);
 
-// 404
-app.use((req, res) => res.status(404).json({ error: 'not found', path: req.path }));
+app.use('/api', (req, res) => {
+  logSecurity(req, 'not_found', 'Unknown API route requested');
+  res.status(404).json({ error: 'not found', path: req.path });
+});
+
+if (existsSync(config.frontendDistDir)) {
+  app.use(express.static(config.frontendDistDir, {
+    etag: true,
+    maxAge: config.isProduction ? '1h' : 0,
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${join('dist', 'assets')}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+
+  app.get('*', (_req, res) => {
+    res.sendFile(join(config.frontendDistDir, 'index.html'));
+  });
+} else {
+  app.get('*', (_req, res) => {
+    res.status(404).json({ error: 'frontend build not found; run npm run build in frontend' });
+  });
+}
 
 // error handler
-app.use((err, _req, res, _next) => {
-  console.error('[err]', err);
-  const status = err.status || 500;
-  res.status(status).json({ error: err.message || 'internal error' });
+app.use((err, req, res, _next) => {
+  const status = err.status || (err.code === 'LIMIT_FILE_SIZE' ? 413 : 500);
+  if (status >= 500) {
+    console.error('[err]', err);
+  }
+  if (status >= 400) {
+    logSecurity(req, status >= 500 ? 'exception' : 'request_rejected', err.message || 'request rejected', {
+      status,
+      code: err.code || null,
+    });
+  }
+  res.status(status).json({
+    error: config.isProduction && status >= 500 ? 'internal error' : err.message || 'internal error',
+    request_id: req.id,
+  });
 });
 
-const port = Number(process.env.PORT) || 4000;
-app.listen(port, () => {
-  console.log(`[pfms-backend] listening on http://localhost:${port}`);
+const server = app.listen(config.port, () => {
+  console.log(`[pfms-backend] listening on http://localhost:${config.port} (${config.nodeEnv})`);
 });
+
+async function shutdown(signal) {
+  console.log(`[pfms-backend] ${signal} received, shutting down`);
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

@@ -4,7 +4,7 @@
 --   * Other LOB/MISC cost module (project-level forecast register)
 --   * Monthly cost timeline for material / sub-con / others line items
 -- Idempotent. Run after migrate-010-eac-features.sql.
---   node scripts/run-sql.mjs scripts/migrate-011-eac-ui.sql
+--   node scripts/run-sql.mjs db/migrations/migrate-011-eac-ui.sql
 -- =============================================================
 
 -- -- 1. Global FAD / FX rates ----------------------------------------

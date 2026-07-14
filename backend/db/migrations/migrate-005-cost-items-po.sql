@@ -4,7 +4,7 @@
 --   * add project_id, po_number, purchase_date
 --   * purchase_date present -> Committed; absent -> ETC (Forecast)
 -- Idempotent. Run after migrate-004-modules.sql.
---   node scripts/run-sql.mjs scripts/migrate-005-cost-items-po.sql
+--   node scripts/run-sql.mjs db/migrations/migrate-005-cost-items-po.sql
 -- =============================================================
 
 -- -- Material items --------------------------------------------------

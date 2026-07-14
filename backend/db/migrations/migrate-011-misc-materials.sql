@@ -5,7 +5,7 @@
 --   * material_misc  - per-project sub-threshold material lines, optionally
 --                      priced from the fixed_rates catalog (qty x unit_rate).
 -- Idempotent. ASCII only.
---   node scripts/run-sql.mjs scripts/migrate-011-misc-materials.sql
+--   node scripts/run-sql.mjs db/migrations/migrate-011-misc-materials.sql
 
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,

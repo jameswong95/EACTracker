@@ -3,9 +3,35 @@ import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { query, tx } from '../db.js';
 import { ah, logAudit } from '../util.js';
+import { config } from '../config.js';
+import * as v from '../validation.js';
 
 const r = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+const SPREADSHEET_MIMES = new Set([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+  'application/csv',
+  'application/octet-stream',
+]);
+
+function uploadError(message, status = 400) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.security.uploadMaxBytes, files: 1 },
+  fileFilter(_req, file, cb) {
+    const nameOk = /\.(xlsx|xls|csv)$/i.test(file.originalname || '');
+    const mimeOk = SPREADSHEET_MIMES.has(file.mimetype);
+    if (nameOk && mimeOk) return cb(null, true);
+    return cb(uploadError('only Excel or CSV spreadsheet uploads are allowed'));
+  },
+});
 
 /**
  * Parse a ZPSR0021A Excel buffer.
@@ -61,6 +87,9 @@ function parseWorkbook(buf) {
   const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  if (rows.length > config.security.sapMaxRows) {
+    throw uploadError(`SAP import exceeds ${config.security.sapMaxRows} rows`, 413);
+  }
 
   // ZPSR0021A structural quirks this parser handles:
   //   • Continuation pages — the same Project block reprinted on each page (same Total).
@@ -211,12 +240,9 @@ r.post('/preview', upload.single('file'), ah(async (req, res) => {
 // POST /api/sap/commit  (multipart/form-data with file + form fields period_year, period_month, imported_by)
 r.post('/commit', upload.single('file'), ah(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required' });
-  const periodYear  = Number(req.body.period_year);
-  const periodMonth = Number(req.body.period_month);
-  const importedBy  = req.body.imported_by ? Number(req.body.imported_by) : null;
-  if (!periodYear || !periodMonth) {
-    return res.status(400).json({ error: 'period_year and period_month required' });
-  }
+  const periodYear = v.year(req.body.period_year, 'period_year', { required: true });
+  const periodMonth = v.month(req.body.period_month, 'period_month', { required: true });
+  const importedBy = v.userId(req.body.imported_by || req.user?.id, 'imported_by');
 
   const projects = parseWorkbook(req.file.buffer);
 

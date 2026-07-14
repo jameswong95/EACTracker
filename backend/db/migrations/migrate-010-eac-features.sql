@@ -4,7 +4,7 @@
 --   B. Material redesign: asset list + timeline schedule + fixed rates
 --   C. Tender: GP% / blended margin, VOs (potential vs confirmed)
 -- Idempotent. ASCII only.
---   node scripts/run-sql.mjs scripts/migrate-010-eac-features.sql
+--   node scripts/run-sql.mjs db/migrations/migrate-010-eac-features.sql
 -- =============================================================
 
 -- ---------------------------------------------------------------

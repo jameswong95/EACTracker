@@ -1,14 +1,16 @@
 import pg from 'pg';
-import 'dotenv/config';
+import { config } from './config.js';
 
 const { Pool } = pg;
 
 export const pool = new Pool({
-  connectionString:
-    process.env.DATABASE_URL ||
-    'postgres://postgres:postgres@127.0.0.1:5432/eac_tracker',
-  max: 10,
-  idleTimeoutMillis: 30_000,
+  connectionString: config.database.url,
+  max: config.database.maxPoolSize,
+  idleTimeoutMillis: config.database.idleTimeoutMillis,
+  connectionTimeoutMillis: config.database.connectionTimeoutMillis,
+  statement_timeout: config.database.statementTimeoutMillis,
+  query_timeout: config.database.statementTimeoutMillis,
+  ssl: config.database.ssl,
 });
 
 pool.on('error', (err) => {
@@ -18,7 +20,7 @@ pool.on('error', (err) => {
 export async function query(text, params) {
   const start = Date.now();
   const res = await pool.query(text, params);
-  if (process.env.LOG_SQL === '1') {
+  if (config.logSql) {
     console.log('[sql]', `${Date.now() - start}ms`, text.split('\n')[0].slice(0, 80));
   }
   return res;

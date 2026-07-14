@@ -1,6 +1,6 @@
 -- =============================================================
 -- EAC Tracker — full schema migration (idempotent)
--- Run with: psql $DATABASE_URL -f scripts/migrate.sql
+-- Run with: npm run db:deploy
 -- =============================================================
 
 -- -- Extensions --

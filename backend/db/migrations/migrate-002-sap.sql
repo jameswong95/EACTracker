@@ -1,6 +1,6 @@
 -- =============================================================
 -- EAC Tracker - migration 002: SAP import tables & extra columns
--- Idempotent. Run after migrate.sql.
+-- Idempotent. Run after db/schema.sql.
 -- =============================================================
 
 -- 1. users.sap_employee_id (used to resolve SAP "Responsible Person")
