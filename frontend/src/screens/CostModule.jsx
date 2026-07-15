@@ -235,7 +235,7 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
 
       <div className="card cost-table-card">
         <div className="table-wrap cost-register-scroll">
-          <table>
+          <table className="cost-register-table">
             <thead>
               <tr>
                 {canHaveSubItems && <th className="cost-disclosure-head">Details</th>}
@@ -364,6 +364,7 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
               })}
             </tbody>
           </table>
+          <div className="cost-register-end-spacer" aria-hidden="true" />
         </div>
       </div>
       </>

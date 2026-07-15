@@ -1212,6 +1212,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 .cost-table-card {
   overflow: hidden;
+  background: var(--surface);
 }
 .cost-table-card .table-wrap {
   overflow: auto;
@@ -1219,8 +1220,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .cost-table-card table {
   min-width: 720px;
 }
+.cost-register-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
 .cost-register-scroll {
-  padding-bottom: 8px;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
 }
@@ -1231,14 +1235,29 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   background: var(--surface);
 }
 .cost-table-card tbody td {
-  padding-top: 10px;
-  padding-bottom: 10px;
+  padding-top: 11px;
+  padding-bottom: 11px;
 }
 .cost-table-card tbody tr:last-child td {
   border-bottom: 0;
 }
 .cost-register-scroll tbody tr:last-child td {
-  padding-bottom: 14px;
+  padding-bottom: 16px;
+}
+.cost-register-table tbody tr {
+  cursor: default;
+}
+.cost-register-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent-light) 22%, var(--surface));
+}
+.cost-register-end-spacer {
+  height: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface-2) 42%, transparent),
+    var(--surface)
+  );
 }
 .cost-disclosure-head {
   width: 78px;
@@ -1727,9 +1746,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   }
   .cost-table-card table {
     min-width: 680px;
-  }
-  .cost-register-scroll {
-    padding-bottom: 10px;
   }
 
   /* Tab bar scrollable */
