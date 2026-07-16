@@ -458,14 +458,18 @@ export default function Portfolio({ navigate, role, session }) {
           {/* Cost by Category */}
           <div className="card card-p">
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Cost by Category</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 16 }}>EAC composition</div>
-            <SegmentedRing
-              segments={categories.map(c => ({ label: c.name, value: c.eac, color: c.color }))}
-              size={110} stroke={16}
-              centerLabel={fmtShort(catEacTotal)}
-              centerSub="EAC"
-            />
-            <div className="ring-legend" style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>EAC composition</div>
+            <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 12px' }}>
+              <SegmentedRing
+                segments={categories.map(c => ({ label: c.name, value: c.eac, color: c.color }))}
+                size={142} stroke={22}
+                centerLabel={fmtShort(catEacTotal)}
+                centerSub="EAC"
+                showValueLabels
+                valueLabelFormatter={fmtShort}
+              />
+            </div>
+            <div className="ring-legend" style={{ marginTop: 10 }}>
               {categories.map(c => (
                 <div key={c.name} className="ring-legend-row">
                   <div className="ring-legend-dot" style={{ background: c.color, borderRadius: 2 }} />

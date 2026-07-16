@@ -38,14 +38,37 @@ export function fmtShort(v) {
 }
 
 // ── SegmentedRing — multi-segment donut (PRD §4.5, §5.4.3) ──────────────
-export function SegmentedRing({ segments = [], size = 140, stroke = 18, centerLabel, centerSub }) {
+export function SegmentedRing({
+  segments = [],
+  size = 140,
+  stroke = 18,
+  centerLabel,
+  centerSub,
+  showValueLabels = false,
+  valueLabelFormatter = fmtShort,
+}) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const total = segments.reduce((a, s) => a + s.value, 0) || 1;
+  const cx = size / 2;
+  const cy = size / 2;
   let cumOffset = 0;
+  let labelOffset = 0;
+
+  function labelPoint(segmentLength) {
+    const mid = labelOffset + segmentLength / 2;
+    labelOffset += segmentLength;
+    const angle = (mid / circ) * Math.PI * 2 - Math.PI / 2;
+    const labelRadius = Math.max(0, r - stroke * 0.32);
+    return {
+      x: cx + Math.cos(angle) * labelRadius,
+      y: cy + Math.sin(angle) * labelRadius,
+    };
+  }
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
+      <circle cx={cx} cy={cy} r={r} fill="none"
         stroke="var(--surface-3)" strokeWidth={stroke} />
       {segments.map((s, i) => {
         const pct = s.value / total;
@@ -53,21 +76,46 @@ export function SegmentedRing({ segments = [], size = 140, stroke = 18, centerLa
         const start = cumOffset;
         cumOffset += dash;
         return (
-          <circle key={i} cx={size / 2} cy={size / 2} r={r}
+          <circle key={i} cx={cx} cy={cy} r={r}
             fill="none" stroke={s.color} strokeWidth={stroke}
             strokeDasharray={`${dash} ${circ - dash}`}
             strokeDashoffset={-start}
-            transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+            transform={`rotate(-90 ${cx} ${cy})`} />
+        );
+      })}
+      {showValueLabels && segments.map((s, i) => {
+        const pct = s.value / total;
+        if (pct < 0.08) {
+          labelOffset += pct * circ;
+          return null;
+        }
+        const point = labelPoint(pct * circ);
+        const label = valueLabelFormatter(s.value, s);
+        const labelW = Math.max(30, label.length * 5.2 + 8);
+        const labelH = 14;
+        const labelX = Math.min(Math.max(point.x, labelW / 2 + 2), size - labelW / 2 - 2);
+        const labelY = Math.min(Math.max(point.y, labelH / 2 + 2), size - labelH / 2 - 2);
+        return (
+          <g key={`label-${i}`}>
+            <rect x={labelX - labelW / 2} y={labelY - labelH / 2}
+              width={labelW} height={labelH} rx="4"
+              fill={s.color} stroke="rgba(255,255,255,0.9)" strokeWidth="1" />
+            <text x={labelX} y={labelY + 0.5}
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize="8" fontWeight="800" fill="#fff">
+              {label}
+            </text>
+          </g>
         );
       })}
       {centerLabel && (
-        <text x={size / 2} y={size / 2 - (centerSub ? 5 : 0)}
+        <text x={cx} y={cy - (centerSub ? 5 : 0)}
           textAnchor="middle" fontSize="14" fontWeight="700" fill="var(--text)">
           {centerLabel}
         </text>
       )}
       {centerSub && (
-        <text x={size / 2} y={size / 2 + 16}
+        <text x={cx} y={cy + 16}
           textAnchor="middle" fontSize="11" fill="var(--text-3)">{centerSub}</text>
       )}
     </svg>
