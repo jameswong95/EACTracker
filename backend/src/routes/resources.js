@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { query, tx } from '../db.js';
-import { ah, requireFields } from '../util.js';
+import { ah, logAudit, requireFields } from '../util.js';
 
 const r = Router();
 const RPS_ALLOCATIONS_BASE_URL = (process.env.RPS_ALLOCATIONS_BASE_URL || 'https://rps.agilops.work/api/extract/projects/wbs').replace(/\/$/, '');
@@ -228,7 +228,7 @@ r.get('/grades', ah(async (_req, res) => {
 
 // POST /api/resources/pool/sync-rps
 // Fetches RPS resources and upserts them into the local PFMS resource pool.
-r.post('/pool/sync-rps', ah(async (_req, res) => {
+r.post('/pool/sync-rps', ah(async (req, res) => {
   const payload = await fetchRpsResources();
   const rows = extractRpsResourceRows(payload);
   if (!rows.length) {
@@ -251,6 +251,8 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
     let created = 0;
     let updated = 0;
     let unchanged = 0;
+    let deactivated = 0;
+    const incomingRpsIds = new Set(resources.map(resource => resource.id));
 
     for (const resource of resources) {
       const existingByName = await client.query(
@@ -290,7 +292,37 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
       else updated++;
     }
 
-    return { created, updated, unchanged };
+    if (incomingRpsIds.size) {
+      const deactivate = await client.query(
+        `UPDATE resource_pool
+            SET is_active = FALSE
+          WHERE id LIKE 'rps:%'
+            AND is_active = TRUE
+            AND NOT (id = ANY($1::text[]))`,
+        [Array.from(incomingRpsIds)],
+      );
+      deactivated = deactivate.rowCount || 0;
+    }
+
+    await logAudit(client, {
+      entity_type: 'resource_pool',
+      entity_id: 'rps',
+      action: 'sync_rps',
+      field_name: 'summary',
+      old_value: null,
+      new_value: JSON.stringify({
+        fetched: rows.length,
+        imported: resources.length,
+        created,
+        updated,
+        unchanged,
+        deactivated,
+        skipped: skipped.length,
+      }),
+      user_id: req.user?.id,
+    });
+
+    return { created, updated, unchanged, deactivated };
   });
 
   res.json({
@@ -301,13 +333,14 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
     created: summary.created,
     updated: summary.updated,
     unchanged: summary.unchanged,
+    deactivated: summary.deactivated,
     skipped_count: skipped.length,
     skipped_summary: skippedSummary,
     skipped: skipped.slice(0, 25),
     default_grade: RPS_RESOURCE_DEFAULT_GRADE,
     message: skipped.length
       ? `Skipped ${skipped.length} RPS resource row(s): ${skippedSummary.map(item => `${item.count} ${item.message}`).join('; ')}`
-      : `RPS sync complete: ${summary.created} created, ${summary.updated} updated, ${summary.unchanged} unchanged`,
+      : `RPS sync complete: ${summary.created} created, ${summary.updated} updated, ${summary.unchanged} unchanged, ${summary.deactivated} deactivated`,
   });
 }));
 
@@ -412,13 +445,26 @@ r.get('/external', ah(async (req, res) => {
 r.post('/grades', ah(async (req, res) => {
   const b = req.body;
   requireFields(b, ['grade', 'title']);
-  const ins = await query(
-    `INSERT INTO resource_grades (grade, title, daily_rate, monthly_rate)
-     VALUES ($1,$2,COALESCE($3,0),COALESCE($4,0))
-     ON CONFLICT (grade) DO UPDATE
-       SET title = EXCLUDED.title, daily_rate = EXCLUDED.daily_rate, monthly_rate = EXCLUDED.monthly_rate
-     RETURNING *`,
-    [String(b.grade).trim().toUpperCase(), b.title, b.daily_rate, b.monthly_rate]);
+  const grade = String(b.grade).trim().toUpperCase();
+  const ins = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM resource_grades WHERE grade = $1`, [grade]);
+    const result = await client.query(
+      `INSERT INTO resource_grades (grade, title, daily_rate, monthly_rate)
+       VALUES ($1,$2,COALESCE($3,0),COALESCE($4,0))
+       ON CONFLICT (grade) DO UPDATE
+         SET title = EXCLUDED.title, daily_rate = EXCLUDED.daily_rate, monthly_rate = EXCLUDED.monthly_rate
+       RETURNING *`,
+      [grade, b.title, b.daily_rate, b.monthly_rate]);
+    await logAudit(client, {
+      entity_type: 'resource_grade',
+      entity_id: grade,
+      action: before.rows[0] ? 'upsert_update' : 'create',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      new_value: JSON.stringify(result.rows[0]),
+      user_id: req.user?.id,
+    });
+    return result;
+  });
   res.status(201).json(ins.rows[0]);
 }));
 
@@ -430,10 +476,27 @@ r.patch('/grades/:grade', ah(async (req, res) => {
     if (editable.has(k)) { sets.push(`${k} = $${i++}`); vals.push(v); }
   }
   if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
-  vals.push(String(req.params.grade).toUpperCase());
-  const upd = await query(`UPDATE resource_grades SET ${sets.join(', ')} WHERE grade = $${i} RETURNING *`, vals);
-  if (!upd.rows[0]) return res.status(404).json({ error: 'grade not found' });
-  res.json(upd.rows[0]);
+  const grade = String(req.params.grade).toUpperCase();
+  vals.push(grade);
+  const updated = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM resource_grades WHERE grade = $1`, [grade]);
+    const upd = await client.query(`UPDATE resource_grades SET ${sets.join(', ')} WHERE grade = $${i} RETURNING *`, vals);
+    if (!upd.rows[0]) {
+      const e = new Error('grade not found');
+      e.status = 404;
+      throw e;
+    }
+    await logAudit(client, {
+      entity_type: 'resource_grade',
+      entity_id: grade,
+      action: 'update',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      new_value: JSON.stringify(upd.rows[0]),
+      user_id: req.user?.id,
+    });
+    return upd.rows[0];
+  });
+  res.json(updated);
 }));
 
 // DELETE /api/resources/grades/:grade
@@ -453,8 +516,24 @@ r.delete('/grades/:grade', ah(async (req, res) => {
       error: `grade is in use by ${poolCount} resource pool row(s) and ${planCount} project resource row(s)`,
     });
   }
-  const del = await query(`DELETE FROM resource_grades WHERE grade = $1`, [grade]);
-  if (!del.rowCount) return res.status(404).json({ error: 'grade not found' });
+  const del = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM resource_grades WHERE grade = $1`, [grade]);
+    const result = await client.query(`DELETE FROM resource_grades WHERE grade = $1`, [grade]);
+    if (!result.rowCount) {
+      const e = new Error('grade not found');
+      e.status = 404;
+      throw e;
+    }
+    await logAudit(client, {
+      entity_type: 'resource_grade',
+      entity_id: grade,
+      action: 'delete',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      user_id: req.user?.id,
+    });
+    return result;
+  });
+  void del;
   res.status(204).end();
 }));
 
@@ -464,10 +543,20 @@ r.delete('/grades/:grade', ah(async (req, res) => {
 r.post('/pool', ah(async (req, res) => {
   const b = req.body;
   requireFields(b, ['id', 'name', 'grade']);
-  const ins = await query(
-    `INSERT INTO resource_pool (id, name, grade, is_active)
-     VALUES ($1,$2,$3,COALESCE($4,TRUE)) RETURNING *`,
-    [String(b.id).trim(), b.name, String(b.grade).trim().toUpperCase(), b.is_active]);
+  const ins = await tx(async (client) => {
+    const result = await client.query(
+      `INSERT INTO resource_pool (id, name, grade, is_active)
+       VALUES ($1,$2,$3,COALESCE($4,TRUE)) RETURNING *`,
+      [String(b.id).trim(), b.name, String(b.grade).trim().toUpperCase(), b.is_active]);
+    await logAudit(client, {
+      entity_type: 'resource_pool',
+      entity_id: result.rows[0].id,
+      action: 'create',
+      new_value: JSON.stringify(result.rows[0]),
+      user_id: req.user?.id,
+    });
+    return result;
+  });
   res.status(201).json(ins.rows[0]);
 }));
 
@@ -480,15 +569,48 @@ r.patch('/pool/:id', ah(async (req, res) => {
   }
   if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
   vals.push(req.params.id);
-  const upd = await query(`UPDATE resource_pool SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
-  if (!upd.rows[0]) return res.status(404).json({ error: 'resource not found' });
-  res.json(upd.rows[0]);
+  const updated = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM resource_pool WHERE id = $1`, [req.params.id]);
+    const upd = await client.query(`UPDATE resource_pool SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+    if (!upd.rows[0]) {
+      const e = new Error('resource not found');
+      e.status = 404;
+      throw e;
+    }
+    await logAudit(client, {
+      entity_type: 'resource_pool',
+      entity_id: req.params.id,
+      action: 'update',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      new_value: JSON.stringify(upd.rows[0]),
+      user_id: req.user?.id,
+    });
+    return upd.rows[0];
+  });
+  res.json(updated);
 }));
 
 // DELETE /api/resources/pool/:id  (soft delete -> is_active = FALSE)
 r.delete('/pool/:id', ah(async (req, res) => {
-  const upd = await query(`UPDATE resource_pool SET is_active = FALSE WHERE id = $1 RETURNING id`, [req.params.id]);
-  if (!upd.rows[0]) return res.status(404).json({ error: 'resource not found' });
+  const upd = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM resource_pool WHERE id = $1`, [req.params.id]);
+    const result = await client.query(`UPDATE resource_pool SET is_active = FALSE WHERE id = $1 RETURNING *`, [req.params.id]);
+    if (!result.rows[0]) {
+      const e = new Error('resource not found');
+      e.status = 404;
+      throw e;
+    }
+    await logAudit(client, {
+      entity_type: 'resource_pool',
+      entity_id: req.params.id,
+      action: 'deactivate',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      new_value: JSON.stringify(result.rows[0]),
+      user_id: req.user?.id,
+    });
+    return result;
+  });
+  void upd;
   res.status(204).end();
 }));
 
@@ -508,35 +630,81 @@ r.get('/', ah(async (req, res) => {
 r.post('/', ah(async (req, res) => {
   const b = req.body;
   requireFields(b, ['project_id', 'role_name', 'function_title', 'grade']);
-  const ins = await query(`
-    INSERT INTO project_resources (project_id, resource_id, role_name, function_title, grade, fte_allocations, sub_job_id)
-    VALUES ($1,$2,$3,$4,$5,COALESCE($6,'[]'::jsonb),$7)
-    RETURNING *`,
-    [b.project_id, b.resource_id || null, b.role_name, b.function_title, b.grade,
-     b.fte_allocations ? JSON.stringify(b.fte_allocations) : null,
-     b.sub_job_id || null]);
+  if (Object.prototype.hasOwnProperty.call(b, 'fte_allocations')) {
+    return res.status(403).json({ error: 'resource allocations are read-only' });
+  }
+  const ins = await tx(async (client) => {
+    const result = await client.query(`
+      INSERT INTO project_resources (project_id, resource_id, role_name, function_title, grade, fte_allocations, sub_job_id)
+      VALUES ($1,$2,$3,$4,$5,'[]'::jsonb,$6)
+      RETURNING *`,
+      [b.project_id, b.resource_id || null, b.role_name, b.function_title, b.grade, b.sub_job_id || null]);
+    await logAudit(client, {
+      entity_type: 'project_resource',
+      entity_id: result.rows[0].id,
+      action: 'create',
+      new_value: JSON.stringify(result.rows[0]),
+      user_id: req.user?.id,
+    });
+    return result;
+  });
   res.status(201).json(ins.rows[0]);
 }));
 
 r.patch('/:id', ah(async (req, res) => {
-  const editable = new Set(['resource_id', 'role_name', 'function_title', 'grade', 'fte_allocations', 'sub_job_id']);
+  if (Object.prototype.hasOwnProperty.call(req.body, 'fte_allocations')) {
+    return res.status(403).json({ error: 'resource allocations are read-only' });
+  }
+  const editable = new Set(['resource_id', 'role_name', 'function_title', 'grade', 'sub_job_id']);
   const sets = []; const vals = []; let i = 1;
   for (const [k, v] of Object.entries(req.body)) {
     if (editable.has(k)) {
       sets.push(`${k} = $${i++}`);
-      vals.push(k === 'fte_allocations' ? JSON.stringify(v) : v);
+      vals.push(v);
     }
   }
   if (!sets.length) return res.status(400).json({ error: 'no editable fields' });
   vals.push(req.params.id);
-  const upd = await query(`UPDATE project_resources SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
-  if (!upd.rows[0]) return res.status(404).json({ error: 'assignment not found' });
-  res.json(upd.rows[0]);
+  const updated = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM project_resources WHERE id = $1`, [req.params.id]);
+    const upd = await client.query(`UPDATE project_resources SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+    if (!upd.rows[0]) {
+      const e = new Error('assignment not found');
+      e.status = 404;
+      throw e;
+    }
+    await logAudit(client, {
+      entity_type: 'project_resource',
+      entity_id: req.params.id,
+      action: 'update',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      new_value: JSON.stringify(upd.rows[0]),
+      user_id: req.user?.id,
+    });
+    return upd.rows[0];
+  });
+  res.json(updated);
 }));
 
 r.delete('/:id', ah(async (req, res) => {
-  const d = await query(`DELETE FROM project_resources WHERE id = $1`, [req.params.id]);
-  if (!d.rowCount) return res.status(404).json({ error: 'assignment not found' });
+  const d = await tx(async (client) => {
+    const before = await client.query(`SELECT * FROM project_resources WHERE id = $1`, [req.params.id]);
+    const result = await client.query(`DELETE FROM project_resources WHERE id = $1`, [req.params.id]);
+    if (!result.rowCount) {
+      const e = new Error('assignment not found');
+      e.status = 404;
+      throw e;
+    }
+    await logAudit(client, {
+      entity_type: 'project_resource',
+      entity_id: req.params.id,
+      action: 'delete',
+      old_value: before.rows[0] ? JSON.stringify(before.rows[0]) : null,
+      user_id: req.user?.id,
+    });
+    return result;
+  });
+  void d;
   res.status(204).end();
 }));
 

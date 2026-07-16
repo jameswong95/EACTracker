@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useProjects, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
+import { useProjects, fmt, fmtSapSync, fmtAsAt, compareSapId } from '../data/store.js';
 import { Sparkline, MultiSeriesLineChart, DivergingBarChart, SegmentedRing, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
 
@@ -118,7 +118,7 @@ export default function Portfolio({ navigate, role, session }) {
   const { projects, loading } = useProjects();
   const [search, setSearch]             = useState('');
   const [healthFilter, setHealthFilter] = useState('all');
-  const [sort, setSort]                 = useState({ key: 'eacVariance', dir: 1 });
+  const [sort, setSort]                 = useState({ key: 'sapId', dir: 1 });
 
   const debouncedSearch = useDebounce(search);
 
@@ -139,6 +139,8 @@ export default function Portfolio({ navigate, role, session }) {
       const q = debouncedSearch.toLowerCase();
       list = list.filter(p =>
         p.name.toLowerCase().includes(q) ||
+        (p.sapId || '').toLowerCase().includes(q) ||
+        (p.wbs || '').toLowerCase().includes(q) ||
         (p.id || '').toLowerCase().includes(q) ||
         (p.customer || '').toLowerCase().includes(q) ||
         (p.pm || '').toLowerCase().includes(q)
@@ -146,6 +148,7 @@ export default function Portfolio({ navigate, role, session }) {
     }
     if (healthFilter !== 'all') list = list.filter(p => liveHealth(p) === healthFilter);
     list.sort((a, b) => {
+      if (sort.key === 'sapId') return compareSapId(a, b) * sort.dir;
       if (sort.key === 'eacVariance') return ((a.budget - a.eac) - (b.budget - b.eac)) * sort.dir;
       let av = a[sort.key], bv = b[sort.key];
       if (typeof av === 'string') av = av.toLowerCase();
@@ -581,7 +584,7 @@ export default function Portfolio({ navigate, role, session }) {
               <table>
                 <thead>
                   <tr>
-                    <Th col="name"        label="Project" />
+                    <Th col="sapId"       label="Project" />
                     <th style={{ width: 52, padding: '10px 6px', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Health</th>
                     <Th col="budget"      label="Budget" />
                     <Th col="eac"         label="EAC" />
@@ -607,7 +610,7 @@ export default function Portfolio({ navigate, role, session }) {
                         className={health === 'bad' ? 'row-bad' : health === 'warn' ? 'row-warn' : ''}>
                         <td>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.id} · PM: {p.pm}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.sapId || p.id} · PM: {p.pm}</div>
                         </td>
                         <td style={{ padding: '10px 6px', textAlign: 'center' }}>
                           <span className={`dot dot-${health}`} title={healthLabel(health)} />

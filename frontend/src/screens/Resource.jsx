@@ -197,8 +197,8 @@ export default function Resource({ projectId, navigate, role, session }) {
 
 function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const externalPlanReadOnly = p.resourcePlanSource === 'rps';
-  const canEdit = role !== 'Project Director' && !externalPlanReadOnly;
-  const canDeleteResources = !externalPlanReadOnly && (role === 'Project Manager' || role === 'Project Director');
+  const canEdit = false;
+  const canDeleteResources = false;
   const { requests, reload: reloadRequests } = useResourceRequests(p.id);
   // Plan starts at (startYear, startMonth); the timeline extends indefinitely to the
   // right. All labour is parked under the PM category (shown in the breadcrumb).
@@ -289,6 +289,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   }
 
   function handleResourceImport(e) {
+    if (!canEdit) return;
     const file = e.target.files[0];
     if (!file) return;
     setImportErr(null);
@@ -344,6 +345,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   const available = RESOURCE_POOL.filter(p => !assignedNames.has(p.name));
 
   useEffect(() => {
+    if (!canEdit) return;
     if (firstRender.current) { firstRender.current = false; return; }
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -365,6 +367,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   }
 
   async function confirmAdd() {
+    if (!canEdit) return;
     if (!pendingPerson) return;
     const fte = Array(dataMonths).fill(0);
     const poolEntry = RESOURCE_POOL.find(r => r.name === pendingPerson.name);
@@ -376,7 +379,6 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
         role_name: pendingPerson.name,
         function_title: pendingFn.trim() || '',
         grade: pendingPerson.grade,
-        fte_allocations: fte,
       });
       dbId = created.id;
     } catch (e) { console.error('Failed to create resource', e); }
@@ -390,7 +392,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
   function cancelAdd() { setAdding(false); setPendingPerson(null); setPendingFn(''); }
 
   function updateFte(rowId, i, val) {
-    if (isLocked(i)) return;
+    if (!canEdit || isLocked(i)) return;
     const num = Math.max(0, parseFloat(val) || 0);
     setRows(prev => prev.map(r => {
       if (r.id !== rowId) return r;
@@ -756,7 +758,7 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
                         const val = row.fte[i] || 0;
                         return (
                           <td key={i} style={{ padding: '4px 5px', background: locked ? 'var(--surface-3)' : 'transparent' }}>
-                            {locked ? (
+                            {locked || !canEdit ? (
                               <div className="eac-cell eac-locked" style={{ display: 'block', width: '100%', minWidth: 0, textAlign: 'center' }}>
                                 {val > 0 ? val.toFixed(1) : '—'}
                               </div>

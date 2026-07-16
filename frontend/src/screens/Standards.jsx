@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useRates, useProjects, useResourcePool, useFixedRates, useFxRates, fmt } from '../data/store.js';
+import { useRates, useProjects, useFixedRates, useFxRates, fmt, compareSapId, formatSapId } from '../data/store.js';
 import { api } from '../data/api.js';
 import Icon from '../components/Icon.jsx';
 import Select from '../components/Select.jsx';
@@ -30,8 +30,7 @@ export default function Standards({ navigate, role }) {
   const isFinance = role === 'Finance' || role === 'Admin';
   const tabs = [
     ['rates', 'Blended rate card'],
-    ['pool', 'Resource pool'],
-    ...(isFinance ? [['fixed', 'Fixed rates']] : []),
+    ...(isFinance ? [['fixed', 'Asset Rates']] : []),
     ['fad', 'FAD (FX rates)'],
   ];
   const [rateTab, setRateTab] = useState('rates');
@@ -43,8 +42,8 @@ export default function Standards({ navigate, role }) {
           <div className="page-title">Standards</div>
           <div className="page-sub">
             {isFinance
-              ? 'Finance-owned rate card, resource pool, fixed rates and WBS structure'
-              : 'Rate card and resource pool (read-only) - owned by Finance'}
+              ? 'Finance-owned labour rate card, asset rates and WBS structure'
+              : 'Rate card and WBS structure - owned by Finance'}
           </div>
         </div>
       </div>
@@ -64,7 +63,6 @@ export default function Standards({ navigate, role }) {
       </div>
 
       {rateTab === 'rates'     && <RateTab editable={isFinance} />}
-      {rateTab === 'pool'      && <PoolTab editable={isFinance} />}
       {rateTab === 'fixed'     && isFinance && <FixedRatesTab />}
       {rateTab === 'fad'       && <FadTab editable={isFinance} />}
     </div>
@@ -240,99 +238,7 @@ function RateTab({ editable = false }) {
   );
 }
 
-// Resource pool - Finance/Admin owns it (add/edit/deactivate); PM/PD read-only.
-function PoolTab({ editable = false }) {
-  const pool = useResourcePool();
-  const RATES = useRates();
-  const [rows, setRows] = useState([]);
-  const [q, setQ] = useState('');
-  const [adding, setAdding] = useState({ id: '', name: '', grade: '' });
-  const [err, setErr] = useState(null);
-  useEffect(() => { setRows(pool); }, [pool]);
-
-  async function reload() {
-    try { const p = await api.get('/api/resources/pool'); setRows(p.map(r => ({ id: r.id, name: r.name, grade: r.grade, roles: r.roles || [] }))); }
-    catch (e) { setErr(e.message); }
-  }
-  async function patchPerson(id, patch) {
-    try { await api.patch(`/api/resources/pool/${id}`, patch); setErr(null); reload(); }
-    catch (e) { setErr(e.message || 'Update failed'); }
-  }
-  async function addPerson() {
-    if (!adding.id.trim() || !adding.name.trim() || !adding.grade.trim()) { setErr('id, name and grade are required'); return; }
-    try { await api.post('/api/resources/pool', adding); setAdding({ id: '', name: '', grade: '' }); setErr(null); reload(); }
-    catch (e) { setErr(e.message || 'Add failed'); }
-  }
-  async function removePerson(id) {
-    try { await api.del(`/api/resources/pool/${id}`); reload(); }
-    catch (e) { setErr(e.message || 'Delete failed'); }
-  }
-
-  const gradeOptions = RATES.map(r => r.grade);
-  const filtered = rows.filter(r => !q || r.name.toLowerCase().includes(q.toLowerCase()) || r.grade.toLowerCase().includes(q.toLowerCase()));
-
-  return (
-    <>
-      {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
-      <div className="card card-p mb-4 flex items-center gap-3 flex-wrap">
-        <input className="input" placeholder="Search name or grade…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 280 }} />
-        <div className="grow" />
-        <span className="badge badge-accent">{editable ? 'Finance-owned · editable' : 'Finance-owned · read-only'}</span>
-      </div>
-      <div className="card">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Grade</th>
-                {editable && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && <tr><td colSpan={editable ? 4 : 3} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No resources</td></tr>}
-              {filtered.map(r => (
-                <tr key={r.id}>
-                  <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-3)' }}>{r.id}</td>
-                  <td style={{ fontWeight: 600 }}>
-                    {editable ? (
-                      <input className="input" defaultValue={r.name}
-                        onBlur={e => e.target.value !== r.name && patchPerson(r.id, { name: e.target.value })} style={{ maxWidth: 220 }} />
-                    ) : r.name}
-                  </td>
-                  <td>
-                    {editable ? (
-                      <Select value={r.grade} options={gradeOptions.map(g => ({ value: g, label: g }))} onChange={grade => patchPerson(r.id, { grade })} style={{ maxWidth: 100 }} />
-                    ) : <span className="badge badge-accent" style={{ fontWeight: 800 }}>{r.grade}</span>}
-                  </td>
-                  {editable && <td><button className="btn btn-ghost btn-sm" onClick={() => removePerson(r.id)} title="Deactivate"><Icon name="x" size={13} /></button></td>}
-                </tr>
-              ))}
-              {editable && (
-                <tr>
-                  <td><input className="input" placeholder="r16" value={adding.id} onChange={e => setAdding(a => ({ ...a, id: e.target.value }))} style={{ maxWidth: 70 }} /></td>
-                  <td><input className="input" placeholder="Full name" value={adding.name} onChange={e => setAdding(a => ({ ...a, name: e.target.value }))} style={{ maxWidth: 220 }} /></td>
-                  <td>
-                    <Select
-                      value={adding.grade}
-                      options={[{ value: '', label: 'Grade' }, ...gradeOptions.map(g => ({ value: g, label: g }))]}
-                      onChange={grade => setAdding(a => ({ ...a, grade }))}
-                      style={{ maxWidth: 100 }}
-                    />
-                  </td>
-                  <td><button className="btn btn-primary btn-sm" onClick={addPerson}>Add</button></td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Fixed-rate admin table (Finance/Admin owned reference rates).
+// Asset Rates admin table (Finance/Admin owned reference rates).
 function FixedRatesTab() {
   const { rows, reload } = useFixedRates();
   const [adding, setAdding] = useState({ code: '', label: '', unit: 'each', rate: '' });
@@ -354,8 +260,8 @@ function FixedRatesTab() {
     <>
       {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
       <div className="card card-p mb-4">
-        <h4 style={{ marginBottom: 6 }}>Fixed rates</h4>
-        <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Standard reference charges (mobilisation, freight, testing…). Reused when estimating material and sub-con line items.</div>
+        <h4 style={{ marginBottom: 6 }}>Asset Rates</h4>
+        <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Standard asset and procurement reference rates. Purchase Register item descriptions are selected from this catalog.</div>
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -364,7 +270,7 @@ function FixedRatesTab() {
               <tr><th>Code</th><th>Description</th><th>Unit</th><th className="num">Rate (SGD)</th><th>Notes</th><th /></tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No fixed rates yet</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No asset rates yet</td></tr>}
               {rows.map(r => (
                 <tr key={r.id}>
                   <td><input className="input" defaultValue={r.code || ''} onBlur={e => e.target.value !== (r.code || '') && patchRate(r.id, { code: e.target.value })} style={{ maxWidth: 90 }} /></td>
@@ -488,6 +394,7 @@ function WbsTab() {
   const { projects, loading } = useProjects();
   const [expanded, setExpanded]   = useState(new Set());
   const [subjobs, setSubjobs]     = useState({}); // { [projectId]: rows | 'loading' | 'error' }
+  const sortedProjects = [...projects].sort(compareSapId);
 
   function toggle(id) {
     setExpanded(prev => {
@@ -527,9 +434,10 @@ function WbsTab() {
       )}
 
       <div className="flex-col gap-3">
-        {projects.map(proj => {
+        {sortedProjects.map(proj => {
           const open = expanded.has(proj.id);
           const rows = subjobs[proj.id];
+          const sortedRows = Array.isArray(rows) ? [...rows].sort(compareSapId) : rows;
           return (
             <div key={proj.id} className="card">
               <div
@@ -538,7 +446,7 @@ function WbsTab() {
                 onClick={() => toggle(proj.id)}
               >
                 <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{open ? '▾' : '▸'}</span>
-                <code className="mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>{proj.wbs}</code>
+                <code className="mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>{formatSapId(proj.wbs || proj.id)}</code>
                 <span style={{ fontWeight: 600 }}>{proj.name}</span>
                 <div className="grow" />
                 <span style={{ fontSize: 12, color: 'var(--text-3)' }}>PM: {proj.pm}</span>
@@ -554,10 +462,10 @@ function WbsTab() {
                   {rows === 'error' && (
                     <div style={{ padding: 16, color: 'var(--bad)', fontSize: 12 }}>Could not load sub-jobs.</div>
                   )}
-                  {Array.isArray(rows) && rows.length === 0 && (
+                  {Array.isArray(sortedRows) && sortedRows.length === 0 && (
                     <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 12 }}>No sub-jobs imported for this project yet.</div>
                   )}
-                  {Array.isArray(rows) && rows.length > 0 && (
+                  {Array.isArray(sortedRows) && sortedRows.length > 0 && (
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
                       <thead>
                         <tr>
@@ -569,7 +477,7 @@ function WbsTab() {
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map(sj => {
+                        {sortedRows.map(sj => {
                           const budget = Number(sj.plan_cos) || 0;
                           const actual = Number(sj.tot_cost) || 0;
                           const committed = Number(sj.com_cst) || 0;
@@ -578,7 +486,7 @@ function WbsTab() {
                           return (
                             <tr key={sj.id} style={{ borderBottom: '1px solid var(--border)' }}>
                               <td style={{ padding: '8px 10px' }}>
-                                <code className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{sj.wbs_code}</code>
+                                <code className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{formatSapId(sj.wbs_code)}</code>
                               </td>
                               <td style={{ padding: '8px 10px', fontSize: 13, fontWeight: 500 }}>{sj.name}</td>
                               <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>

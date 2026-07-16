@@ -6,6 +6,62 @@ import { api } from './api.js';
 const n = (v) => (v == null ? 0 : Number(v) || 0);
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+export function formatSapId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const noPrefix = raw.replace(/^SAP[-\s]*/i, '');
+  const match = noPrefix.match(/^(\d+)[/-](\d+)((?:-[A-Za-z0-9]+)*)$/);
+  if (!match) return raw;
+  return `${match[1]}/${match[2]}${match[3] || ''}`;
+}
+
+function sapSortParts(value) {
+  const formatted = formatSapId(value);
+  const match = formatted.match(/^(\d+)\/(\d+)((?:-[A-Za-z0-9]+)*)$/);
+  if (!match) {
+    return {
+      matched: false,
+      parts: [],
+      text: formatted.toLowerCase(),
+    };
+  }
+  const suffixParts = (match[3] || '')
+    .split('-')
+    .filter(Boolean)
+    .map(part => (/^\d+$/.test(part) ? Number(part) : part.toLowerCase()));
+  return {
+    matched: true,
+    parts: [Number(match[1]), Number(match[2]), ...suffixParts],
+    text: formatted.toLowerCase(),
+  };
+}
+
+export function compareSapId(a, b) {
+  const getValue = (item) => {
+    if (item && typeof item === 'object') {
+      return item.wbs_code || item.wbs || item.sap_project_no || item.sapId || item.id || item.name || '';
+    }
+    return item;
+  };
+  const left = sapSortParts(getValue(a));
+  const right = sapSortParts(getValue(b));
+  if (left.matched && right.matched) {
+    const max = Math.max(left.parts.length, right.parts.length);
+    for (let i = 0; i < max; i += 1) {
+      const av = i < left.parts.length ? left.parts[i] : -1;
+      const bv = i < right.parts.length ? right.parts[i] : -1;
+      if (av === bv) continue;
+      if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+      if (typeof av === 'number') return -1;
+      if (typeof bv === 'number') return 1;
+      return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+    }
+  } else if (left.matched !== right.matched) {
+    return left.matched ? -1 : 1;
+  }
+  return left.text.localeCompare(right.text, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 function fmtDate(d) {
   if (!d) return '—';
   const dt = new Date(d);
@@ -52,6 +108,7 @@ export function adaptProject(p) {
     // identity
     id: p.id,
     name: p.name,
+    sapId: formatSapId(p.wbs_code || p.sap_project_no || p.id),
     pm: p.pm_names || p.pm_name || '(Unassigned)',
     leadPm: p.pm_name || (pmNames[0] || '(Unassigned)'),
     pmNames,
@@ -100,6 +157,7 @@ function adaptSubjob(s) {
   return {
     id: s.id,
     wbs: s.wbs_code,
+    sapId: formatSapId(s.wbs_code),
     name: s.name,
     budget, actual, committed, etc,
     isWarranty: !!s.is_warranty,
@@ -166,7 +224,7 @@ export function useProjects() {
   const reload = useCallback(() => {
     setError(null);
     api.get('/api/projects')
-      .then(rows => setData(rows.map(adaptProject)))
+      .then(rows => setData(rows.map(adaptProject).sort(compareSapId)))
       .catch(e => { setError(e); setData([]); });
   }, []);
   useEffect(() => { reload(); }, [reload]);
@@ -506,8 +564,8 @@ export function useSubJobs(projectId) {
     if (!projectId) return;
     api.get(`/api/sub-jobs?project_id=${encodeURIComponent(projectId)}`)
       .then(rows => setSubJobs(rows.map(s => ({
-        id: s.id, name: s.name, wbs: s.wbs_code, suffix: s.wbs_suffix,
-      }))))
+        id: s.id, name: s.name, wbs: s.wbs_code, sapId: formatSapId(s.wbs_code), suffix: s.wbs_suffix,
+      })).sort(compareSapId)))
       .catch(() => setSubJobs([]));
   }, [projectId]);
   useEffect(() => { reload(); }, [reload]);

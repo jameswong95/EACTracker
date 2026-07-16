@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useResourcePool, useAudit } from '../data/store.js';
+import { useResourcePool, useRates, useAudit } from '../data/store.js';
 import { api } from '../data/api.js';
+import Select from '../components/Select.jsx';
 
 const ALL_SCREENS = [
   { id: 'dashboard',    label: 'Dashboard' },
@@ -88,11 +89,13 @@ function FilterSelect({ value, onChange, options }) {
 
 function ResourcePoolTab() {
   const RESOURCE_POOL = useResourcePool();
+  const RATES = useRates();
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [syncError, setSyncError] = useState(null);
+  const [editError, setEditError] = useState(null);
 
   useEffect(() => { setRows(RESOURCE_POOL); }, [RESOURCE_POOL]);
 
@@ -122,6 +125,18 @@ function ResourcePoolTab() {
       setSyncing(false);
     }
   }
+
+  async function patchPerson(id, patch) {
+    setEditError(null);
+    try {
+      await api.patch(`/api/resources/pool/${encodeURIComponent(id)}`, patch);
+      await reloadPool();
+    } catch (e) {
+      setEditError(e?.message || 'Could not update resource.');
+    }
+  }
+
+  const gradeOptions = RATES.map(r => ({ value: r.grade, label: `${r.grade} · ${r.title}` }));
 
   const filtered = rows.filter(r =>
     !q ||
@@ -153,13 +168,18 @@ function ResourcePoolTab() {
           {syncError}
         </div>
       )}
+      {editError && (
+        <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid rgba(240,88,88,.25)', borderRadius: 6, color: 'var(--bad-text)', background: 'var(--bad-bg)', fontSize: 12 }}>
+          {editError}
+        </div>
+      )}
       {syncResult && (
         <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-2)', background: 'var(--surface-2)', fontSize: 12 }}>
           <div style={{ fontWeight: 700, color: syncResult.skipped_count ? 'var(--warn-text)' : 'var(--ok)' }}>
-            {syncResult.message || `RPS sync complete. Fetched ${syncResult.fetched}, created ${syncResult.created}, updated ${syncResult.updated}, skipped ${syncResult.skipped_count}.`}
+            {syncResult.message || `RPS sync complete. Fetched ${syncResult.fetched}, created ${syncResult.created}, updated ${syncResult.updated}, deactivated ${syncResult.deactivated || 0}, skipped ${syncResult.skipped_count}.`}
           </div>
           <div style={{ marginTop: 4 }}>
-            Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, unchanged {syncResult.unchanged || 0}, skipped {syncResult.skipped_count}.
+            Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, unchanged {syncResult.unchanged || 0}, deactivated {syncResult.deactivated || 0}, skipped {syncResult.skipped_count}.
           </div>
           {(syncResult.skipped_summary || []).length > 0 && (
             <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
@@ -208,10 +228,12 @@ function ResourcePoolTab() {
                   </div>
                 </td>
                 <td style={{ padding: '10px 12px' }}>
-                  <span style={{
-                    padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-                    color: gradeColor(r.grade), background: gradeBg(r.grade),
-                  }}>{r.grade}</span>
+                  <Select
+                    value={r.grade}
+                    options={gradeOptions}
+                    onChange={grade => grade !== r.grade && patchPerson(r.id, { grade })}
+                    style={{ minWidth: 130 }}
+                  />
                 </td>
                 <td style={{ padding: '10px 12px' }}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -452,6 +474,23 @@ function UsersTab() {
     }
   }
 
+  async function deleteUser(user) {
+    if (!window.confirm(`Delete ${user.full_name}? This will deactivate their PFMS access.`)) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.del(`/api/users/${user.id}`);
+      setMessage(`${user.full_name} deleted`);
+      if (form.id === user.id) setForm(emptyForm);
+      await loadUsers();
+    } catch (e) {
+      setError(e.message || 'Unable to delete user');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div>
       <form onSubmit={saveUser} style={{
@@ -557,6 +596,9 @@ function UsersTab() {
                 <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => editUser(user)}>
                     Edit
+                  </button>
+                  <button type="button" className="btn btn-danger btn-sm" disabled={saving} onClick={() => deleteUser(user)} style={{ marginLeft: 6 }}>
+                    Delete
                   </button>
                 </td>
               </tr>

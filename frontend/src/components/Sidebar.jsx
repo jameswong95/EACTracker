@@ -237,7 +237,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
                 {activeProject.name}
               </div>
               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)', marginTop: 3, letterSpacing: '0.04em' }}>
-                {activeProject.id}
+                {activeProject.sapId || activeProject.id}
               </div>
             </div>
           )}
