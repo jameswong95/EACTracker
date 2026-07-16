@@ -250,20 +250,26 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
   const summary = await tx(async (client) => {
     let created = 0;
     let updated = 0;
+    let unchanged = 0;
 
     for (const resource of resources) {
       const existingByName = await client.query(
-        `SELECT id FROM resource_pool WHERE lower(name) = lower($1) LIMIT 1`,
+        `SELECT id, grade, is_active FROM resource_pool WHERE lower(name) = lower($1) LIMIT 1`,
         [resource.name],
       );
 
-      if (existingByName.rows[0]) {
+      const existing = existingByName.rows[0];
+      if (existing) {
+        if (String(existing.grade || '').toUpperCase() === resource.grade && Boolean(existing.is_active) === resource.is_active) {
+          unchanged++;
+          continue;
+        }
         await client.query(
           `UPDATE resource_pool
               SET grade = $2,
                   is_active = $3
             WHERE id = $1`,
-          [existingByName.rows[0].id, resource.grade, resource.is_active],
+          [existing.id, resource.grade, resource.is_active],
         );
         updated++;
         continue;
@@ -284,7 +290,7 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
       else updated++;
     }
 
-    return { created, updated };
+    return { created, updated, unchanged };
   });
 
   res.json({
@@ -294,13 +300,14 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
     imported: resources.length,
     created: summary.created,
     updated: summary.updated,
+    unchanged: summary.unchanged,
     skipped_count: skipped.length,
     skipped_summary: skippedSummary,
     skipped: skipped.slice(0, 25),
     default_grade: RPS_RESOURCE_DEFAULT_GRADE,
     message: skipped.length
       ? `Skipped ${skipped.length} RPS resource row(s): ${skippedSummary.map(item => `${item.count} ${item.message}`).join('; ')}`
-      : `RPS sync imported ${resources.length} resource row(s)`,
+      : `RPS sync complete: ${summary.created} created, ${summary.updated} updated, ${summary.unchanged} unchanged`,
   });
 }));
 

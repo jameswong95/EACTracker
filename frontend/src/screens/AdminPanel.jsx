@@ -159,7 +159,7 @@ function ResourcePoolTab() {
             {syncResult.message || `RPS sync complete. Fetched ${syncResult.fetched}, created ${syncResult.created}, updated ${syncResult.updated}, skipped ${syncResult.skipped_count}.`}
           </div>
           <div style={{ marginTop: 4 }}>
-            Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, skipped {syncResult.skipped_count}.
+            Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, unchanged {syncResult.unchanged || 0}, skipped {syncResult.skipped_count}.
           </div>
           {(syncResult.skipped_summary || []).length > 0 && (
             <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
