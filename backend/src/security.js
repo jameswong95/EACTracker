@@ -13,6 +13,7 @@ const WRITE_RULES = [
   [/^\/api\/sap(?:\/|$)/, ['Admin', 'Finance']],
   [/^\/api\/approvals(?:\/|$)/, ['Admin', 'Project Director', 'Leader']],
   [/^\/api\/periods(?:\/|$)/, ['Admin', 'Project Director', 'Finance']],
+  [/^\/api\/resources\/pool\/sync-rps(?:\/|$)/, ['Admin', 'Finance']],
   [/^\/api\/(?:resources|resource-requests)(?:\/|$)/, ['Admin', 'Project Manager', 'Project Director', 'Leader']],
   [/^\/api\/tender(?:\/|$)/, ['Admin', 'Project Manager', 'Project Director', 'Leader', 'Finance']],
   [
