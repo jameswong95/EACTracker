@@ -58,7 +58,9 @@ az login
 ### 6. Select Azure Subscription
 
 ```bash
-az account set --subscription "a25b7b8f-2226-40af-bc50-5c93c9bebe09"
+
+az login --tenant e8f7ff8e-b270-401e-aebf-d450221ab144 --allow-no-subscriptions
+
 ```
 
 ### 7. Create the Deployment Image Tag

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useProject, useEtc, useRates, useEacMonthly, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
+import { useProject, useEtc, useRates, useEacMonthly, useExternalResourcePlan, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
 import { api } from '../data/api.js';
 import { MultiSeriesLineChart, SegmentedRing, GroupedBarChart, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
@@ -414,21 +414,47 @@ function PlannedSpendChart({ months, height = 220 }) {
   );
 }
 
-function PlannedSpendRollup({ projectId }) {
+function monthAbsFromDate(value) {
+  const match = String(value || '').slice(0, 10).match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!match) return null;
+  return Number(match[1]) * 12 + Number(match[2]) - 1;
+}
+
+function PlannedSpendRollup({ projectId, labourPlan }) {
   const { data, loading } = useEacMonthly(projectId);
+  const rates = useRates();
 
   const months = React.useMemo(() => {
     if (!data) return [];
     const rowCat = {};
     (data.rows || []).forEach(r => { rowCat[r.id] = r.cost_category; });
     const acc = {}; // 'year-month' → bucket sums
+    function ensure(year, month) {
+      const key = `${year}-${month}`;
+      if (!acc[key]) acc[key] = { year, month, labour: 0, material: 0, subcon: 0 };
+      return acc[key];
+    }
     (data.values || []).forEach(v => {
       const b = bucketFor(rowCat[v.row_id]);
       if (!b) return;
-      const key = `${v.year}-${v.month}`;
-      if (!acc[key]) acc[key] = { year: v.year, month: v.month, labour: 0, material: 0, subcon: 0 };
-      acc[key][b.key] += (Number(v.amount_k) || 0) * 1000; // amount_k is thousands
+      ensure(v.year, v.month)[b.key] += (Number(v.amount_k) || 0) * 1000; // amount_k is thousands
     });
+
+    const rateOf = (grade) => rates.find(x => x.grade === grade)?.monthly || 0;
+    const planStartAbs = monthAbsFromDate(labourPlan?.allocation_start_date);
+    if (planStartAbs != null) {
+      (labourPlan?.resources || []).forEach(resource => {
+        const rate = rateOf(resource.grade);
+        if (!rate) return;
+        (resource.fte || []).forEach((fte, index) => {
+          const abs = planStartAbs + index;
+          const year = Math.floor(abs / 12);
+          const month = (abs % 12) + 1;
+          ensure(year, month).labour += (Number(fte) || 0) * rate;
+        });
+      });
+    }
+
     const populated = Object.values(acc)
       .map(m => ({ ...m, total: m.labour + m.material + m.subcon }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
@@ -448,7 +474,7 @@ function PlannedSpendRollup({ projectId }) {
     let lastYear = null;
     arr.forEach(m => { m.showYear = m.year !== lastYear; lastYear = m.year; });
     return arr;
-  }, [data]);
+  }, [data, labourPlan, rates]);
 
   const totals = React.useMemo(() => {
     const t = months.reduce((a, m) => ({
@@ -521,6 +547,7 @@ function PlannedSpendRollup({ projectId }) {
 function TabOverview({ p, navigate }) {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  const { plan: externalLabourPlan } = useExternalResourcePlan(p.id, p.wbs);
 
   useEffect(() => {
     setAlertsLoading(true);
@@ -552,7 +579,7 @@ function TabOverview({ p, navigate }) {
       </div>
 
       {/* Cross-module monthly rollup (Labour + Material + Sub-Con) */}
-      <PlannedSpendRollup projectId={p.id} />
+      <PlannedSpendRollup projectId={p.id} labourPlan={externalLabourPlan} />
 
       {/* Alerts */}
       {alertsLoading ? (

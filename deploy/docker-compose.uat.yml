@@ -62,6 +62,12 @@ services:
       TRUST_PROXY: "1"
       CORS_ORIGIN: ""
       LOG_SQL: "0"
+      RPS_ALLOCATIONS_BASE_URL: ${RPS_ALLOCATIONS_BASE_URL:-https://rps.agilops.work/api/extract/projects/wbs}
+      RPS_RESOURCES_URL: ${RPS_RESOURCES_URL:-https://rps.agilops.work/api/extract/resources}
+      RPS_REQUEST_TIMEOUT_MS: ${RPS_REQUEST_TIMEOUT_MS:-15000}
+      RPS_RESOURCE_DEFAULT_GRADE: ${RPS_RESOURCE_DEFAULT_GRADE:-E2}
+      RPS_API_KEY: ${RPS_API_KEY:-}
+      RPS_API_TOKEN: ${RPS_API_TOKEN:-}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

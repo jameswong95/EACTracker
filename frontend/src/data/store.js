@@ -140,12 +140,21 @@ function adaptUpdate(u) {
 }
 
 function adaptResource(r) {
+  const rawAllocations = Array.isArray(r.fte_allocations) ? r.fte_allocations : (r.fte_allocations || []);
   return {
     id: r.id,
-    role: r.resource_name || r.role_name,
-    fn: r.function_title,
-    grade: r.grade,
-    fte: (Array.isArray(r.fte_allocations) ? r.fte_allocations : (r.fte_allocations || [])).map(v => parseFloat(v) || 0),
+    externalId: r.external_id ?? null,
+    source: r.source || 'local',
+    role: r.resource_name || r.role_name || r.name,
+    fn: r.function_title || r.actual_function || r.role || '',
+    grade: r.grade || '',
+    resourceType: r.resource_type || r.type || null,
+    remarks: r.remarks || null,
+    totalManMonths: n(r.total_man_months),
+    fte: rawAllocations.map(v => {
+      if (v && typeof v === 'object') return n(v.fte ?? v.man_months ?? v.qty);
+      return parseFloat(v) || 0;
+    }),
     subJobId: r.sub_job_id ?? null,
   };
 }
@@ -205,6 +214,35 @@ export function useProject(projectId) {
     setData(prev => prev ? { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) } : prev);
   }, []);
   return { project: data, loading: data === null && !error, error, reload, updateProject };
+}
+
+// ── Hook: live resource plan from RPS by project WBS ─────────────────────
+export function useExternalResourcePlan(projectId, wbsCode) {
+  const [data, setData] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(null);
+  const reload = useCallback(() => {
+    if (!projectId) return;
+    setLoaded(false);
+    setError(null);
+    const qs = new URLSearchParams({ project_id: String(projectId) });
+    if (wbsCode) qs.set('wbs', wbsCode);
+    api.get(`/api/resources/external?${qs.toString()}`)
+      .then(d => {
+        setData({
+          ...d,
+          resources: (d.resources || []).map(adaptResource),
+        });
+        setLoaded(true);
+      })
+      .catch(e => {
+        setError(e);
+        setData(null);
+        setLoaded(true);
+      });
+  }, [projectId, wbsCode]);
+  useEffect(() => { reload(); }, [reload]);
+  return { plan: data, loading: !loaded && !error, error, reload };
 }
 
 // ── Hook: read-only ETC (derived, by sub-job × Category) ─────────────────

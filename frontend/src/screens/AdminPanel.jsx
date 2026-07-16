@@ -88,8 +88,42 @@ function FilterSelect({ value, onChange, options }) {
 
 function ResourcePoolTab() {
   const RESOURCE_POOL = useResourcePool();
+  const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
-  const filtered = RESOURCE_POOL.filter(r =>
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+
+  useEffect(() => { setRows(RESOURCE_POOL); }, [RESOURCE_POOL]);
+
+  async function reloadPool() {
+    const pool = await api.get('/api/resources/pool');
+    setRows(pool.map(r => ({
+      id: r.id,
+      name: r.name,
+      grade: r.grade,
+      roles: r.roles || [],
+      dailyRate: Number(r.daily_rate) || 0,
+      monthlyRate: Number(r.monthly_rate) || 0,
+    })));
+  }
+
+  async function syncRpsPool() {
+    setSyncing(true);
+    setSyncError(null);
+    setSyncResult(null);
+    try {
+      const result = await api.post('/api/resources/pool/sync-rps', {});
+      setSyncResult(result);
+      await reloadPool();
+    } catch (e) {
+      setSyncError(e?.message || 'Could not sync RPS resources.');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  const filtered = rows.filter(r =>
     !q ||
     r.name.toLowerCase().includes(q.toLowerCase()) ||
     r.roles.some(fn => fn.toLowerCase().includes(q.toLowerCase())) ||
@@ -108,9 +142,22 @@ function ResourcePoolTab() {
           }}
         />
         <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-          {filtered.length} / {RESOURCE_POOL.length}
+          {filtered.length} / {rows.length}
         </span>
+        <button className="btn btn-ghost btn-sm" disabled={syncing} onClick={syncRpsPool}>
+          {syncing ? 'Syncing...' : 'Sync RPS'}
+        </button>
       </div>
+      {syncError && (
+        <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid rgba(240,88,88,.25)', borderRadius: 6, color: 'var(--bad-text)', background: 'var(--bad-bg)', fontSize: 12 }}>
+          {syncError}
+        </div>
+      )}
+      {syncResult && (
+        <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-2)', background: 'var(--surface-2)', fontSize: 12 }}>
+          RPS sync complete. Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, skipped {syncResult.skipped_count}.
+        </div>
+      )}
       <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { useProject, useResourcePool, useRates, useResourceRequests, fmt, MONTHS } from '../data/store.js';
+import { useProject, useExternalResourcePlan, useResourcePool, useRates, useResourceRequests, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
 import { spreadsheetFileError } from '../data/files.js';
 import { firstError, monthNumber, periodRange, requiredText, yearNumber } from '../data/validation.js';
@@ -176,15 +176,29 @@ function RoleSelect({ roles, value, onChange }) {
 
 export default function Resource({ projectId, navigate, role, session }) {
   const { project: p, loading } = useProject(projectId);
+  const { plan: externalPlan, loading: externalPlanLoading } = useExternalResourcePlan(projectId, p?.wbs);
   const RESOURCE_POOL = useResourcePool();
   const RATES = useRates();
-  if (loading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
-  return <ResourceBody p={p} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} role={role} session={session} />;
+  if (loading || externalPlanLoading || !p) return <div className="screen"><div style={{ padding: 40, color: 'var(--text-3)' }}>Loading…</div></div>;
+  const resourceProject = externalPlan
+    ? {
+        ...p,
+        resources: externalPlan.resources || [],
+        startDate: externalPlan.allocation_start_date || p.startDate,
+        resourcePlanSource: externalPlan.source,
+        resourcePlanFetchedAt: externalPlan.fetched_at,
+        resourcePlanStartDate: externalPlan.allocation_start_date,
+        resourcePlanEndDate: externalPlan.allocation_end_date,
+        resourcePlanRemoteProject: externalPlan.remote_project,
+      }
+    : p;
+  return <ResourceBody p={resourceProject} navigate={navigate} RESOURCE_POOL={RESOURCE_POOL} RATES={RATES} role={role} session={session} />;
 }
 
 function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
-  const canEdit = role !== 'Project Director';
-  const canDeleteResources = role === 'Project Manager' || role === 'Project Director';
+  const externalPlanReadOnly = p.resourcePlanSource === 'rps';
+  const canEdit = role !== 'Project Director' && !externalPlanReadOnly;
+  const canDeleteResources = !externalPlanReadOnly && (role === 'Project Manager' || role === 'Project Director');
   const { requests, reload: reloadRequests } = useResourceRequests(p.id);
   // Plan starts at (startYear, startMonth); the timeline extends indefinitely to the
   // right. All labour is parked under the PM category (shown in the breadcrumb).
@@ -236,7 +250,8 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
     p.resources.map(r => {
       const fte = Array(dataMonths).fill(0);
       (r.fte || []).forEach((v, i) => { if (i < dataMonths) fte[i] = parseFloat(v) || 0; });
-      return { ...r, id: nextId++, dbId: r.id, fte, fn: r.fn || '' };
+      const isExternal = r.source && r.source !== 'local';
+      return { ...r, id: nextId++, dbId: isExternal ? null : r.id, fte, fn: r.fn || '' };
     })
   );
   const [adding, setAdding]           = useState(false);
