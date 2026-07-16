@@ -155,7 +155,24 @@ function ResourcePoolTab() {
       )}
       {syncResult && (
         <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-2)', background: 'var(--surface-2)', fontSize: 12 }}>
-          RPS sync complete. Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, skipped {syncResult.skipped_count}.
+          <div style={{ fontWeight: 700, color: syncResult.skipped_count ? 'var(--warn-text)' : 'var(--ok)' }}>
+            {syncResult.message || `RPS sync complete. Fetched ${syncResult.fetched}, created ${syncResult.created}, updated ${syncResult.updated}, skipped ${syncResult.skipped_count}.`}
+          </div>
+          <div style={{ marginTop: 4 }}>
+            Fetched {syncResult.fetched}, created {syncResult.created}, updated {syncResult.updated}, skipped {syncResult.skipped_count}.
+          </div>
+          {(syncResult.skipped_summary || []).length > 0 && (
+            <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+              {syncResult.skipped_summary.map(item => (
+                <div key={item.reason}>
+                  <strong>{item.count}</strong> skipped: {item.message}
+                  {item.examples?.[0]?.fields?.length ? (
+                    <span style={{ color: 'var(--text-3)' }}> · fields: {item.examples[0].fields.join(', ')}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>

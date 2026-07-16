@@ -118,9 +118,14 @@ async function fetchRpsResources() {
     const response = await fetch(RPS_RESOURCES_URL, { headers: rpsHeaders(), signal: controller.signal });
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      const err = new Error(`RPS resources request failed: ${response.status} ${response.statusText}`);
+      const challenged = response.headers.get('cf-mitigated') === 'challenge' || /Just a moment|challenge-platform/i.test(body);
+      const err = new Error(challenged
+        ? 'RPS resources request was blocked by Cloudflare challenge'
+        : `RPS resources request failed: ${response.status} ${response.statusText}`);
       err.status = response.status >= 500 ? 502 : response.status;
       err.detail = body.slice(0, 500);
+      err.upstream = 'rps_resources';
+      err.kind = challenged ? 'cloudflare_challenge' : 'upstream_http_error';
       throw err;
     }
     return response.json();
@@ -156,7 +161,7 @@ function slugId(value) {
 
 function normalizeRpsPoolResource(resource, validGrades) {
   const name = String(resource?.name || resource?.full_name || resource?.employee_name || resource?.display_name || '').trim();
-  if (!name) return { skipped: true, reason: 'missing name', raw: resource };
+  if (!name) return { skipped: true, reason: 'missing_name', message: 'RPS row has no recognized name field', raw: resource };
 
   const rawExternalId = resource?.id ?? resource?.resource_id ?? resource?.employee_id ?? resource?.staff_id ?? resource?.email ?? name;
   const id = `rps:${slugId(rawExternalId) || slugId(name)}`;
@@ -165,7 +170,12 @@ function normalizeRpsPoolResource(resource, validGrades) {
     ? incomingGrade
     : RPS_RESOURCE_DEFAULT_GRADE;
   if (!validGrades.has(grade)) {
-    return { skipped: true, reason: `grade "${incomingGrade || RPS_RESOURCE_DEFAULT_GRADE}" is not in PFMS rate card`, raw: resource };
+    return {
+      skipped: true,
+      reason: 'missing_rate_card_grade',
+      message: `grade "${incomingGrade || RPS_RESOURCE_DEFAULT_GRADE}" is not in PFMS rate card`,
+      raw: resource,
+    };
   }
 
   return {
@@ -174,6 +184,29 @@ function normalizeRpsPoolResource(resource, validGrades) {
     grade,
     is_active: resource?.is_active == null ? true : !!resource.is_active,
   };
+}
+
+function summarizeSkipped(skippedRows) {
+  const grouped = new Map();
+  for (const row of skippedRows) {
+    const key = row.reason || 'unknown';
+    const existing = grouped.get(key) || {
+      reason: key,
+      message: row.message || key,
+      count: 0,
+      examples: [],
+    };
+    existing.count += 1;
+    if (existing.examples.length < 5) {
+      existing.examples.push({
+        name: row.raw?.name || row.raw?.full_name || row.raw?.employee_name || row.raw?.display_name || null,
+        id: row.raw?.id ?? row.raw?.resource_id ?? row.raw?.employee_id ?? row.raw?.staff_id ?? null,
+        fields: Object.keys(row.raw || {}).slice(0, 12),
+      });
+    }
+    grouped.set(key, existing);
+  }
+  return Array.from(grouped.values()).sort((a, b) => b.count - a.count);
 }
 
 // GET /api/resources/pool  (all people)
@@ -205,9 +238,13 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
   const grades = await query(`SELECT grade FROM resource_grades`);
   const validGrades = new Set(grades.rows.map(row => String(row.grade).toUpperCase()));
   const normalized = rows.map(row => normalizeRpsPoolResource(row, validGrades));
-  const skipped = normalized
-    .filter(row => row.skipped)
-    .map(row => ({ reason: row.reason, name: row.raw?.name || row.raw?.full_name || row.raw?.employee_name || null }));
+  const skippedRows = normalized.filter(row => row.skipped);
+  const skippedSummary = summarizeSkipped(skippedRows);
+  const skipped = skippedRows.map(row => ({
+    reason: row.reason,
+    message: row.message || row.reason,
+    name: row.raw?.name || row.raw?.full_name || row.raw?.employee_name || row.raw?.display_name || null,
+  }));
   const resources = normalized.filter(row => !row.skipped);
 
   const summary = await tx(async (client) => {
@@ -258,8 +295,12 @@ r.post('/pool/sync-rps', ah(async (_req, res) => {
     created: summary.created,
     updated: summary.updated,
     skipped_count: skipped.length,
+    skipped_summary: skippedSummary,
     skipped: skipped.slice(0, 25),
     default_grade: RPS_RESOURCE_DEFAULT_GRADE,
+    message: skipped.length
+      ? `Skipped ${skipped.length} RPS resource row(s): ${skippedSummary.map(item => `${item.count} ${item.message}`).join('; ')}`
+      : `RPS sync imported ${resources.length} resource row(s)`,
   });
 }));
 
@@ -276,8 +317,14 @@ r.get('/external', ah(async (req, res) => {
       WHERE id = $1`,
     [project_id],
   );
-  const localProject = projectResult.rows[0];
-  if (!localProject) return res.status(404).json({ error: 'project not found' });
+  const localProject = projectResult.rows[0] || {
+    id: project_id,
+    name: null,
+    wbs_code: project_id,
+    sap_project_no: null,
+    start_date: null,
+    end_date: null,
+  };
 
   const candidateWbsCodes = expandWbsCandidates([wbs, localProject.wbs_code, localProject.sap_project_no]);
   if (!candidateWbsCodes.length) return res.status(400).json({ error: 'project has no WBS code' });
@@ -380,6 +427,28 @@ r.patch('/grades/:grade', ah(async (req, res) => {
   const upd = await query(`UPDATE resource_grades SET ${sets.join(', ')} WHERE grade = $${i} RETURNING *`, vals);
   if (!upd.rows[0]) return res.status(404).json({ error: 'grade not found' });
   res.json(upd.rows[0]);
+}));
+
+// DELETE /api/resources/grades/:grade
+// Deletes a rate-card grade only when it is not referenced by people or plans.
+r.delete('/grades/:grade', ah(async (req, res) => {
+  const grade = String(req.params.grade || '').trim().toUpperCase();
+  const usage = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM resource_pool WHERE grade = $1) AS pool_count,
+       (SELECT COUNT(*)::int FROM project_resources WHERE grade = $1) AS plan_count`,
+    [grade],
+  );
+  const poolCount = Number(usage.rows[0]?.pool_count || 0);
+  const planCount = Number(usage.rows[0]?.plan_count || 0);
+  if (poolCount || planCount) {
+    return res.status(409).json({
+      error: `grade is in use by ${poolCount} resource pool row(s) and ${planCount} project resource row(s)`,
+    });
+  }
+  const del = await query(`DELETE FROM resource_grades WHERE grade = $1`, [grade]);
+  if (!del.rowCount) return res.status(404).json({ error: 'grade not found' });
+  res.status(204).end();
 }));
 
 // ---- Resource pool ownership (Finance/Admin edit; access gated in UI) ----

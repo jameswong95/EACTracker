@@ -73,11 +73,49 @@ export default function Standards({ navigate, role }) {
 
 function RateTab({ editable = false }) {
   const RATES = useRates();
+  const [rows, setRows] = useState([]);
+  const [adding, setAdding] = useState({ grade: '', title: '', daily_rate: '', monthly_rate: '' });
   const [err, setErr] = useState(null);
+
+  useEffect(() => { setRows(RATES); }, [RATES]);
+
+  async function reload() {
+    const data = await api.get('/api/resources/grades');
+    setRows(data.map(r => ({
+      grade: r.grade,
+      title: r.title,
+      daily: Number(r.daily_rate) || 0,
+      monthly: Number(r.monthly_rate) || 0,
+    })));
+  }
+
   async function patchGrade(grade, patch) {
-    try { await api.patch(`/api/resources/grades/${grade}`, patch); setErr(null); }
+    try { await api.patch(`/api/resources/grades/${grade}`, patch); setErr(null); reload(); }
     catch (e) { setErr(e.message || 'Update failed'); }
   }
+
+  async function addGrade() {
+    const grade = adding.grade.trim().toUpperCase();
+    const title = adding.title.trim();
+    if (!grade || !title) { setErr('Grade and title are required'); return; }
+    try {
+      await api.post('/api/resources/grades', {
+        grade,
+        title,
+        daily_rate: Number(adding.daily_rate) || 0,
+        monthly_rate: Number(adding.monthly_rate) || 0,
+      });
+      setAdding({ grade: '', title: '', daily_rate: '', monthly_rate: '' });
+      setErr(null);
+      reload();
+    } catch (e) { setErr(e.message || 'Add failed'); }
+  }
+
+  async function removeGrade(grade) {
+    try { await api.del(`/api/resources/grades/${grade}`); setErr(null); reload(); }
+    catch (e) { setErr(e.message || 'Delete failed'); }
+  }
+
   return (
     <>
       {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
@@ -117,10 +155,11 @@ function RateTab({ editable = false }) {
                 <th style={{ textAlign: 'right' }}>Monthly (22d)</th>
                 <th style={{ textAlign: 'right' }}>vs FY25</th>
                 <th>In use by</th>
+                {editable && <th />}
               </tr>
             </thead>
             <tbody>
-              {RATES.map((r, i) => (
+              {rows.map((r, i) => (
                 <tr key={i}>
                   <td><span className="badge badge-accent" style={{ fontWeight: 800 }}>{r.grade}</span></td>
                   <td style={{ fontWeight: 500 }}>
@@ -148,8 +187,42 @@ function RateTab({ editable = false }) {
                     <span style={{ color: 'var(--ok)', fontWeight: 600 }}>+{(3.5 + i * 0.2).toFixed(1)}%</span>
                   </td>
                   <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{[142, 198, 156, 88, 42][i] || '—'} plans</td>
+                  {editable && (
+                    <td>
+                      <button className="btn btn-ghost btn-sm" onClick={() => removeGrade(r.grade)} title="Delete unused grade">
+                        <Icon name="x" size={13} />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
+              {editable && (
+                <tr>
+                  <td>
+                    <input className="input" placeholder="E2" value={adding.grade}
+                      onChange={e => setAdding(a => ({ ...a, grade: e.target.value.toUpperCase() }))}
+                      style={{ maxWidth: 80 }} />
+                  </td>
+                  <td>
+                    <input className="input" placeholder="Band / role" value={adding.title}
+                      onChange={e => setAdding(a => ({ ...a, title: e.target.value }))}
+                      style={{ maxWidth: 220 }} />
+                  </td>
+                  <td className="num text-right">
+                    <input className="input num" type="number" placeholder="0" value={adding.daily_rate}
+                      onChange={e => setAdding(a => ({ ...a, daily_rate: e.target.value }))}
+                      style={{ maxWidth: 110, textAlign: 'right' }} />
+                  </td>
+                  <td className="num text-right">
+                    <input className="input num" type="number" placeholder="0" value={adding.monthly_rate}
+                      onChange={e => setAdding(a => ({ ...a, monthly_rate: e.target.value }))}
+                      style={{ maxWidth: 110, textAlign: 'right' }} />
+                  </td>
+                  <td />
+                  <td />
+                  <td><button className="btn btn-primary btn-sm" onClick={addGrade}>Add</button></td>
+                </tr>
+              )}
               <tr style={{ background: 'var(--surface-2)' }}>
                 <td><span className="badge badge-neutral" style={{ fontWeight: 800 }}>SC</span></td>
                 <td style={{ color: 'var(--text-2)' }}>Sub-contractor pass-through</td>
@@ -157,6 +230,7 @@ function RateTab({ editable = false }) {
                 <td className="text-right" style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>—</td>
                 <td className="text-right" style={{ color: 'var(--text-3)' }}>—</td>
                 <td style={{ fontSize: 12, color: 'var(--text-3)' }}>Use sub-con sub-job</td>
+                {editable && <td />}
               </tr>
             </tbody>
           </table>
