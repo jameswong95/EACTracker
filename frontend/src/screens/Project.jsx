@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useProject, useEtc, useRates, useEacMonthly, useExternalResourcePlan, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
+import { useProject, useEtc, useRates, useEacMonthly, useExternalResourcePlan, useResourceRequests, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
 import { api } from '../data/api.js';
 import { MultiSeriesLineChart, SegmentedRing, GroupedBarChart, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
@@ -966,24 +966,44 @@ function TabRevenueCash({ p }) {
 // ── Tab: Cost Performance (PRD §5.4) ──────────────────────────────────────
 function TabCost({ p }) {
   const { etc: etcData } = useEtc(p.id);
+  const { plan: externalLabourPlan } = useExternalResourcePlan(p.id, p.wbs);
+  const { requests } = useResourceRequests(p.id);
   const rates = useRates();
   const [selCat, setSelCat] = useState(null);
 
-  // Labour (PM) splits by the Resource Plan lock boundary, so the two
-  // screens agree: Committed = locked (fully-elapsed quarters), ETC = unlocked
-  // (current/future quarters). Rates × FTE per month, same as the Resource Plan.
-  const startAbs = (p.startYear ?? 2026) * 12 + (p.startMonth ?? 0);
+  // Labour PM ETC follows the Resource Plan screen: current/future quarter
+  // allocations are forecast. Past/locked labour is not recalculated here.
+  const resourceStartDate = externalLabourPlan?.allocation_start_date || p.startDate;
+  const projectStartMatch = String(resourceStartDate || '').slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const startYear = p.startYear ?? (projectStartMatch ? Number(projectStartMatch[1]) : 2026);
+  const startMonth = p.startMonth ?? (projectStartMatch ? Number(projectStartMatch[2]) - 1 : 0);
+  const startAbs = startYear * 12 + startMonth;
   const nowAbs   = new Date().getFullYear() * 12 + new Date().getMonth();
   const isLockedMonth = (i) => { const q = Math.floor((startAbs + i) / 3); return q * 3 + 2 < nowAbs; };
   const rateOf = (grade) => rates.find(x => x.grade === grade)?.monthly || 0;
-  let labourCommitted = 0, labourEtc = 0;
-  (p.resources || []).forEach(r => {
+  let labourEtc = 0;
+  const labourResources = externalLabourPlan?.resources?.length ? externalLabourPlan.resources : (p.resources || []);
+  labourResources.forEach(r => {
     const rate = rateOf(r.grade);
     (r.fte || []).forEach((v, i) => {
       const cost = (parseFloat(v) || 0) * rate;
-      if (isLockedMonth(i)) labourCommitted += cost; else labourEtc += cost;
+      if (!isLockedMonth(i)) labourEtc += cost;
     });
   });
+  (requests || [])
+    .filter(r => r.status === 'open')
+    .forEach(rq => {
+      const headcount = Number(rq.headcount) || 1;
+      const fromYear = Number(rq.need_year) || startYear;
+      const fromMonth = Number(rq.need_month) || (fromYear === startYear ? startMonth + 1 : 1);
+      const fromAbs = fromYear * 12 + (fromMonth - 1);
+      let endAbs = fromAbs;
+      if (rq.need_end_year && rq.need_end_month) {
+        endAbs = Number(rq.need_end_year) * 12 + (Number(rq.need_end_month) - 1);
+      }
+      if (endAbs < fromAbs) endAbs = fromAbs;
+      labourEtc += headcount * rateOf(rq.grade) * Math.max(0, endAbs - fromAbs + 1);
+    });
 
   // Material / Sub-Con committed & ETC come from their project-level registers:
   // a line item with a purchase date is Committed, otherwise it is ETC.
@@ -992,7 +1012,6 @@ function TabCost({ p }) {
     material_committed: 0, subcon_committed: 0, etc_total: 0,
   };
   const committedByCategory = {
-    'PM':       labourCommitted,
     'Material': Number(derived.material_committed) || 0,
     'Subcon':   Number(derived.subcon_committed)   || 0,
   };
