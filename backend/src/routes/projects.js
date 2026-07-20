@@ -7,6 +7,41 @@ const r = Router();
 
 const STATUS_VALUES = ['ok', 'warn', 'bad'];
 const REVREC_METHODS = ['milestone', 'progress_claim'];
+const BROAD_PROJECT_ROLES = new Set(['Admin', 'Leader', 'Finance', 'Technical Director']);
+const FINANCIAL_PROJECT_ROLES = new Set([
+  'Admin',
+  'Project Manager',
+  'Project Director',
+  'Finance',
+  'Leader',
+  'Technical Director',
+  'Technical Manager',
+]);
+const TEAM_ASSIGNMENT_ROLES = [
+  'System Engineer',
+  'Technical Director',
+  'Technical Manager',
+  'Support',
+];
+const FINANCIAL_FIELDS = [
+  'contract_value',
+  'initial_budget',
+  'budget',
+  'eac',
+  'actual',
+  'committed',
+  'rev_recognised',
+  'progress_billing',
+  'gr_profit_sap',
+  'variance',
+  'variance_pct',
+  'etc',
+  'percent_complete',
+  'rev_remaining',
+  'budget_gp_pct',
+  'forecast_gp_pct',
+  'os_pb',
+];
 const PROJECT_FIELDS = new Set([
   'id', 'name', 'wbs_code', 'sap_project_no', 'customer', 'department',
   'pm_user_id', 'pd_user_id', 'status', 'start_date', 'end_date',
@@ -64,21 +99,70 @@ function cleanProject(body, { partial = false } = {}) {
   return out;
 }
 
+function projectAccess(user, alias = 'v', paramIndex = 1) {
+  if (!user) return { where: '', params: [] };
+  const role = user?.role;
+  if (BROAD_PROJECT_ROLES.has(role)) return { where: '', params: [] };
+  const userId = Number(user?.id);
+  if (!Number.isInteger(userId) || userId <= 0) return { where: 'WHERE FALSE', params: [] };
+  const p = alias ? `${alias}.` : '';
+  const userParam = `$${paramIndex}`;
+  if (role === 'Project Manager') {
+    return {
+      where: `WHERE (${p}pm_user_id = ${userParam} OR EXISTS (
+        SELECT 1 FROM project_pm_assignments pma
+        WHERE pma.project_id = ${p}id AND pma.user_id = ${userParam}
+      ))`,
+      params: [userId],
+    };
+  }
+  if (role === 'Project Director') {
+    return { where: `WHERE ${p}pd_user_id = ${userParam}`, params: [userId] };
+  }
+  return {
+    where: `WHERE EXISTS (
+      SELECT 1 FROM project_user_assignments pua
+      WHERE pua.project_id = ${p}id AND pua.user_id = ${userParam}
+    )`,
+    params: [userId],
+  };
+}
+
+function canViewFinancials(user) {
+  return FINANCIAL_PROJECT_ROLES.has(user?.role);
+}
+
+function scrubProject(row, user) {
+  if (!row || !user || canViewFinancials(user)) return row;
+  const clean = { ...row, financials_restricted: true };
+  for (const field of FINANCIAL_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(clean, field)) clean[field] = null;
+  }
+  return clean;
+}
+
 // GET /api/projects  (list with computed fields)
-r.get('/', ah(async (_req, res) => {
+r.get('/', ah(async (req, res) => {
+  const access = projectAccess(req.user, 'v');
   const result = await query(`
-    SELECT * FROM v_project_financials
+    SELECT * FROM v_project_financials v
+    ${access.where}
     ORDER BY id
-  `);
-  res.json(result.rows);
+  `, access.params);
+  res.json(result.rows.map(row => scrubProject(row, req.user)));
 }));
 
 // GET /api/projects/:id
 r.get('/:id', ah(async (req, res) => {
   const id = v.projectId(req.params.id, 'id');
-  const result = await query(`SELECT * FROM v_project_financials WHERE id = $1`, [id]);
+  const access = projectAccess(req.user, 'v', 2);
+  const result = await query(`
+    SELECT * FROM v_project_financials v
+    WHERE v.id = $1
+      AND (${access.where ? access.where.replace(/^WHERE\s+/i, '') : 'TRUE'})
+  `, [id, ...access.params]);
   if (!result.rows[0]) return res.status(404).json({ error: 'project not found' });
-  res.json(result.rows[0]);
+  res.json(scrubProject(result.rows[0], req.user));
 }));
 
 // POST /api/projects  (create)
@@ -228,6 +312,63 @@ r.post('/:id/pm-assignments', ah(async (req, res) => {
   res.json(await savePmAssignments(req));
 }));
 
+async function saveUserAssignments(req) {
+  const projectId = v.projectId(req.params.id, 'id');
+  const body = v.ensureObject(req.body);
+  v.validateNoUnknown(body, new Set(['user_ids', 'assigned_user_ids', 'user_id']));
+  const rawIds = Array.isArray(body.user_ids) ? body.user_ids
+    : Array.isArray(body.assigned_user_ids) ? body.assigned_user_ids
+    : [];
+  const userIds = [...new Set(rawIds.map((raw, index) => v.userId(raw, `user_ids[${index}]`)))];
+  const auditUserId = v.userId(body.user_id, 'user_id');
+
+  return tx(async (c) => {
+    const exists = (await c.query(`SELECT id FROM projects WHERE id = $1`, [projectId])).rows[0];
+    if (!exists) { const e = new Error('project not found'); e.status = 404; throw e; }
+
+    let users = [];
+    if (userIds.length) {
+      const result = await c.query(
+        `SELECT id, role FROM users
+          WHERE id = ANY($1::int[])
+            AND role = ANY($2::text[])
+            AND is_active = TRUE`,
+        [userIds, TEAM_ASSIGNMENT_ROLES]
+      );
+      if (result.rowCount !== userIds.length) {
+        const e = new Error('all assigned users must be active technical/support users');
+        e.status = 400;
+        throw e;
+      }
+      users = result.rows;
+    }
+
+    await c.query(`DELETE FROM project_user_assignments WHERE project_id = $1`, [projectId]);
+    for (const user of users) {
+      await c.query(
+        `INSERT INTO project_user_assignments (project_id, user_id, role_name)
+         VALUES ($1,$2,$3)`,
+        [projectId, user.id, user.role]
+      );
+    }
+    await logAudit(c, {
+      entity_type: 'project',
+      entity_id: projectId,
+      action: 'assign_project_users',
+      user_id: auditUserId,
+    });
+    return (await c.query(`SELECT * FROM v_project_financials WHERE id = $1`, [projectId])).rows[0];
+  });
+}
+
+r.put('/:id/user-assignments', ah(async (req, res) => {
+  res.json(scrubProject(await saveUserAssignments(req), req.user));
+}));
+
+r.post('/:id/user-assignments', ah(async (req, res) => {
+  res.json(scrubProject(await saveUserAssignments(req), req.user));
+}));
+
 // DELETE /api/projects/:id
 r.delete('/:id', ah(async (req, res) => {
   const id = v.projectId(req.params.id, 'id');
@@ -242,8 +383,13 @@ r.delete('/:id', ah(async (req, res) => {
 // GET /api/projects/:id/full  (aggregated single-fetch for project screen)
 r.get('/:id/full', ah(async (req, res) => {
   const pid = v.projectId(req.params.id, 'id');
+  const access = projectAccess(req.user, 'v', 2);
   const [p, subjobs, milestones, risks, updates, resources, revrec] = await Promise.all([
-    query(`SELECT * FROM v_project_financials WHERE id = $1`, [pid]),
+    query(`
+      SELECT * FROM v_project_financials v
+      WHERE v.id = $1
+        AND (${access.where ? access.where.replace(/^WHERE\s+/i, '') : 'TRUE'})
+    `, [pid, ...access.params]),
     query(`SELECT * FROM v_sub_job_summary WHERE project_id = $1 ORDER BY sort_order, id`, [pid]),
     query(`SELECT * FROM milestones WHERE project_id = $1 ORDER BY sort_order, target_date`, [pid]),
     query(`SELECT * FROM risks WHERE project_id = $1 ORDER BY id`, [pid]),
@@ -252,14 +398,15 @@ r.get('/:id/full', ah(async (req, res) => {
     query(`SELECT * FROM revrec_entries WHERE project_id = $1 ORDER BY period_year, period_month, id`, [pid]),
   ]);
   if (!p.rows[0]) return res.status(404).json({ error: 'project not found' });
+  const allowFinancials = !req.user || canViewFinancials(req.user);
   res.json({
-    project:    p.rows[0],
-    subjobs:    subjobs.rows,
+    project:    scrubProject(p.rows[0], req.user),
+    subjobs:    allowFinancials ? subjobs.rows : [],
     milestones: milestones.rows,
     risks:      risks.rows,
     updates:    updates.rows,
     resources:  resources.rows,
-    revrec:     revrec.rows,
+    revrec:     allowFinancials ? revrec.rows : [],
   });
 }));
 

@@ -95,6 +95,16 @@ export function adaptProject(p) {
       : []);
   const pmUserIds = rawPmIds.map(v => Number(v)).filter(Number.isInteger);
   if (!pmUserIds.length && p.pm_user_id != null) pmUserIds.push(Number(p.pm_user_id));
+  const rawAssignedIds = Array.isArray(p.assigned_user_ids)
+    ? p.assigned_user_ids
+    : (typeof p.assigned_user_ids === 'string'
+      ? (() => { try { return JSON.parse(p.assigned_user_ids); } catch { return []; } })()
+      : []);
+  const assignedUserIds = rawAssignedIds.map(v => Number(v)).filter(Number.isInteger);
+  const assignedNames = String(p.assigned_names || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
   const pmNames = String(p.pm_names || p.pm_name || '')
     .split(',')
     .map(s => s.trim())
@@ -116,6 +126,11 @@ export function adaptProject(p) {
     pmUserId: p.pm_user_id ?? null,
     pmUserIds,
     pdUserId: p.pd_user_id ?? null,
+    assignedUserIds,
+    assignedNames,
+    assignedRoles: p.assigned_roles || '',
+    assignedCount: Number(p.assigned_count) || assignedUserIds.length,
+    financialsRestricted: Boolean(p.financials_restricted),
     department: p.department || '—',
     status: p.status || 'ok',
     wbs: p.wbs_code,
@@ -627,7 +642,7 @@ export function useAudit(filter = {}) {
           when: e.occurred_at,
           who: e.user_name || '(system)',
           user: e.user_name || '(system)',
-          role: '—',
+          role: e.user_role || 'System',
           action: `${e.action} ${e.entity_type}`,
           detail: detail || (e.entity_id || ''),
           entityType: e.entity_type,

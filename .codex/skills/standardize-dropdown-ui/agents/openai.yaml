@@ -1,0 +1,4 @@
+interface:
+  display_name: "Standardize Dropdown UI"
+  short_description: "Keep PFMS dropdowns styled and consistent"
+  default_prompt: "Use $standardize-dropdown-ui to replace raw dropdowns with the PFMS styled Select component."

@@ -1,15 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../data/api.js';
-
-const ROLE_BADGE = {
-  'Project Manager':  { color: 'var(--info-text)',  bg: 'var(--info-bg)'  },
-  'Project Director': { color: 'var(--accent)',     bg: 'var(--accent-light)' },
-  Finance:            { color: 'var(--ok-text)',    bg: 'var(--ok-bg)'    },
-  Leader:             { color: '#7030A0',           bg: 'rgba(112,48,160,0.12)' },
-  Admin:              { color: 'var(--bad-text)',   bg: 'var(--bad-bg)'   },
-};
-const DEFAULT_ROLE_BADGE = { color: 'var(--text-2)', bg: 'var(--surface-3)' };
-const ROLE_ORDER = { Admin: 0, Leader: 1, Finance: 2, 'Project Director': 3, 'Project Manager': 4 };
+import { DEFAULT_ROLE_BADGE, ROLE_BADGE, ROLE_ORDER } from '../config/permissions.js';
 
 export default function Login({ onSignIn }) {
   const [users, setUsers]       = useState([]);

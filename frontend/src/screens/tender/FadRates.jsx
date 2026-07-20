@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTenderFx } from '../../data/store.js';
 import { api } from '../../data/api.js';
 import Icon from '../../components/Icon.jsx';
+import DeleteConfirmModal from '../../components/DeleteConfirmModal.jsx';
 
 // FAD / FX rates — foreign currency conversion rates to Singapore Dollars.
 // rate_to_sgd = value in S$ of 1 unit of the foreign currency. SGD itself = 1.
@@ -13,6 +14,7 @@ export default function FadRates({ tenderId, canEdit, tender, isFinance, onSettl
   const [adding, setAdding] = useState({ currency: '', rate_to_sgd: '' });
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const settled = !!tender?.fad_settled_at;
   const editable = canEdit && !settled;
@@ -35,7 +37,7 @@ export default function FadRates({ tenderId, canEdit, tender, isFinance, onSettl
   }
 
   async function removeCurrency(id) {
-    try { await api.del(`/api/tender/fx/${id}`); reload(); }
+    try { await api.del(`/api/tender/fx/${id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
 
@@ -142,7 +144,7 @@ export default function FadRates({ tenderId, canEdit, tender, isFinance, onSettl
                   </td>
                   <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{r.updated_at ? String(r.updated_at).slice(0, 10) : '—'}</td>
                   {editable && (
-                    <td><button className="btn btn-ghost btn-sm" onClick={() => removeCurrency(r.id)} title="Delete"><Icon name="x" size={13} /></button></td>
+                    <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(r)} title="Delete"><Icon name="x" size={13} /></button></td>
                   )}
                 </tr>
               ))}
@@ -164,6 +166,20 @@ export default function FadRates({ tenderId, canEdit, tender, isFinance, onSettl
           </table>
         </div>
       </div>
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete tender FX rate?"
+          message="This removes the currency conversion rate from this tender."
+          itemLabel="Currency"
+          itemName={deleteTarget.currency}
+          itemMeta={`1 ${deleteTarget.currency} = ${Number(deleteTarget.rate_to_sgd).toFixed(4)} SGD`}
+          note="Tender cost conversion for this currency will no longer be available."
+          cancelLabel="Keep rate"
+          confirmLabel="Delete rate"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeCurrency(deleteTarget.id)}
+        />
+      )}
     </div>
   );
 }

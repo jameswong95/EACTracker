@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useProject, useCostModule, useMaterialAssets, useMaterialMisc, useFixedRates, fmt, MONTHS } from '../data/store.js';
 import { api } from '../data/api.js';
 import { firstError, nonNegativeNumber, requiredText } from '../data/validation.js';
 import DatePicker from '../components/DatePicker.jsx';
 import Icon from '../components/Icon.jsx';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
+import Select from '../components/Select.jsx';
 
 const GR_STATUS = {
   not_ordered: { label: 'Not ordered', color: 'var(--text-3)' },
@@ -371,7 +374,7 @@ function PurchaseRegister({ projectId, role, session }) {
                             setForm={patch => setBatchForms(f => ({ ...f, [line.id]: { ...subForm, ...patch } }))}
                             addBatch={() => addBatch(line)}
                             patchBatch={(batch, patch) => patchBatch(line, batch, patch)}
-                            removeBatch={batch => removeBatch(line, batch)}
+                            removeBatch={batch => setDeleteTarget({ type: 'batch', line, batch })}
                           />
                         </td>
                       </tr>
@@ -384,11 +387,25 @@ function PurchaseRegister({ projectId, role, session }) {
         </div>
       </div>
       {deleteTarget && (
-        <MaterialDeleteConfirm
-          title="Delete PO line?"
-          description={deleteTarget.description}
+        <DeleteConfirmModal
+          title={deleteTarget.type === 'batch' ? 'Delete GR batch?' : 'Delete PO line?'}
+          message={deleteTarget.type === 'batch'
+            ? 'This will remove the GR batch from this PO line.'
+            : 'This will remove the item from this Material workspace.'}
+          itemLabel={deleteTarget.type === 'batch' ? 'GR batch' : 'PO line'}
+          itemName={deleteTarget.type === 'batch' ? deleteTarget.batch.description : deleteTarget.description}
+          itemMeta={deleteTarget.type === 'batch'
+            ? [deleteTarget.line.po_number, deleteTarget.batch.estimated_received_date].filter(Boolean).join(' · ')
+            : deleteTarget.po_number}
+          note={deleteTarget.type === 'batch'
+            ? 'The parent PO line will remain.'
+            : 'Any related GR batches under this item will be removed together.'}
+          cancelLabel={deleteTarget.type === 'batch' ? 'Keep batch' : 'Keep item'}
+          confirmLabel={deleteTarget.type === 'batch' ? 'Delete batch' : 'Delete item'}
           onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => removeLine(deleteTarget)}
+          onConfirm={() => deleteTarget.type === 'batch'
+            ? removeBatch(deleteTarget.line, deleteTarget.batch).then(() => setDeleteTarget(null))
+            : removeLine(deleteTarget)}
         />
       )}
     </>
@@ -432,9 +449,11 @@ function GrBatchPanel({ line, batches, canEdit, form, setForm, addBatch, patchBa
             <div>{canEdit ? <input className="input num" type="number" min="0" step="0.001" defaultValue={Number(batch.batch_quantity || 0)} onBlur={e => Number(e.target.value) !== Number(batch.batch_quantity) && patchBatch(batch, { batch_quantity: Number(e.target.value) || 0 })} style={{ textAlign: 'right' }} /> : Number(batch.batch_quantity || 0).toFixed(1)}</div>
             <div>{canEdit ? <DatePicker value={batch.estimated_received_date || ''} onChange={v => patchBatch(batch, { estimated_received_date: v || null })} placeholder="Arrival" /> : (batch.estimated_received_date || '—')}</div>
             <div>{canEdit ? (
-              <select className="input" value={batch.gr_status || 'pending'} onChange={e => patchBatch(batch, { gr_status: e.target.value })}>
-                {Object.entries(BATCH_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
+              <Select
+                value={batch.gr_status || 'pending'}
+                options={Object.entries(BATCH_STATUS).map(([k, v]) => ({ value: k, label: v.label }))}
+                onChange={value => patchBatch(batch, { gr_status: value })}
+              />
             ) : <StatusPill status={batch.gr_status} type="batch" />}</div>
             {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => removeBatch(batch)} title="Delete"><Icon name="x" size={13} /></button>}
           </div>
@@ -445,9 +464,11 @@ function GrBatchPanel({ line, batches, canEdit, form, setForm, addBatch, patchBa
           <input className="input" placeholder="Batch label" value={form.description} onChange={e => setForm({ description: e.target.value })} />
           <input className="input num" type="number" min="0" step="0.001" placeholder="Qty" value={form.batch_quantity} onChange={e => setForm({ batch_quantity: e.target.value })} style={{ textAlign: 'right' }} />
           <DatePicker value={form.estimated_received_date} onChange={v => setForm({ estimated_received_date: v })} placeholder="Arrival" />
-          <select className="input" value={form.gr_status} onChange={e => setForm({ gr_status: e.target.value })}>
-            {Object.entries(BATCH_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
+          <Select
+            value={form.gr_status}
+            options={Object.entries(BATCH_STATUS).map(([k, v]) => ({ value: k, label: v.label }))}
+            onChange={value => setForm({ gr_status: value })}
+          />
           <button className="btn btn-primary btn-sm" onClick={addBatch}>Add batch</button>
         </div>
       )}
@@ -925,9 +946,14 @@ function AssetList({ projectId, role, session }) {
             </>
           ) : (
             <div className="material-asset-sync-quiet">
-              <span className="dot-ok" />
-              <strong>Purchase Register and Asset List are in sync</strong>
-              <span>{syncGroups.inSync.length} item(s)</span>
+              <div className="material-asset-sync-quiet-main">
+                <span className="dot-ok" />
+                <div>
+                  <strong>Purchase Register and Asset List are in sync</strong>
+                  <span>All expected asset rows are ready for serial number tracking.</span>
+                </div>
+              </div>
+              <span className="material-asset-sync-quiet-count">{syncGroups.inSync.length} item(s)</span>
             </div>
           )}
           {syncStats.needsSync && (
@@ -969,15 +995,40 @@ function AssetList({ projectId, role, session }) {
               <div>Choose an item and PO from the Purchase Register, then create asset rows.</div>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.4fr 0.7fr auto auto', gap: 8, alignItems: 'end' }}>
+          <div className="material-asset-create-grid">
             <Field label="Item"><input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
             <Field label="PO number"><PoSelect value={form.po_number} options={poOptions} onChange={applyPoToForm} /></Field>
-            <Field label="Rows"><input className="input num" type="number" min="1" max="200" value={duplicateCount} onChange={e => setDuplicateCount(e.target.value)} style={{ textAlign: 'right' }} /></Field>
-            <button className="btn btn-ghost btn-sm" onClick={prepareBulkRows} disabled={busy}>Prepare</button>
-            <button className="btn btn-primary btn-sm" onClick={addAsset} disabled={busy}>{busy ? 'Saving...' : draftRows.length ? `Save ${draftRows.length}` : 'Save 1'}</button>
+            <Field label="Rows">
+              <input
+                className="input num material-asset-row-count"
+                type="number"
+                min="1"
+                max="200"
+                value={duplicateCount}
+                onChange={e => setDuplicateCount(e.target.value)}
+              />
+            </Field>
+            <div className="material-asset-create-actions">
+              {draftRows.length > 0 && (
+                <span className="material-asset-ready-pill">{draftRows.length} ready</span>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={prepareBulkRows} disabled={busy}>
+                <Icon name="hash" size={13} /> Prepare rows
+              </button>
+              {draftRows.length > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setDraftRows([])} disabled={busy} title="Clear prepared rows">
+                  <Icon name="x" size={13} /> Clear
+                </button>
+              )}
+              <button className="btn btn-primary btn-sm" onClick={addAsset} disabled={busy}>
+                {busy ? 'Saving...' : draftRows.length ? `Save ${draftRows.length} rows` : 'Save 1 row'}
+              </button>
+            </div>
           </div>
           {poOptions.length === 0 ? (
             <div className="material-soft-note">Create at least one Purchase Register PO line before linking assets.</div>
+          ) : draftRows.length > 0 ? (
+            <div className="material-soft-note">{draftRows.length} prepared row(s) ready to review below.</div>
           ) : (
             <div className="material-soft-note">Prepare duplicates the item and PO number like Excel drag-down.</div>
           )}
@@ -1058,9 +1109,15 @@ function AssetList({ projectId, role, session }) {
         </div>
       </div>
       {deleteTarget && (
-        <MaterialDeleteConfirm
+        <DeleteConfirmModal
           title="Delete asset?"
-          description={deleteTarget.description}
+          message="This will remove the asset from this project asset list."
+          itemLabel="Asset"
+          itemName={deleteTarget.description}
+          itemMeta={[deleteTarget.asset_type, deleteTarget.po_number].filter(Boolean).join(' · ')}
+          note="Only the asset record is removed. Purchase register lines are kept."
+          cancelLabel="Keep asset"
+          confirmLabel="Delete asset"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => removeAsset(deleteTarget)}
         />
@@ -1071,28 +1128,54 @@ function AssetList({ projectId, role, session }) {
 
 function PoSelect({ value, options, onChange }) {
   return (
-    <select className="input material-po-select" value={value || ''} onChange={e => onChange(e.target.value)} disabled={options.length === 0}>
-      <option value="">{options.length ? 'Select PO' : 'No PO lines'}</option>
-      {options.map(option => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-      ))}
-    </select>
+    <Select
+      value={value || ''}
+      options={[{ value: '', label: options.length ? 'Select PO' : 'No PO lines' }, ...options]}
+      onChange={onChange}
+      placeholder={options.length ? 'Select PO' : 'No PO lines'}
+      disabled={options.length === 0}
+      style={{ width: '100%' }}
+    />
   );
 }
 
 function AssetRateSelect({ value, rates, onChange, style, commitOnBlur = false }) {
   const [draft, setDraft] = useState(value || '');
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
+  const menuRef = useRef(null);
   const options = assetRateOptions(rates, value);
   useEffect(() => { setDraft(value || ''); }, [value]);
   useEffect(() => {
     function closeOnOutsideClick(event) {
-      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+      if (ref.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', closeOnOutsideClick);
     return () => document.removeEventListener('mousedown', closeOnOutsideClick);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    function place() {
+      const rect = ref.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(Math.max(rect.width, 360), window.innerWidth - 24);
+      const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+      const maxHeight = 320;
+      const spaceBelow = window.innerHeight - rect.bottom - 12;
+      const flip = spaceBelow < 180 && rect.top > spaceBelow;
+      const top = flip ? Math.max(12, rect.top - Math.min(maxHeight, rect.top - 12) - 6) : rect.bottom + 6;
+      setPos({ top, left, width, maxHeight: Math.min(maxHeight, flip ? rect.top - 18 : spaceBelow) });
+    }
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
 
   const query = draft.trim().toLowerCase();
   const filtered = options
@@ -1119,6 +1202,22 @@ function AssetRateSelect({ value, rates, onChange, style, commitOnBlur = false }
     onChange(option.value);
   }
 
+  const menu = open && filtered.length > 0 && pos ? createPortal(
+    <div
+      ref={menuRef}
+      className="material-asset-rate-menu"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
+    >
+      {filtered.map(option => (
+        <button key={option.value} type="button" onMouseDown={e => e.preventDefault()} onClick={() => choose(option)}>
+          <span>{option.value}</span>
+          {option.rate?.code && <small>{option.value} ({option.rate.code})</small>}
+        </button>
+      ))}
+    </div>,
+    document.body
+  ) : null;
+
   return (
     <div className="material-asset-rate-picker" ref={ref} style={style}>
       <input
@@ -1138,16 +1237,7 @@ function AssetRateSelect({ value, rates, onChange, style, commitOnBlur = false }
         }}
       />
       <span className="material-asset-rate-caret">▾</span>
-      {open && filtered.length > 0 && (
-        <div className="material-asset-rate-menu">
-          {filtered.map(option => (
-            <button key={option.value} type="button" onMouseDown={e => e.preventDefault()} onClick={() => choose(option)}>
-              <span>{option.value}</span>
-              {option.rate?.code && <small>{option.value} ({option.rate.code})</small>}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
@@ -1277,10 +1367,14 @@ function MiscMaterials({ projectId, role, session, threshold, reloadSettings }) 
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Add misc line</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.8fr 0.8fr 0.7fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
             <Field label="From catalog">
-              <select className="input" value={form.rate_code} onChange={e => pickRate(e.target.value)}>
-                <option value="">— free line —</option>
-                {rates.filter(r => r.code).map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
-              </select>
+              <Select
+                value={form.rate_code}
+                options={[
+                  { value: '', label: '- free line -' },
+                  ...rates.filter(r => r.code).map(r => ({ value: r.code, label: r.label })),
+                ]}
+                onChange={pickRate}
+              />
             </Field>
             <Field label="Description"><input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
             <Field label="Unit"><input className="input" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} /></Field>
@@ -1326,45 +1420,19 @@ function MiscMaterials({ projectId, role, session, threshold, reloadSettings }) 
         </div>
       </div>
       {deleteTarget && (
-        <MaterialDeleteConfirm
+        <DeleteConfirmModal
           title="Delete material line?"
-          description={deleteTarget.description}
+          message="This will remove this miscellaneous material line."
+          itemLabel="Material line"
+          itemName={deleteTarget.description}
+          itemMeta={deleteTarget.rate_code ? `Code: ${deleteTarget.rate_code}` : null}
+          note="The line will no longer roll up into the Material forecast."
+          cancelLabel="Keep line"
+          confirmLabel="Delete line"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => removeLine(deleteTarget)}
         />
       )}
     </>
-  );
-}
-
-function MaterialDeleteConfirm({ title, description, onCancel, onConfirm }) {
-  return (
-    <div className="modal-overlay material-delete-overlay" role="presentation" onMouseDown={onCancel}>
-      <div className="modal material-delete-modal" role="dialog" aria-modal="true" aria-labelledby="material-delete-title" onMouseDown={e => e.stopPropagation()}>
-        <div className="material-delete-header">
-          <div className="material-delete-icon">
-            <Icon name="alertTriangle" size={18} />
-          </div>
-          <div className="material-delete-title">
-            <h3 id="material-delete-title">{title}</h3>
-            <p>This will remove the item from this Material workspace.</p>
-          </div>
-          <button className="btn btn-icon material-delete-close" onClick={onCancel} aria-label="Close"><Icon name="x" size={14} /></button>
-        </div>
-        <div className="material-delete-body">
-          <div className="material-delete-summary">
-            <div className="material-delete-summary-label">Selected item</div>
-            <div className="material-delete-summary-name">{description || 'Untitled item'}</div>
-          </div>
-          <div className="material-delete-note">
-            Any related rows under this item will be removed together.
-          </div>
-        </div>
-        <div className="material-delete-footer">
-          <button className="btn btn-ghost btn-sm" onClick={onCancel}>Keep item</button>
-          <button className="btn btn-danger btn-sm" onClick={onConfirm}>Delete item</button>
-        </div>
-      </div>
-    </div>
   );
 }

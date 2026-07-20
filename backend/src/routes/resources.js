@@ -1,12 +1,20 @@
 import { Router } from 'express';
 import { query, tx } from '../db.js';
 import { ah, logAudit, requireFields } from '../util.js';
+import { cleanText, parseSpreadsheetRows, spreadsheetNumber, spreadsheetUpload } from '../spreadsheetImport.js';
 
 const r = Router();
 const RPS_ALLOCATIONS_BASE_URL = (process.env.RPS_ALLOCATIONS_BASE_URL || 'https://rps.agilops.work/api/extract/projects/wbs').replace(/\/$/, '');
 const RPS_RESOURCES_URL = process.env.RPS_RESOURCES_URL || 'https://rps.agilops.work/api/extract/resources';
 const RPS_REQUEST_TIMEOUT_MS = Number(process.env.RPS_REQUEST_TIMEOUT_MS || 15000);
 const RPS_RESOURCE_DEFAULT_GRADE = String(process.env.RPS_RESOURCE_DEFAULT_GRADE || 'E2').trim().toUpperCase();
+
+const GRADE_RATE_ALIASES = {
+  grade: ['grade', 'band', 'level'],
+  title: ['title', 'band role', 'band / role', 'role', 'description', 'name'],
+  daily_rate: ['daily rate', 'daily rate sgd', 'daily rate (sgd)', 'daily_rate', 'day rate', 'rate per day', 'daily'],
+  monthly_rate: ['monthly rate', 'monthly rate sgd', 'monthly rate (sgd)', 'monthly 22d', 'monthly (22d)', 'monthly_rate', 'month rate', 'rate per month', 'monthly'],
+};
 
 function rpsHeaders() {
   const headers = { Accept: 'application/json' };
@@ -224,6 +232,70 @@ r.get('/pool', ah(async (_req, res) => {
 r.get('/grades', ah(async (_req, res) => {
   const result = await query(`SELECT * FROM resource_grades ORDER BY grade`);
   res.json(result.rows);
+}));
+
+// POST /api/resources/grades/import
+r.post('/grades/import', spreadsheetUpload.single('file'), ah(async (req, res) => {
+  const parsed = parseSpreadsheetRows(req.file, { aliases: GRADE_RATE_ALIASES });
+  const rows = [];
+  const errors = [];
+
+  for (const row of parsed.rows) {
+    const grade = String(cleanText(row.grade) || '').trim().toUpperCase();
+    const title = cleanText(row.title);
+    const dailyRate = spreadsheetNumber(row.daily_rate);
+    const monthlyRate = spreadsheetNumber(row.monthly_rate);
+
+    if (!grade) errors.push(`row ${row._rowNumber}: grade is required`);
+    if (!title) errors.push(`row ${row._rowNumber}: title is required`);
+    if (dailyRate == null || dailyRate < 0) errors.push(`row ${row._rowNumber}: daily rate must be a non-negative number`);
+    if (monthlyRate == null || monthlyRate < 0) errors.push(`row ${row._rowNumber}: monthly rate must be a non-negative number`);
+    if (grade && title && dailyRate != null && dailyRate >= 0 && monthlyRate != null && monthlyRate >= 0) {
+      rows.push({ grade, title, dailyRate, monthlyRate });
+    }
+  }
+
+  if (errors.length) {
+    return res.status(400).json({
+      error: errors.slice(0, 8).join('; '),
+      errors: errors.slice(0, 25),
+    });
+  }
+  if (!rows.length) return res.status(400).json({ error: 'no valid blended rate rows found' });
+
+  const summary = await tx(async (client) => {
+    let created = 0;
+    let updated = 0;
+    const samples = [];
+
+    for (const row of rows) {
+      const before = await client.query(`SELECT * FROM resource_grades WHERE grade = $1`, [row.grade]);
+      const result = await client.query(
+        `INSERT INTO resource_grades (grade, title, daily_rate, monthly_rate)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (grade) DO UPDATE
+           SET title = EXCLUDED.title,
+               daily_rate = EXCLUDED.daily_rate,
+               monthly_rate = EXCLUDED.monthly_rate
+         RETURNING *`,
+        [row.grade, row.title, row.dailyRate, row.monthlyRate],
+      );
+      before.rows[0] ? updated++ : created++;
+      samples.push(result.rows[0]);
+    }
+
+    await logAudit(client, {
+      entity_type: 'resource_grades',
+      entity_id: parsed.filename,
+      action: 'import',
+      new_value: JSON.stringify({ created, updated, total: rows.length }),
+      user_id: req.user?.id,
+    });
+
+    return { filename: parsed.filename, total: rows.length, created, updated, samples: samples.slice(0, 5) };
+  });
+
+  res.status(201).json(summary);
 }));
 
 // POST /api/resources/pool/sync-rps

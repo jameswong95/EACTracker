@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useProjects, fmt, fmtSapSync, fmtAsAt, compareSapId } from '../data/store.js';
 import { Sparkline, MultiSeriesLineChart, DivergingBarChart, SegmentedRing, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
+import { canViewProjectFinancials } from '../config/permissions.js';
 
 // PRD Section 4: Portfolio Financial Health Dashboard
 
@@ -56,6 +57,80 @@ function buildPortfolioTrend(projects) {
   const eacTrend   = labels.map((_, i) => Math.round(totalBudget + drift * ((i / 11) ** 2)));
   const budgetLine = labels.map(() => Math.round(totalBudget));
   return { labels, eacTrend, budgetLine };
+}
+
+function exportDateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function csvCell(value) {
+  const text = value == null ? '' : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function downloadFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function projectExportRows(projects) {
+  return projects.map(p => {
+    const health = liveHealth(p);
+    const etc = Math.max(0, p.eac - p.actual - p.committed);
+    const eacVariance = p.budget - p.eac;
+    const eacVariancePct = p.budget > 0 ? (eacVariance / p.budget) * 100 : 0;
+    const contractValue = p.contractValue || p.budget;
+    return {
+      'Project': p.name,
+      'SAP ID': p.sapId || p.id,
+      'Customer': p.customer || '',
+      'Department': p.department || '',
+      'PM': p.pm || '',
+      'PD': p.pd || '',
+      'Health': healthLabel(health),
+      'Contract Value': contractValue,
+      'Budget': p.budget,
+      'EAC': p.eac,
+      'EAC Variance': eacVariance,
+      'EAC Variance %': eacVariancePct.toFixed(1),
+      'Actual Cost': p.actual,
+      'Committed': p.committed,
+      'ETC': etc,
+      'Revenue Recognised': p.revRecognised,
+      'Progress Billing': p.progressBilling,
+      'Last Update': p.lastUpdate || '',
+    };
+  });
+}
+
+function rowsToCsv(rows) {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  return [
+    headers.map(csvCell).join(','),
+    ...rows.map(row => headers.map(header => csvCell(row[header])).join(',')),
+  ].join('\r\n');
+}
+
+function htmlEscape(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function fmtSigned(value) {
+  const n = Number(value) || 0;
+  return `${n >= 0 ? '+' : '-'}${fmt(Math.abs(n))}`;
 }
 
 function KpiCard({ label, value, sub, subColor, delta, tooltip }) {
@@ -124,6 +199,7 @@ export default function Portfolio({ navigate, role, session }) {
 
   const myName   = session?.full_name;
   const myId     = session?.id != null ? Number(session.id) : null;
+  const assignedProjectRole = ['System Engineer', 'Technical Manager', 'Support'].includes(role);
   const baseList = (role === 'Project Manager' && (myName || myId))
     ? projects.filter(p =>
         (myId != null && (p.pmUserIds || []).includes(myId)) ||
@@ -131,7 +207,13 @@ export default function Portfolio({ navigate, role, session }) {
       )
     : (role === 'Project Director' && myName)
     ? projects.filter(p => p.pd === myName)
+    : (assignedProjectRole && (myName || myId))
+    ? projects.filter(p =>
+        (myId != null && (p.assignedUserIds || []).includes(myId)) ||
+        (myName && (p.assignedNames || []).includes(myName))
+      )
     : projects;
+  const showFinancials = canViewProjectFinancials(role) && !baseList.some(p => p.financialsRestricted);
 
   const filtered = useMemo(() => {
     let list = [...baseList];
@@ -231,7 +313,290 @@ export default function Portfolio({ navigate, role, session }) {
     ? 'warn'
     : 'ok';
 
+  function handleExportCsv() {
+    const rows = projectExportRows(filtered);
+    const csv = rowsToCsv(rows);
+    const content = csv || 'Project,SAP ID,Customer,Department,PM,PD,Health,Contract Value,Budget,EAC,EAC Variance,EAC Variance %,Actual Cost,Committed,ETC,Revenue Recognised,Progress Billing,Last Update\r\n';
+    downloadFile(`pfms-portfolio-${exportDateStamp()}.csv`, content, 'text/csv;charset=utf-8');
+  }
+
+  function handleExportPdf() {
+    const rows = projectExportRows(filtered);
+    const variancePct = totalBudget > 0 ? (totalVariance / totalBudget) * 100 : 0;
+    const generatedAt = new Date().toLocaleString();
+    const activeFilters = [
+      search ? `Search: ${search}` : null,
+      healthFilter !== 'all' ? `Health: ${healthLabel(healthFilter)}` : null,
+    ].filter(Boolean).join(' | ') || 'All projects';
+    const topAdverse = rows
+      .filter(row => Number(row['EAC Variance']) < 0)
+      .sort((a, b) => Number(a['EAC Variance']) - Number(b['EAC Variance']))
+      .slice(0, 5);
+    const summaryCards = [
+      { label: 'Portfolio Budget', value: fmt(totalBudget), detail: `${baseList.length} projects`, tone: 'neutral' },
+      { label: 'Total EAC', value: fmt(totalEac), detail: `${totalBudget > 0 ? ((totalEac / totalBudget) * 100).toFixed(1) : '0.0'}% of budget`, tone: totalEac > totalBudget ? 'bad' : 'ok' },
+      { label: 'EAC Variance', value: fmtSigned(totalVariance), detail: `${variancePct >= 0 ? '+' : ''}${variancePct.toFixed(1)}%`, tone: totalVariance >= 0 ? 'ok' : 'bad' },
+      { label: 'Actual Cost', value: fmt(totalActual), detail: `${totalBudget > 0 ? ((totalActual / totalBudget) * 100).toFixed(1) : '0.0'}% of budget`, tone: 'neutral' },
+      { label: 'Committed Cost', value: fmt(totalCommitted), detail: `${totalBudget > 0 ? ((totalCommitted / totalBudget) * 100).toFixed(1) : '0.0'}% of budget`, tone: 'neutral' },
+      { label: 'ETC', value: fmt(totalEtc), detail: `${totalEac > 0 ? ((totalEtc / totalEac) * 100).toFixed(1) : '0.0'}% of EAC`, tone: 'neutral' },
+      { label: 'Revenue Recognised', value: fmt(totalRevRec), detail: `${totalCV > 0 ? ((totalRevRec / totalCV) * 100).toFixed(1) : '0.0'}% of contract value`, tone: 'neutral' },
+      { label: 'Progress Billing', value: fmt(totalCash), detail: `${totalCV > 0 ? ((totalCash / totalCV) * 100).toFixed(1) : '0.0'}% of contract value`, tone: 'neutral' },
+    ];
+    const columns = ['Project', 'SAP ID', 'PM', 'PD', 'Health', 'Budget', 'EAC', 'EAC Variance', 'EAC Variance %', 'Actual Cost', 'Committed', 'ETC'];
+    const moneyColumns = new Set(['Budget', 'EAC', 'EAC Variance', 'Actual Cost', 'Committed', 'ETC']);
+    const doc = window.open('', '_blank');
+    if (!doc) {
+      alert('Please allow pop-ups to export the PDF report.');
+      return;
+    }
+
+    doc.document.write(`<!doctype html>
+      <html>
+        <head>
+          <title>PFMS Portfolio Export</title>
+          <style>
+            @page { size: A4 landscape; margin: 12mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; background: #f3f6fb; color: #12213a; font-family: Inter, Arial, sans-serif; }
+            .page { padding: 24px; }
+            .hero {
+              display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: stretch;
+              background: #17233b; color: #fff; border-radius: 10px; padding: 24px;
+              box-shadow: 0 12px 28px rgba(15, 35, 68, .14);
+            }
+            .brand { color: #93afd7; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+            h1 { font-size: 28px; line-height: 1.1; margin: 8px 0 8px; letter-spacing: 0; }
+            .subtitle { color: #d8e4f5; font-size: 12px; line-height: 1.55; max-width: 720px; }
+            .hero-side { border-left: 1px solid rgba(255,255,255,.16); padding-left: 20px; display: grid; gap: 10px; }
+            .meta-label { color: #93afd7; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+            .meta-value { font-size: 13px; font-weight: 700; margin-top: 2px; }
+            .status-pill { display: inline-flex; align-items: center; width: max-content; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+            .status-ok { background: #e7f7ef; color: #117343; }
+            .status-warn { background: #fff5dc; color: #9a6a00; }
+            .status-bad { background: #fde9ec; color: #b7243c; }
+            .section { margin-top: 18px; }
+            .section-title { font-size: 13px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #31476a; margin-bottom: 10px; }
+            .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+            .metric { background: #fff; border: 1px solid #d8e2f0; border-radius: 8px; padding: 12px 14px; min-height: 76px; }
+            .metric-label { color: #5d7396; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+            .metric-value { font-size: 19px; font-weight: 900; margin-top: 8px; color: #13213a; }
+            .metric-detail { color: #5d7396; font-size: 10px; margin-top: 4px; }
+            .metric.ok .metric-value { color: #117343; }
+            .metric.warn .metric-value { color: #9a6a00; }
+            .metric.bad .metric-value { color: #b7243c; }
+            .insight-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 12px; }
+            .panel { background: #fff; border: 1px solid #d8e2f0; border-radius: 8px; padding: 14px; }
+            .health-row { display: grid; grid-template-columns: 112px 1fr 32px; gap: 10px; align-items: center; margin: 8px 0; font-size: 11px; }
+            .bar { height: 8px; background: #e8eef7; border-radius: 999px; overflow: hidden; }
+            .bar-fill { height: 100%; border-radius: 999px; }
+            .risk-list { display: grid; gap: 8px; }
+            .risk-item { display: grid; grid-template-columns: 1fr 100px 70px; gap: 12px; align-items: center; font-size: 11px; border-bottom: 1px solid #edf2f8; padding-bottom: 8px; }
+            .risk-item:last-child { border-bottom: 0; padding-bottom: 0; }
+            .project-name { font-weight: 800; color: #13213a; }
+            .small { color: #5d7396; font-size: 10px; margin-top: 2px; }
+            table { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; border: 1px solid #d8e2f0; border-radius: 8px; overflow: hidden; font-size: 9px; }
+            th { background: #eaf1fa; color: #415a7d; text-align: left; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+            th, td { border-bottom: 1px solid #e4ebf5; padding: 7px 8px; vertical-align: top; }
+            tbody tr:nth-child(even) td { background: #fafcff; }
+            tbody tr:last-child td { border-bottom: 0; }
+            td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+            .health { display: inline-flex; align-items: center; padding: 3px 7px; border-radius: 999px; font-size: 8px; font-weight: 900; white-space: nowrap; }
+            .footer { margin-top: 12px; color: #6c7f9b; font-size: 9px; display: flex; justify-content: space-between; }
+            .empty { color: #5d7396; text-align: center; padding: 18px; }
+            @media print {
+              body { background: #fff; }
+              .page { padding: 0; }
+              .hero, .metric, .panel, table { box-shadow: none; }
+              tr, .metric, .panel, .risk-item { break-inside: avoid; page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+          <div class="hero">
+            <div>
+              <div class="brand">PFMS Financial Management</div>
+              <h1>Portfolio Financial Health</h1>
+              <div class="subtitle">Role-scoped portfolio report generated from the current dashboard filters. Values are shown in SGD and based on the latest loaded project financials.</div>
+            </div>
+            <div class="hero-side">
+              <div>
+                <div class="meta-label">As at</div>
+                <div class="meta-value">${htmlEscape(fmtAsAt())}</div>
+              </div>
+              <div>
+                <div class="meta-label">Generated</div>
+                <div class="meta-value">${htmlEscape(generatedAt)}</div>
+              </div>
+              <div>
+                <div class="meta-label">Filters</div>
+                <div class="meta-value">${htmlEscape(activeFilters)}</div>
+              </div>
+              <div>
+                <div class="meta-label">Overall Health</div>
+                <div class="status-pill status-${htmlEscape(portHealth)}">${htmlEscape(healthLabel(portHealth))}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Executive Summary</div>
+          <div class="summary">
+              ${summaryCards.map(card => `
+              <div class="metric ${htmlEscape(card.tone)}">
+                <div class="metric-label">${htmlEscape(card.label)}</div>
+                <div class="metric-value">${htmlEscape(card.value)}</div>
+                <div class="metric-detail">${htmlEscape(card.detail)}</div>
+              </div>
+            `).join('')}
+            </div>
+          </div>
+
+          <div class="section insight-grid">
+            <div class="panel">
+              <div class="section-title">Health Distribution</div>
+              ${[
+                ['On Track', hCounts.ok, C.fav],
+                ['At Risk', hCounts.warn, C.attn],
+                ['Off Track', hCounts.bad, C.adverse],
+              ].map(([label, count, color]) => `
+                <div class="health-row">
+                  <div>${htmlEscape(label)}</div>
+                  <div class="bar"><div class="bar-fill" style="width:${Math.round((Number(count) / total) * 100)}%; background:${htmlEscape(color)}"></div></div>
+                  <div class="num">${htmlEscape(count)}</div>
+                </div>
+              `).join('')}
+            </div>
+            <div class="panel">
+              <div class="section-title">Top Adverse Variance</div>
+              <div class="risk-list">
+                ${topAdverse.length ? topAdverse.map(row => `
+                  <div class="risk-item">
+                    <div>
+                      <div class="project-name">${htmlEscape(row.Project)}</div>
+                      <div class="small">${htmlEscape(row['SAP ID'])} | PM: ${htmlEscape(row.PM || 'Unassigned')}</div>
+                    </div>
+                    <div class="num">${htmlEscape(fmt(Number(row['EAC Variance'])))}</div>
+                    <div class="status-pill status-bad">${htmlEscape(row['EAC Variance %'])}%</div>
+                  </div>
+                `).join('') : '<div class="empty">No adverse EAC variance in the current export.</div>'}
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Project Financials</div>
+            <table>
+              <thead>
+                <tr>${columns.map(col => `<th>${htmlEscape(col)}</th>`).join('')}</tr>
+              </thead>
+              <tbody>
+                ${rows.length ? rows.map(row => `
+                  <tr>
+                    ${columns.map(col => {
+                      if (col === 'Project') {
+                        return `<td><div class="project-name">${htmlEscape(row.Project)}</div><div class="small">${htmlEscape(row.Customer || row.Department || '')}</div></td>`;
+                      }
+                      if (col === 'Health') {
+                        const healthClass = row.Health === 'On Track' ? 'ok' : row.Health === 'At Risk' ? 'warn' : 'bad';
+                        return `<td><span class="health status-${healthClass}">${htmlEscape(row.Health)}</span></td>`;
+                      }
+                      const value = moneyColumns.has(col) ? fmt(row[col]) : row[col];
+                      return `<td class="${moneyColumns.has(col) ? 'num' : ''}">${htmlEscape(value)}</td>`;
+                    }).join('')}
+                  </tr>
+                `).join('') : '<tr><td class="empty" colspan="12">No projects match the current filters.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="footer">
+            <span>PFMS Portfolio Export</span>
+            <span>${htmlEscape(filtered.length)} projects exported</span>
+          </div>
+          </div>
+        </body>
+      </html>`);
+    doc.document.close();
+    doc.focus();
+    doc.setTimeout(() => doc.print(), 250);
+  }
+
   if (loading) return <PortfolioSkeleton />;
+
+  if (!showFinancials) {
+    return (
+      <div className="screen" style={{ padding: '24px 28px' }}>
+        <div className="page-header">
+          <div>
+            <div className="page-title">My Assigned Projects</div>
+            <div className="page-sub" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+              <span>{baseList.length} project{baseList.length === 1 ? '' : 's'}</span>
+              <span style={{ color: 'var(--border-2)' }}>·</span>
+              <span>Financial values and project health charts are restricted for this role.</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input className="input" placeholder="Search project, ID, customer or PM..."
+              style={{ width: 320, maxWidth: '100%' }} value={search} onChange={e => setSearch(e.target.value)} />
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{filtered.length} of {baseList.length}</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <Th col="sapId" label="Project" />
+                  <Th col="customer" label="Customer" />
+                  <Th col="department" label="Department" />
+                  <Th col="pm" label="Project Manager" />
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr key={p.id} onClick={() => navigate('project', p.id)}>
+                    <td>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.sapId || p.id}</div>
+                    </td>
+                    <td>{p.customer || '-'}</td>
+                    <td>{p.department || '-'}</td>
+                    <td>{p.pm || '-'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-ghost btn-sm"
+                        onClick={e => { e.stopPropagation(); navigate('project', p.id); }}>
+                        Open <Icon name="arrowRight" size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={5}>
+                      <div className="empty-state">
+                        <div className="empty-state-icon"><Icon name="search" size={36} /></div>
+                        <div className="empty-state-title">
+                          {baseList.length === 0 ? 'No projects assigned' : 'No projects match these filters'}
+                        </div>
+                        <div className="empty-state-sub">
+                          {baseList.length === 0
+                            ? 'Ask an Admin or PM to assign your user account to the project team.'
+                            : 'Try adjusting the search above.'}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="screen" style={{ padding: '24px 28px' }}>
@@ -253,8 +618,12 @@ export default function Portfolio({ navigate, role, session }) {
           </div>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm"><Icon name="download" size={13} /> Export CSV</button>
-          <button className="btn btn-ghost btn-sm"><Icon name="download" size={13} /> Export PDF</button>
+          <button className="btn btn-ghost btn-sm" onClick={handleExportCsv}>
+            <Icon name="download" size={13} /> Export CSV
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={handleExportPdf}>
+            <Icon name="download" size={13} /> Export PDF
+          </button>
         </div>
       </div>
 

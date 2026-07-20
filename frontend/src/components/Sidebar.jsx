@@ -1,6 +1,7 @@
 import React from 'react';
 import { ROLE_USERS } from '../data/mock.js';
 import { useProjects } from '../data/store.js';
+import { APP_ROLES } from '../config/permissions.js';
 
 function Icon({ name, size = 16 }) {
   const s = size;
@@ -118,11 +119,11 @@ function Icon({ name, size = 16 }) {
 
 // PRD §3.1 navigation model
 const NAV = {
-  PM: [
+  'Project Manager': [
     { id: 'tenders',   label: 'Tenders',           icon: 'reports'    },
     { id: 'portfolio', label: 'Portfolio',         icon: 'portfolio'  },
   ],
-  PD: [
+  'Project Director': [
     { id: 'tenders',   label: 'Tenders',            icon: 'reports'    },
     { id: 'portfolio', label: 'Portfolio',          icon: 'portfolio'  },
   ],
@@ -131,6 +132,39 @@ const NAV = {
     { id: 'portfolio',  label: 'Portfolio',         icon: 'portfolio'       },
     { id: 'sap-import', label: 'SAP Import',        icon: 'sap'             },
     { id: 'standards',  label: 'Standards',         icon: 'standards'  },
+  ],
+  Leader: [
+    { id: 'dashboard',    label: 'Dashboard',       icon: 'dashboard'  },
+    { id: 'tenders',      label: 'Tenders',         icon: 'reports'    },
+    { id: 'portfolio',    label: 'Portfolio',       icon: 'portfolio'  },
+    { id: 'sap-import',   label: 'SAP Import',      icon: 'sap'        },
+    { id: 'standards',    label: 'Standards',       icon: 'standards'  },
+    { id: 'assists',      label: 'AI Assist',       icon: 'assists'    },
+    { id: 'pd-approvals', label: 'PD Approvals',    icon: 'approvals'  },
+  ],
+  'System Engineer': [
+    { id: 'portfolio', label: 'My Projects',       icon: 'portfolio'  },
+    { id: 'standards', label: 'Standards',         icon: 'standards'  },
+  ],
+  'Technical Director': [
+    { id: 'dashboard',    label: 'Dashboard',       icon: 'dashboard'  },
+    { id: 'tenders',      label: 'Tenders',         icon: 'reports'    },
+    { id: 'portfolio',    label: 'Portfolio',       icon: 'portfolio'  },
+    { id: 'standards',    label: 'Standards',       icon: 'standards'  },
+    { id: 'assists',      label: 'AI Assist',       icon: 'assists'    },
+    { id: 'pd-approvals', label: 'PD Approvals',    icon: 'approvals'  },
+  ],
+  'Technical Manager': [
+    { id: 'tenders',   label: 'Tenders',           icon: 'reports'    },
+    { id: 'portfolio', label: 'My Projects',       icon: 'portfolio'  },
+    { id: 'standards', label: 'Standards',         icon: 'standards'  },
+    { id: 'assists',   label: 'AI Assist',         icon: 'assists'    },
+  ],
+  Support: [
+    { id: 'dashboard', label: 'Dashboard',         icon: 'dashboard'  },
+    { id: 'tenders',   label: 'Tenders',           icon: 'reports'    },
+    { id: 'portfolio', label: 'Portfolio',         icon: 'portfolio'  },
+    { id: 'standards', label: 'Standards',         icon: 'standards'  },
   ],
   Admin: [
     { id: 'dashboard',         label: 'Dashboard',     icon: 'dashboard' },
@@ -158,14 +192,14 @@ const PROJECT_SUB = [
   { id: 'revrec',   label: 'Rev. Rec.',      icon: 'revrec' },
 ];
 
-const ROLES = ['Project Manager', 'Project Director', 'Finance', 'Admin'];
+const ROLES = APP_ROLES;
 
 export default function Sidebar({ screen, projectId, navigate, role, switchRole, theme, toggleTheme, collapsed, onToggle, roleAllowed, setRoleAllowed, mobileOpen, session, onSignOut }) {
   const { projects } = useProjects();
   const activeProject = projects.find(p => p.id === projectId);
   const inProjectView = PROJECT_SUB.map(s => s.id).includes(screen);
   const allowed = (roleAllowed && roleAllowed[role]) || null;
-  const navItems = (NAV[role] || NAV.PM).filter(item => !allowed || allowed.includes(item.id));
+  const navItems = (NAV[role] || NAV['Project Manager']).filter(item => !allowed || allowed.includes(item.id));
 
   const iconColor = 'rgba(255,255,255,0.40)';
 
@@ -178,6 +212,10 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
         overflow: 'hidden',
         background: 'var(--sidebar-bg)',
         flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        minHeight: 0,
       }}
     >
       {/* Logo */}
@@ -204,62 +242,71 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
         </div>
       </div>
 
-      {/* Main nav */}
-      {!collapsed && <div className="sidebar-section">Navigation</div>}
-      <div style={{ marginTop: collapsed ? 8 : 0 }}>
-        {navItems.map(item => (
-          <NavItem
-            key={item.id}
-            icon={item.icon}
-            label={item.label}
-            id={item.id}
-            screen={screen}
-            navigate={navigate}
-            iconColor={iconColor}
-            collapsed={collapsed}
-          />
-        ))}
-      </div>
-
-      {/* Project context */}
-      {inProjectView && activeProject && (role === 'Project Manager' || role === 'Project Director' || role === 'Finance' || role === 'Leader' || role === 'Admin') && (
-        <>
-          {!collapsed && <div className="sidebar-section" style={{ marginTop: 4 }}>Project</div>}
-          {!collapsed && (
-            <div style={{
-              margin: '0 10px 6px',
-              padding: '8px 10px',
-              borderRadius: 4,
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
-            }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.80)', lineHeight: 1.3 }}>
-                {activeProject.name}
-              </div>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)', marginTop: 3, letterSpacing: '0.04em' }}>
-                {activeProject.sapId || activeProject.id}
-              </div>
-            </div>
-          )}
-          {PROJECT_SUB.filter(sub => !allowed || allowed.includes(sub.id)).map(sub => (
-            <SubItem
-              key={sub.id}
-              label={sub.label}
-              icon={sub.icon}
-              id={sub.id}
+      <div
+        className="sidebar-scroll"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          paddingBottom: 8,
+        }}
+      >
+        {/* Main nav */}
+        {!collapsed && <div className="sidebar-section">Navigation</div>}
+        <div style={{ marginTop: collapsed ? 8 : 0 }}>
+          {navItems.map(item => (
+            <NavItem
+              key={item.id}
+              icon={item.icon}
+              label={item.label}
+              id={item.id}
               screen={screen}
               navigate={navigate}
-              projectId={projectId}
+              iconColor={iconColor}
               collapsed={collapsed}
             />
           ))}
-        </>
-      )}
+        </div>
 
-      <div style={{ flex: 1 }} />
+        {/* Project context */}
+        {inProjectView && activeProject && (
+          <>
+            {!collapsed && <div className="sidebar-section" style={{ marginTop: 4 }}>Project</div>}
+            {!collapsed && (
+              <div style={{
+                margin: '0 10px 6px',
+                padding: '8px 10px',
+                borderRadius: 4,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.12)',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.80)', lineHeight: 1.3 }}>
+                  {activeProject.name}
+                </div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)', marginTop: 3, letterSpacing: '0.04em' }}>
+                  {activeProject.sapId || activeProject.id}
+                </div>
+              </div>
+            )}
+            {PROJECT_SUB.filter(sub => !allowed || allowed.includes(sub.id)).map(sub => (
+              <SubItem
+                key={sub.id}
+                label={sub.label}
+                icon={sub.icon}
+                id={sub.id}
+                screen={screen}
+                navigate={navigate}
+                projectId={projectId}
+                collapsed={collapsed}
+              />
+            ))}
+          </>
+        )}
+      </div>
 
       {/* Collapse toggle — hidden on mobile (overlay drawer handles navigation) */}
-      <div className="sidebar-collapse-btn" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: collapsed ? '8px 0' : '8px 10px' }}>
+      <div className="sidebar-collapse-btn" style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.06)', padding: collapsed ? '8px 0' : '8px 10px' }}>
         <button
           onClick={onToggle}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -282,7 +329,7 @@ export default function Sidebar({ screen, projectId, navigate, role, switchRole,
       </div>
 
       {/* Theme + user */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: collapsed ? '12px 0' : '12px 16px' }}>
+      <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.06)', padding: collapsed ? '12px 0' : '12px 16px' }}>
         {!collapsed && (
           <div style={{ marginBottom: 12 }}>
             <button

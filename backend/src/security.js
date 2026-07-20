@@ -4,8 +4,55 @@ import { query } from './db.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const ROLES = new Set(['Admin', 'Project Manager', 'Project Director', 'Leader', 'Finance']);
-const ROLE_PRIORITY = ['Admin', 'Leader', 'Finance', 'Project Director', 'Project Manager'];
+const ROLES = new Set([
+  'Admin',
+  'Project Manager',
+  'Project Director',
+  'Leader',
+  'Finance',
+  'System Engineer',
+  'Technical Director',
+  'Technical Manager',
+  'Support',
+]);
+const ROLE_PRIORITY = [
+  'Admin',
+  'Leader',
+  'Technical Director',
+  'Technical Manager',
+  'Finance',
+  'Project Director',
+  'Project Manager',
+  'System Engineer',
+  'Support',
+];
+const PROJECT_WRITE_ROLES = [
+  'Admin',
+  'Project Manager',
+  'Leader',
+  'Finance',
+  'Technical Director',
+  'Technical Manager',
+];
+const TENDER_WRITE_ROLES = [
+  'Admin',
+  'Project Manager',
+  'Project Director',
+  'Leader',
+  'Finance',
+  'Technical Director',
+  'Technical Manager',
+];
+const RESOURCE_WRITE_ROLES = [
+  'Admin',
+  'Project Manager',
+  'Project Director',
+  'Leader',
+  'System Engineer',
+  'Technical Director',
+  'Technical Manager',
+  'Support',
+];
 
 const WRITE_RULES = [
   [/^\/api\/users(?:\/|$)/, ['Admin']],
@@ -16,11 +63,11 @@ const WRITE_RULES = [
   [/^\/api\/resources\/pool\/sync-rps(?:\/|$)/, ['Admin', 'Finance']],
   [/^\/api\/resources\/pool(?:\/|$)/, ['Admin', 'Finance']],
   [/^\/api\/resources\/grades(?:\/|$)/, ['Admin', 'Finance']],
-  [/^\/api\/(?:resources|resource-requests)(?:\/|$)/, ['Admin', 'Project Manager', 'Project Director', 'Leader']],
-  [/^\/api\/tender(?:\/|$)/, ['Admin', 'Project Manager', 'Project Director', 'Leader', 'Finance']],
+  [/^\/api\/(?:resources|resource-requests)(?:\/|$)/, RESOURCE_WRITE_ROLES],
+  [/^\/api\/tender(?:\/|$)/, TENDER_WRITE_ROLES],
   [
     /^\/api\/(?:projects|sub-jobs|eac|revrec|milestones|risks|updates|project-initiation|etc|materials|material-assets|material-misc|sub-con|others)(?:\/|$)/,
-    ['Admin', 'Project Manager', 'Leader', 'Finance'],
+    PROJECT_WRITE_ROLES,
   ],
 ];
 
@@ -57,10 +104,16 @@ function readFirstHeader(req, names) {
   return '';
 }
 
+function roleAlias(role) {
+  const value = clean(role);
+  if (value.toLowerCase() === 'technical manger') return 'Technical Manager';
+  return value;
+}
+
 function normalizeRole(role) {
   const roles = String(role || '')
     .split(',')
-    .map(clean)
+    .map(roleAlias)
     .filter(value => ROLES.has(value));
   return ROLE_PRIORITY.find(value => roles.includes(value)) || null;
 }
@@ -158,7 +211,13 @@ export function apiRateLimit(req, res, next) {
 export function requireExpectedContentType(req, res, next) {
   if (!WRITE_METHODS.has(req.method)) return next();
   const contentType = String(req.headers['content-type'] || '').toLowerCase();
-  if (req.path.startsWith('/sap/') && contentType.startsWith('multipart/form-data')) return next();
+  if (contentType.startsWith('multipart/form-data')) {
+    const allowsUpload = req.path.startsWith('/sap/')
+      || req.path === '/fixed-rates/import'
+      || req.path === '/fx-rates/import'
+      || req.path === '/resources/grades/import';
+    if (allowsUpload) return next();
+  }
   if (contentType.startsWith('application/json')) return next();
   logSecurity(req, 'content_type_rejected', 'Unexpected content type', { content_type: clean(contentType || 'missing') });
   return res.status(415).json({ error: 'unsupported content type' });

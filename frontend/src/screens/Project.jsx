@@ -3,6 +3,7 @@ import { useProject, useEtc, useRates, useEacMonthly, useExternalResourcePlan, u
 import { api } from '../data/api.js';
 import { MultiSeriesLineChart, SegmentedRing, GroupedBarChart, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
+import { canViewProjectFinancials } from '../config/permissions.js';
 
 // PRD Section 5: Project Financial Health Dashboard
 
@@ -184,6 +185,90 @@ function PmAssignmentControl({ project, users, session, onSaved }) {
             <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} disabled={saving}>Cancel</button>
             <button className="btn btn-secondary btn-sm" onClick={save} disabled={saving}>
               {saving ? 'Saving...' : saved ? 'Saved' : 'Save PMs'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TEAM_ASSIGNMENT_ROLES = ['System Engineer', 'Technical Director', 'Technical Manager', 'Support'];
+
+function ProjectTeamAssignmentControl({ project, users, session, onSaved }) {
+  const teamUsers = users.filter(u => TEAM_ASSIGNMENT_ROLES.includes(u.role) && u.is_active !== false);
+  const initialIds = project.assignedUserIds?.length ? project.assignedUserIds : [];
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(initialIds);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef();
+
+  useEffect(() => {
+    setSelected(project.assignedUserIds?.length ? project.assignedUserIds : []);
+  }, [project.assignedUserIds]);
+
+  useEffect(() => () => clearTimeout(savedTimer.current), []);
+
+  function toggle(uid) {
+    setSelected(cur => cur.includes(uid) ? cur.filter(id => id !== uid) : [...cur, uid]);
+    setSaved(false);
+    setError('');
+  }
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await api.put(`/api/projects/${encodeURIComponent(project.id)}/user-assignments`, {
+        user_ids: selected,
+        user_id: session?.id || null,
+      });
+      onSaved(updated);
+      setSaved(true);
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 1800);
+    } catch (e) {
+      setError(e.message || 'Unable to save project team');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="pm-assign-wrap">
+      <button className="btn btn-ghost btn-sm" type="button" onClick={() => setOpen(v => !v)}>
+        <Icon name="users" size={13} /> Project team
+      </button>
+      {open && (
+        <div className="pm-assign-popover">
+          <div className="pm-assign-title">Assigned project users</div>
+          <div className="pm-assign-sub">Controls who can see this project in non-financial roles.</div>
+          <div className="pm-assign-list">
+            {teamUsers.map(user => (
+              <label key={user.id} className="pm-assign-row">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(user.id)}
+                  onChange={() => toggle(user.id)}
+                />
+                <span>
+                  <strong>{user.full_name}</strong>
+                  <small>{user.role}</small>
+                </span>
+              </label>
+            ))}
+            {teamUsers.length === 0 && (
+              <div className="pm-assign-empty">No active technical/support users found.</div>
+            )}
+          </div>
+          {error && <div className="pm-assign-error">{error}</div>}
+          {saved && !error && <div className="pm-assign-saved">Project team saved.</div>}
+          <div className="pm-assign-actions">
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} disabled={saving}>Cancel</button>
+            <button className="btn btn-secondary btn-sm" onClick={save} disabled={saving}>
+              {saving ? 'Saving...' : saved ? 'Saved' : 'Save team'}
             </button>
           </div>
         </div>
@@ -544,6 +629,49 @@ function PlannedSpendRollup({ projectId, labourPlan }) {
 }
 
 // ── Tab: Overview ─────────────────────────────────────────────────────────
+function RestrictedProjectOverview({ p, navigate }) {
+  const workspaceLinks = [
+    { id: 'project-initiation', label: 'Project initiation', sub: 'Scope and handover items' },
+    { id: 'resource', label: 'Resource plan', sub: 'People plan and assignments' },
+    { id: 'standards', label: 'Standards', sub: 'Reference documents and working norms' },
+  ];
+  return (
+    <div style={{ padding: '24px 28px' }}>
+      <div className="card card-p" style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Assigned project workspace</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.55, maxWidth: 740 }}>
+          You can access operational project information for your assigned work. Financial values, EAC, ETC, project worth and charts are restricted for this role.
+        </div>
+      </div>
+
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 24 }}>
+        {[
+          { label: 'Project ID', value: p.id, sub: p.sapId || p.wbs || '-' },
+          { label: 'Customer', value: p.customer || '-', sub: p.department || '-' },
+          { label: 'Project Manager', value: p.pm || '-', sub: 'Delivery owner' },
+          { label: 'Project Director', value: p.pd || '-', sub: 'Governance owner' },
+        ].map(k => (
+          <div key={k.label} className="kpi-tile">
+            <div className="kpi-label">{k.label}</div>
+            <div className="kpi-value" style={{ fontSize: 16, color: 'var(--text)' }}>{k.value}</div>
+            <div className="kpi-sub">{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid-3">
+        {workspaceLinks.map(link => (
+          <button key={link.id} type="button" className="card card-p" style={{ textAlign: 'left', cursor: 'pointer' }}
+            onClick={() => navigate(link.id, p.id)}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>{link.label}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{link.sub}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TabOverview({ p, navigate }) {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
@@ -891,62 +1019,6 @@ function TabCost({ p }) {
 
   return (
     <div style={{ padding: '24px 28px' }}>
-      {/* Forecast summary KPIs */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
-        <div className="kpi-tile">
-          <div className="kpi-label"><Tip text="Total Estimate to Complete — the remaining cost you expect to spend across all categories to finish the project.">Total ETC (forecast)</Tip></div>
-          <div className="kpi-value" style={{ fontSize: 20, color: C.forecast }}>{fmtShort(totalEtc)}</div>
-          <div className="kpi-sub">Remaining cost to complete</div>
-        </div>
-        <div className="kpi-tile">
-          <div className="kpi-label"><Tip text="Estimate at Completion = Actual + Committed + ETC. The total projected final cost of the project.">Forecast EAC</Tip></div>
-          <div className="kpi-value" style={{ fontSize: 20, color: forecastEac > p.budget ? C.adverse : C.fav }}>
-            {fmtShort(forecastEac)}
-          </div>
-          <div className="kpi-sub">Actual + Committed + ETC</div>
-        </div>
-        <div className="kpi-tile">
-          {(() => {
-            const cv = p.contractValue || 0;
-            const fgp = cv > 0 ? ((cv - forecastEac) / cv) * 100 : null;
-            const bgp = cv > 0 ? ((cv - p.budget)    / cv) * 100 : null;
-            const col = fgp == null ? C.neutral
-              : fgp >= (bgp ?? 0) * 0.95 ? C.fav
-              : fgp >= (bgp ?? 0) * 0.85 ? C.attn
-              : C.adverse;
-            return (
-              <>
-                <div className="kpi-label"><Tip text="Forecast Gross Profit % = (Contract Value − Forecast EAC) ÷ Contract Value. Projected margin at completion, compared to the budgeted margin.">Forecast GP%</Tip></div>
-                <div className="kpi-value" style={{ fontSize: 20, color: col }}>
-                  {fgp != null ? fgp.toFixed(1) + '%' : '—'}
-                </div>
-                <div className="kpi-sub">
-                  {bgp != null ? `Budget: ${bgp.toFixed(1)}%` : 'No contract value'}
-                </div>
-              </>
-            );
-          })()}
-        </div>
-        <div className="kpi-tile">
-          {(() => {
-            const varAmt = p.budget - forecastEac;
-            const varPct = p.budget > 0 ? (varAmt / p.budget) * 100 : 0;
-            const col = varAmt >= 0 ? C.fav : Math.abs(varPct) > 5 ? C.adverse : C.attn;
-            return (
-              <>
-                <div className="kpi-label"><Tip text="Budget − Forecast EAC. Positive (green) means the project is expected to finish under budget; negative (red) signals a projected overrun.">Budget Variance</Tip></div>
-                <div className="kpi-value" style={{ fontSize: 20, color: col }}>
-                  {varAmt >= 0 ? '+' : ''}{fmtShort(varAmt)}
-                </div>
-                <div className="kpi-sub">
-                  {varAmt >= 0 ? 'Under budget' : 'Over budget'} · {varPct >= 0 ? '+' : ''}{varPct.toFixed(1)}%
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      </div>
-
       <div className="proj-2col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
 
         {/* Visualisation 1: Budget Utilisation per category */}
@@ -1167,6 +1239,8 @@ export default function Project({ projectId, navigate, role, session }) {
 
   const cats = buildCategories(p.subjobs);
   const gp   = buildGpSeries(p);
+  const showFinancials = canViewProjectFinancials(role) && !p.financialsRestricted;
+  const canManageProjectTeam = ['Admin', 'Leader', 'Project Manager', 'Technical Director', 'Technical Manager'].includes(role);
   function applyPmUpdate(updated) {
     const ids = Array.isArray(updated?.pm_user_ids)
       ? updated.pm_user_ids.map(v => Number(v)).filter(Number.isInteger)
@@ -1183,12 +1257,30 @@ export default function Project({ projectId, navigate, role, session }) {
       pmUserId: updated?.pm_user_id ?? null,
     });
   }
+  function applyTeamUpdate(updated) {
+    const ids = Array.isArray(updated?.assigned_user_ids)
+      ? updated.assigned_user_ids.map(v => Number(v)).filter(Number.isInteger)
+      : [];
+    const names = String(updated?.assigned_names || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    updateProject({
+      assignedUserIds: ids,
+      assignedNames: names,
+      assignedRoles: updated?.assigned_roles || '',
+      assignedCount: Number(updated?.assigned_count) || ids.length,
+    });
+  }
 
-  const tabs = [
-    { id: 'overview',  label: 'Overview'       },
-    { id: 'revcash',   label: 'Revenue & Cash'  },
-    { id: 'cost',      label: 'Cost/Forecast'   },
-  ];
+  const tabs = showFinancials
+    ? [
+      { id: 'overview',  label: 'Overview'       },
+      { id: 'revcash',   label: 'Revenue & Cash'  },
+      { id: 'cost',      label: 'Cost/Forecast'   },
+    ]
+    : [{ id: 'overview', label: 'Workspace' }];
+  const activeTab = showFinancials ? tab : 'overview';
 
   return (
     <div className="screen" style={{ padding: 0 }}>
@@ -1210,30 +1302,33 @@ export default function Project({ projectId, navigate, role, session }) {
             </div>
           </div>
           <div className="proj-badges">
-            <HealthBadge status={liveHealth(p)} />
-            <PmAssignmentControl project={p} users={users} session={session} onSaved={applyPmUpdate} />
+            {showFinancials && <HealthBadge status={liveHealth(p)} />}
+            {showFinancials && <PmAssignmentControl project={p} users={users} session={session} onSaved={applyPmUpdate} />}
+            {canManageProjectTeam && (
+              <ProjectTeamAssignmentControl project={p} users={users} session={session} onSaved={applyTeamUpdate} />
+            )}
           </div>
         </div>
 
         {/* Reporting context */}
         <div className="proj-context">
           <span className="proj-context-item"><Icon name="calendar" size={13} /> As at: <strong>{fmtAsAt()}</strong></span>
-          <span className="proj-context-item"><Icon name="currency" size={13} /> SGD</span>
+          {showFinancials && <span className="proj-context-item"><Icon name="currency" size={13} /> SGD</span>}
           <span className="proj-context-item data-freshness"><Icon name="dot" size={10} /> SAP sync: {fmtSapSync(p.lastSapImport)}</span>
-          <span className="proj-context-item">
+          {showFinancials ? <span className="proj-context-item">
             GP: <strong style={{ color: gp.gpStatus === 'ok' ? C.fav : gp.gpStatus === 'warn' ? C.attn : C.adverse }}>
               {gp.forecastGp}%
             </strong>
             <span style={{ color: 'var(--text-3)', marginLeft: 4 }}>
               (budget: {gp.budgetGp}%, var: {Number(gp.variance) >= 0 ? '+' : ''}{gp.variance}pp)
             </span>
-          </span>
+          </span> : <span className="proj-context-item">Financial reporting restricted</span>}
         </div>
 
         {/* Tab navigation (PRD §5.1) */}
         <div className="tab-bar">
           {tabs.map(t => (
-            <button key={t.id} className={`tab-btn ${tab === t.id ? 'active' : ''}`}
+            <button key={t.id} className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
               onClick={() => setTab(t.id)}>
               {t.label}
             </button>
@@ -1243,9 +1338,11 @@ export default function Project({ projectId, navigate, role, session }) {
 
       {/* Tab content */}
       <div style={{ overflowY: 'auto', flex: 1 }}>
-        {tab === 'overview'   && <TabOverview   p={p} navigate={navigate} />}
-        {tab === 'revcash'    && <TabRevenueCash p={p} />}
-        {tab === 'cost'       && <TabCost        p={p} />}
+        {activeTab === 'overview' && (showFinancials
+          ? <TabOverview p={p} navigate={navigate} />
+          : <RestrictedProjectOverview p={p} navigate={navigate} />)}
+        {showFinancials && activeTab === 'revcash' && <TabRevenueCash p={p} />}
+        {showFinancials && activeTab === 'cost' && <TabCost p={p} />}
       </div>
     </div>
   );

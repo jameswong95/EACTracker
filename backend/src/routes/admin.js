@@ -43,6 +43,7 @@ const WIPE_TABLES = [
   'risks',
   'milestones',
   'sub_jobs',
+  'project_user_assignments',
   'project_pm_assignments',
   'projects',
   'audit_log',

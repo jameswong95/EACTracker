@@ -13,7 +13,7 @@ r.get('/', ah(async (req, res) => {
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const limit = Math.min(Number(req.query.limit) || 200, 1000);
   const result = await query(`
-    SELECT a.*, u.full_name AS user_name
+    SELECT a.*, u.full_name AS user_name, u.role AS user_role
     FROM audit_log a
     LEFT JOIN users u ON u.id = a.user_id
     ${where}

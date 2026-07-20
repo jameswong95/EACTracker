@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { useRates, useProjects, useFixedRates, useFxRates, fmt, compareSapId, formatSapId } from '../data/store.js';
 import { api } from '../data/api.js';
+import { spreadsheetFileError } from '../data/files.js';
 import Icon from '../components/Icon.jsx';
 import Select from '../components/Select.jsx';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
 
 const WBS_TREE = [
   {
@@ -69,11 +72,98 @@ export default function Standards({ navigate, role }) {
   );
 }
 
+function templateDateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function downloadTemplateWorkbook({ filename, sheetName, headers, rows }) {
+  const blankRow = Object.fromEntries(headers.map((header) => [header, '']));
+  const data = rows.length ? rows : [blankRow];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data, { header: headers });
+  XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' });
+  ws['!cols'] = headers.map((header) => ({ wch: Math.max(14, header.length + 4) }));
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
+}
+
+function RateImportButton({ endpoint, label = 'Import', disabled = false, template, onImported, onError }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState(null);
+
+  function handleTemplateDownload() {
+    if (!template) return;
+    downloadTemplateWorkbook({
+      ...template,
+      rows: typeof template.rows === 'function' ? template.rows() : template.rows,
+    });
+  }
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSummary(null);
+    const fileError = spreadsheetFileError(file, { label, extensions: ['xlsx', 'xls', 'csv'] });
+    if (fileError) {
+      onError?.(fileError);
+      return;
+    }
+    const fd = new FormData();
+    fd.append('file', file);
+    setBusy(true);
+    try {
+      const result = await api.upload(endpoint, fd);
+      setSummary(result);
+      onError?.(null);
+      await onImported?.(result);
+    } catch (err) {
+      onError?.(err.message || 'Import failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rate-import-actions">
+      <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFile} />
+      {template && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={handleTemplateDownload}
+          title="Download XLSX template filled with current rates"
+        >
+          <Icon name="download" size={13} />
+          Download template
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        disabled={disabled || busy}
+        onClick={() => inputRef.current?.click()}
+        title="Import XLSX, XLS or CSV"
+      >
+        <Icon name="upload" size={13} />
+        {busy ? 'Importing...' : label}
+      </button>
+      {summary && (
+        <span className="rate-import-feedback">
+          {summary.total} row{summary.total === 1 ? '' : 's'} - {summary.created} created, {summary.updated} updated
+        </span>
+      )}
+    </div>
+  );
+}
+
 function RateTab({ editable = false }) {
   const RATES = useRates();
   const [rows, setRows] = useState([]);
   const [adding, setAdding] = useState({ grade: '', title: '', daily_rate: '', monthly_rate: '' });
   const [err, setErr] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => { setRows(RATES); }, [RATES]);
 
@@ -110,7 +200,7 @@ function RateTab({ editable = false }) {
   }
 
   async function removeGrade(grade) {
-    try { await api.del(`/api/resources/grades/${grade}`); setErr(null); reload(); }
+    try { await api.del(`/api/resources/grades/${grade}`); setDeleteTarget(null); setErr(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
 
@@ -133,7 +223,25 @@ function RateTab({ editable = false }) {
             </div>
           </div>
           <div className="grow" />
-          <span className="badge badge-accent" style={{ alignSelf: 'flex-start' }}>{editable ? 'Finance-owned · editable' : 'Finance-owned · read-only'}</span>
+          {editable && (
+            <RateImportButton
+              endpoint="/api/resources/grades/import"
+              label="Import rates"
+              template={{
+                filename: `pfms-blended-rate-card-template-${templateDateStamp()}.xlsx`,
+                sheetName: 'Blended Rates',
+                headers: ['Grade', 'Band / Role', 'Daily Rate', 'Monthly Rate'],
+                rows: () => rows.map((r) => ({
+                  Grade: r.grade || '',
+                  'Band / Role': r.title || '',
+                  'Daily Rate': Number(r.daily) || 0,
+                  'Monthly Rate': Number(r.monthly) || 0,
+                })),
+              }}
+              onImported={reload}
+              onError={setErr}
+            />
+          )}
         </div>
       </div>
 
@@ -187,7 +295,7 @@ function RateTab({ editable = false }) {
                   <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{[142, 198, 156, 88, 42][i] || '—'} plans</td>
                   {editable && (
                     <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => removeGrade(r.grade)} title="Delete unused grade">
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(r)} title="Delete unused grade">
                         <Icon name="x" size={13} />
                       </button>
                     </td>
@@ -234,6 +342,20 @@ function RateTab({ editable = false }) {
           </table>
         </div>
       </div>
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete grade?"
+          message="This removes the labour grade from the standard rate card."
+          itemLabel="Grade"
+          itemName={`${deleteTarget.grade} · ${deleteTarget.title}`}
+          itemMeta={`Daily ${fmt(deleteTarget.daily)} · Monthly ${fmt(deleteTarget.monthly)}`}
+          note="Only delete grades that are no longer used in active plans."
+          cancelLabel="Keep grade"
+          confirmLabel="Delete grade"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeGrade(deleteTarget.grade)}
+        />
+      )}
     </>
   );
 }
@@ -243,6 +365,7 @@ function FixedRatesTab() {
   const { rows, reload } = useFixedRates();
   const [adding, setAdding] = useState({ code: '', label: '', unit: 'each', rate: '' });
   const [err, setErr] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   async function patchRate(id, patch) {
     try { await api.patch(`/api/fixed-rates/${id}`, patch); setErr(null); reload(); }
     catch (e) { setErr(e.message || 'Update failed'); }
@@ -253,15 +376,38 @@ function FixedRatesTab() {
     catch (e) { setErr(e.message || 'Add failed'); }
   }
   async function removeRate(id) {
-    try { await api.del(`/api/fixed-rates/${id}`); reload(); }
+    try { await api.del(`/api/fixed-rates/${id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
   return (
     <>
       {err && <div className="alert alert-error" style={{ marginBottom: 12 }}><div className="alert-body">{err}</div><button className="alert-close" onClick={() => setErr(null)}>×</button></div>}
       <div className="card card-p mb-4">
-        <h4 style={{ marginBottom: 6 }}>Asset Rates</h4>
-        <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Standard asset and procurement reference rates. Purchase Register item descriptions are selected from this catalog.</div>
+        <div className="flex items-start gap-3 flex-wrap">
+          <div>
+            <h4 style={{ marginBottom: 6 }}>Asset Rates</h4>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Standard asset and procurement reference rates. Purchase Register item descriptions are selected from this catalog.</div>
+          </div>
+          <div className="grow" />
+          <RateImportButton
+            endpoint="/api/fixed-rates/import"
+            label="Import assets"
+            template={{
+              filename: `pfms-asset-rates-template-${templateDateStamp()}.xlsx`,
+              sheetName: 'Asset Rates',
+              headers: ['Code', 'Description', 'Unit', 'Rate (SGD)', 'Notes'],
+              rows: () => rows.map((r) => ({
+                Code: r.code || '',
+                Description: r.label || '',
+                Unit: r.unit || '',
+                'Rate (SGD)': Number(r.rate) || 0,
+                Notes: r.notes || '',
+              })),
+            }}
+            onImported={reload}
+            onError={setErr}
+          />
+        </div>
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -278,7 +424,7 @@ function FixedRatesTab() {
                   <td><input className="input" defaultValue={r.unit} onBlur={e => e.target.value !== r.unit && patchRate(r.id, { unit: e.target.value })} style={{ maxWidth: 80 }} /></td>
                   <td className="num"><input className="input num" type="number" defaultValue={Number(r.rate)} onBlur={e => Number(e.target.value) !== Number(r.rate) && patchRate(r.id, { rate: Number(e.target.value) || 0 })} style={{ maxWidth: 120, textAlign: 'right' }} /></td>
                   <td><input className="input" defaultValue={r.notes || ''} onBlur={e => e.target.value !== (r.notes || '') && patchRate(r.id, { notes: e.target.value })} /></td>
-                  <td><button className="btn btn-ghost btn-sm" onClick={() => removeRate(r.id)} title="Delete"><Icon name="x" size={13} /></button></td>
+                  <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(r)} title="Delete"><Icon name="x" size={13} /></button></td>
                 </tr>
               ))}
               <tr>
@@ -293,6 +439,20 @@ function FixedRatesTab() {
           </table>
         </div>
       </div>
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete asset rate?"
+          message="This removes the standard asset/procurement reference rate."
+          itemLabel="Asset rate"
+          itemName={deleteTarget.label}
+          itemMeta={[deleteTarget.code, deleteTarget.unit, fmt(deleteTarget.rate)].filter(Boolean).join(' · ')}
+          note="Existing material lines keep their saved values, but this option will no longer appear for new selections."
+          cancelLabel="Keep rate"
+          confirmLabel="Delete rate"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeRate(deleteTarget.id)}
+        />
+      )}
     </>
   );
 }
@@ -303,6 +463,7 @@ function FadTab({ editable = false }) {
   const { rows, settlement, reload } = useFxRates();
   const [adding, setAdding] = useState({ currency: '', rate_to_sgd: '', notes: '' });
   const [err, setErr] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const settled = !!settlement.settled_at;
   const canEdit = editable && !settled;
 
@@ -317,7 +478,7 @@ function FadTab({ editable = false }) {
     catch (e) { setErr(e.message || 'Add failed'); }
   }
   async function removeRate(id) {
-    try { await api.del(`/api/fx-rates/${id}`); reload(); }
+    try { await api.del(`/api/fx-rates/${id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
   async function toggleSettle() {
@@ -335,7 +496,7 @@ function FadTab({ editable = false }) {
         </div>
         <div className="grow" />
         {settled && (
-          <span className="badge badge-ok" style={{ alignSelf: 'flex-start' }}>
+          <span className="badge badge-ok">
             Settled by Finance{settlement.settled_at ? ` · ${String(settlement.settled_at).slice(0, 10)}` : ''}
           </span>
         )}
@@ -343,6 +504,25 @@ function FadTab({ editable = false }) {
           <button className={`btn btn-sm ${settled ? 'btn-ghost' : 'btn-primary'}`} onClick={toggleSettle}>
             {settled ? 'Unsettle FAD' : 'Settle FAD'}
           </button>
+        )}
+        {editable && (
+          <RateImportButton
+            endpoint="/api/fx-rates/import"
+            label="Import FAD"
+            disabled={settled}
+            template={{
+              filename: `pfms-fad-rates-template-${templateDateStamp()}.xlsx`,
+              sheetName: 'FAD Rates',
+              headers: ['Currency', 'Rate to SGD', 'Notes'],
+              rows: () => rows.map((r) => ({
+                Currency: r.currency || '',
+                'Rate to SGD': Number(r.rate_to_sgd) || 0,
+                Notes: r.notes || '',
+              })),
+            }}
+            onImported={reload}
+            onError={setErr}
+          />
         )}
       </div>
       {settled && editable && (
@@ -371,7 +551,7 @@ function FadTab({ editable = false }) {
                       <input className="input" defaultValue={r.notes || ''} onBlur={e => e.target.value !== (r.notes || '') && patchRate(r.id, { notes: e.target.value })} />
                     ) : (r.notes || '—')}
                   </td>
-                  {canEdit && <td>{r.currency !== 'SGD' && <button className="btn btn-ghost btn-sm" onClick={() => removeRate(r.id)} title="Delete"><Icon name="x" size={13} /></button>}</td>}
+                  {canEdit && <td>{r.currency !== 'SGD' && <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(r)} title="Delete"><Icon name="x" size={13} /></button>}</td>}
                 </tr>
               ))}
               {canEdit && (
@@ -386,6 +566,20 @@ function FadTab({ editable = false }) {
           </table>
         </div>
       </div>
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete FX rate?"
+          message="This removes the currency conversion rate from FAD."
+          itemLabel="Currency"
+          itemName={deleteTarget.currency}
+          itemMeta={`1 ${deleteTarget.currency} = ${Number(deleteTarget.rate_to_sgd).toFixed(4)} SGD`}
+          note="This currency will no longer be available for tender and prelim cost conversion."
+          cancelLabel="Keep rate"
+          confirmLabel="Delete rate"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeRate(deleteTarget.id)}
+        />
+      )}
     </>
   );
 }

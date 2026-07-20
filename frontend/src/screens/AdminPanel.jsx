@@ -1,22 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useResourcePool, useRates, useAudit } from '../data/store.js';
 import { api } from '../data/api.js';
 import Select from '../components/Select.jsx';
-
-const ALL_SCREENS = [
-  { id: 'dashboard',    label: 'Dashboard' },
-  { id: 'portfolio',    label: 'Portfolio' },
-  { id: 'project',      label: 'Project' },
-  { id: 'resource',     label: 'Resource Plan' },
-  { id: 'revrec',       label: 'Rev. Rec.' },
-  { id: 'sap-import',   label: 'SAP Import' },
-  { id: 'standards',    label: 'Standards' },
-  { id: 'assists',      label: 'AI Assist' },
-  { id: 'pd-approvals', label: 'PD Approvals' },
-];
-
-const ROLE_LABELS = ['Project Manager', 'Project Director', 'Finance', 'Leader'];
-const USER_ROLES = ['Project Manager', 'Project Director', 'Finance', 'Leader', 'Admin'];
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
+import {
+  APP_MODULES,
+  APP_ROLES,
+  DEFAULT_ROLE_BADGE,
+  PERMISSION_ACTIONS,
+  PERMISSION_ROLES,
+  ROLE_BADGE,
+} from '../config/permissions.js';
 
 function gradeColor(g) {
   if (g === 'E5') return 'var(--bad)';
@@ -30,61 +24,6 @@ function gradeBg(g) {
   if (g === 'E4') return 'var(--warn-bg)';
   if (g === 'E3') return 'rgba(99,102,241,0.12)';
   return 'var(--surface-3)';
-}
-
-/* Reusable custom dropdown to avoid native <select> */
-function FilterSelect({ value, onChange, options }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef();
-  useEffect(() => {
-    function h(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-  const label = options.find(o => o.value === value)?.label ?? 'All roles';
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          padding: '7px 28px 7px 10px', borderRadius: 6,
-          border: '1px solid var(--border)', background: 'var(--surface-2)',
-          color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
-          cursor: 'pointer', position: 'relative', whiteSpace: 'nowrap',
-        }}
-      >
-        {label}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"
-          style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>
-          <path d="M2 3.5l3 3 3-3" />
-        </svg>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 3px)', left: 0, zIndex: 999,
-          minWidth: '100%', background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.14)', overflow: 'hidden',
-        }}>
-          {options.map(o => (
-            <div
-              key={o.value}
-              onClick={() => { onChange(o.value); setOpen(false); }}
-              style={{
-                padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                color: o.value === value ? 'var(--accent)' : 'var(--text)',
-                background: o.value === value ? 'var(--surface-2)' : 'transparent',
-                fontWeight: o.value === value ? 600 : 400,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = o.value === value ? 'var(--surface-2)' : 'transparent'; }}
-            >
-              {o.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function ResourcePoolTab() {
@@ -262,69 +201,225 @@ function ResourcePoolTab() {
   );
 }
 
-function PermissionsTab({ roleAllowed, setRoleAllowed }) {
-  function toggle(role, screenId) {
-    setRoleAllowed(prev => {
-      const cur = prev[role] || [];
-      const next = cur.includes(screenId)
-        ? cur.filter(s => s !== screenId)
-        : [...cur, screenId];
-      return { ...prev, [role]: next };
+function PermissionsTab({ roleCrud, setRoleCrud }) {
+  const [selectedRole, setSelectedRole] = useState(PERMISSION_ROLES[0] || 'Project Manager');
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [q, setQ] = useState('');
+  const groups = ['all', ...Array.from(new Set(APP_MODULES.map(module => module.group)))];
+
+  function toggle(role, moduleId, action) {
+    setRoleCrud(prev => {
+      const current = Boolean(prev?.[role]?.[moduleId]?.[action]);
+      const nextModule = {
+        ...(prev?.[role]?.[moduleId] || {}),
+        [action]: !current,
+      };
+      if (action === 'read' && current) {
+        nextModule.create = false;
+        nextModule.update = false;
+        nextModule.delete = false;
+      }
+      if (action !== 'read' && !current) {
+        nextModule.read = true;
+      }
+      return {
+        ...prev,
+        [role]: {
+          ...(prev?.[role] || {}),
+          [moduleId]: nextModule,
+        },
+      };
     });
   }
 
+  function applyPreset(mode) {
+    setRoleCrud(prev => {
+      const nextRole = { ...(prev?.[selectedRole] || {}) };
+      for (const module of APP_MODULES) {
+        const current = { ...(nextRole[module.id] || {}) };
+        if (mode === 'none') {
+          nextRole[module.id] = { create: false, read: false, update: false, delete: false };
+        } else if (mode === 'view') {
+          nextRole[module.id] = { ...current, create: false, read: true, update: false, delete: false };
+        } else if (mode === 'write') {
+          nextRole[module.id] = { create: true, read: true, update: true, delete: false };
+        } else if (mode === 'full') {
+          nextRole[module.id] = { create: true, read: true, update: true, delete: true };
+        }
+      }
+      return { ...prev, [selectedRole]: nextRole };
+    });
+  }
+
+  const roleModules = roleCrud?.[selectedRole] || {};
+  const counts = APP_MODULES.reduce((acc, module) => {
+    const perms = roleModules[module.id] || {};
+    if (perms.read) acc.visible += 1;
+    if (perms.create || perms.update) acc.write += 1;
+    if (perms.delete) acc.delete += 1;
+    return acc;
+  }, { visible: 0, write: 0, delete: 0 });
+  const roleBadge = ROLE_BADGE[selectedRole] || DEFAULT_ROLE_BADGE;
+  const filteredModules = APP_MODULES.filter(module => {
+    if (groupFilter !== 'all' && module.group !== groupFilter) return false;
+    if (!q.trim()) return true;
+    const hay = `${module.label} ${module.group} ${module.id}`.toLowerCase();
+    return hay.includes(q.trim().toLowerCase());
+  });
+  const groupedModules = groups
+    .filter(group => group !== 'all')
+    .map(group => [group, filteredModules.filter(module => module.group === group)])
+    .filter(([, modules]) => modules.length);
+
   return (
-    <div>
-      <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 0, marginBottom: 16 }}>
-        Changes take effect immediately. Admin always has full access.
-      </p>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
-          <thead>
-            <tr style={{ background: 'var(--surface-2)' }}>
-              <th style={{
-                padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)',
-                fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
-                borderBottom: '1px solid var(--border)', width: 160,
-              }}>Screen</th>
-              {ROLE_LABELS.map(r => (
-                <th key={r} style={{
-                  padding: '8px 14px', textAlign: 'center', fontWeight: 700,
-                  color: 'var(--text)', fontSize: 12,
-                  borderBottom: '1px solid var(--border)', width: 80,
-                }}>{r}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {ALL_SCREENS.map((s, i) => (
-              <tr key={s.id} style={{
-                borderBottom: i < ALL_SCREENS.length - 1 ? '1px solid var(--border)' : 'none',
-                background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)',
-              }}>
-                <td style={{ padding: '9px 14px', fontWeight: 500, color: 'var(--text)' }}>
-                  {s.label}
-                </td>
-                {ROLE_LABELS.map(r => {
-                  const checked = (roleAllowed[r] || []).includes(s.id);
-                  return (
-                    <td key={r} style={{ padding: '9px 14px', textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggle(r, s.id)}
-                        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="permissions-workspace">
+      <div className="permissions-hero">
+        <div>
+          <div className="permissions-eyebrow">Role permission matrix</div>
+          <h3>Configure one role at a time</h3>
+          <p>
+            Changes take effect immediately. Admin remains locked with full access.
+            Read controls visibility; create, update and delete control write actions.
+          </p>
+        </div>
+        <div className="permission-role-picker">
+          <label>Role</label>
+          <Select
+            value={selectedRole}
+            options={PERMISSION_ROLES.map(role => ({ value: role, label: role }))}
+            onChange={setSelectedRole}
+          />
+        </div>
+      </div>
+
+      <div className="permission-summary-grid">
+        <div className="permission-summary-card role">
+          <span>Selected role</span>
+          <strong style={{ color: roleBadge.color }}>{selectedRole}</strong>
+        </div>
+        <div className="permission-summary-card">
+          <span>Visible modules</span>
+          <strong>{counts.visible} / {APP_MODULES.length}</strong>
+        </div>
+        <div className="permission-summary-card">
+          <span>Create or update</span>
+          <strong>{counts.write}</strong>
+        </div>
+        <div className="permission-summary-card">
+          <span>Delete enabled</span>
+          <strong>{counts.delete}</strong>
+        </div>
+      </div>
+
+      <div className="permission-toolbar">
+        <input
+          className="input"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search module..."
+        />
+        <Select
+          value={groupFilter}
+          options={groups.map(group => ({ value: group, label: group === 'all' ? 'All module groups' : group }))}
+          onChange={setGroupFilter}
+        />
+        <div className="permission-presets">
+          <button className="btn btn-ghost btn-sm" onClick={() => applyPreset('view')}>View all</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => applyPreset('write')}>Edit all</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => applyPreset('full')}>Full CRUD</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => applyPreset('none')}>Clear</button>
+        </div>
+      </div>
+
+      <div className="permission-legend">
+        {PERMISSION_ACTIONS.map(action => (
+          <span key={action.id}><strong>{action.label}</strong> {action.id}</span>
+        ))}
+      </div>
+
+      <div className="permission-module-sections">
+        {groupedModules.map(([group, modules]) => (
+          <section key={group} className="permission-module-section">
+            <div className="permission-section-header">
+              <h4>{group}</h4>
+              <span>{modules.length} module{modules.length === 1 ? '' : 's'}</span>
+            </div>
+            <div className="permission-card-grid">
+              {modules.map(module => {
+                const perms = roleModules[module.id] || {};
+                const readable = Boolean(perms.read);
+                return (
+                  <div key={module.id} className={`permission-card${readable ? ' active' : ''}`}>
+                    <div className="permission-card-main">
+                      <div>
+                        <h5>{module.label}</h5>
+                        <span>{module.id}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className={`permission-access-switch${readable ? ' active' : ''}`}
+                        onClick={() => toggle(selectedRole, module.id, 'read')}
+                        aria-pressed={readable}
+                      >
+                        {readable ? 'Visible' : 'Hidden'}
+                      </button>
+                    </div>
+                    <div className="permission-card-actions" aria-label={`${selectedRole} permissions for ${module.label}`}>
+                      {PERMISSION_ACTIONS.map(action => {
+                        const checked = Boolean(perms[action.id]);
+                        return (
+                          <button
+                            key={action.id}
+                            type="button"
+                            className={`crud-toggle${checked ? ' active' : ''}`}
+                            title={`${action.id} ${module.label}`}
+                            onClick={() => toggle(selectedRole, module.id, action.id)}
+                          >
+                            <span>{action.label}</span>
+                            <small>{action.id}</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {filteredModules.length === 0 && (
+          <div className="permission-empty">No modules match the current filter.</div>
+        )}
       </div>
     </div>
   );
+}
+
+function auditRoleOptions(entries) {
+  const seen = new Set(APP_ROLES);
+  const extras = entries
+    .map(entry => entry.role)
+    .filter(Boolean)
+    .filter(role => {
+      if (seen.has(role)) return false;
+      seen.add(role);
+      return true;
+    });
+  return [
+    { value: '', label: 'All roles' },
+    ...APP_ROLES.map(role => ({ value: role, label: role })),
+    ...extras.map(role => ({ value: role, label: role })),
+  ];
+}
+
+function auditActionLabel(action) {
+  return String(action || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function auditEntityLabel(entry) {
+  return [entry.entityType, entry.entityId].filter(Boolean).join(' · ') || 'System event';
 }
 
 function AuditTab() {
@@ -332,74 +427,88 @@ function AuditTab() {
   const [q, setQ] = useState('');
   const [roleF, setRoleF] = useState('');
 
-  const roleOptions = [
-    { value: '', label: 'All roles' },
-    ...Array.from(new Set(auditEntries.map(e => e.role))).map(r => ({ value: r, label: r })),
-  ];
+  const roleOptions = auditRoleOptions(auditEntries);
+  const actionCount = new Set(auditEntries.map(e => e.action)).size;
+  const userCount = new Set(auditEntries.map(e => e.user).filter(Boolean)).size;
 
   const shown = auditEntries.filter(e =>
     (!q ||
-      e.action.toLowerCase().includes(q.toLowerCase()) ||
-      e.detail.toLowerCase().includes(q.toLowerCase()) ||
-      e.user.toLowerCase().includes(q.toLowerCase())) &&
+      String(e.action || '').toLowerCase().includes(q.toLowerCase()) ||
+      String(e.detail || '').toLowerCase().includes(q.toLowerCase()) ||
+      String(e.entityId || '').toLowerCase().includes(q.toLowerCase()) ||
+      String(e.user || '').toLowerCase().includes(q.toLowerCase())) &&
     (!roleF || e.role === roleF)
   );
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Search action, user or detail..."
-          style={{
-            flex: 1, minWidth: 180, padding: '7px 12px', borderRadius: 6,
-            border: '1px solid var(--border)', background: 'var(--surface-2)',
-            color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', outline: 'none',
-          }}
-        />
-        <FilterSelect value={roleF} onChange={setRoleF} options={roleOptions} />
-        <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-          {shown.length} entries
-        </span>
+    <div className="audit-trail">
+      <div className="audit-summary-grid">
+        <div className="audit-summary-card">
+          <span>Total events</span>
+          <strong>{auditEntries.length}</strong>
+        </div>
+        <div className="audit-summary-card">
+          <span>Showing</span>
+          <strong>{shown.length}</strong>
+        </div>
+        <div className="audit-summary-card">
+          <span>Users</span>
+          <strong>{userCount}</strong>
+        </div>
+        <div className="audit-summary-card">
+          <span>Action types</span>
+          <strong>{actionCount}</strong>
+        </div>
       </div>
+
+      <div className="audit-toolbar">
+        <input
+          className="input audit-search"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search action, user, entity or detail..."
+        />
+        <Select value={roleF} onChange={setRoleF} options={roleOptions} style={{ width: 220 }} />
+      </div>
+
       {shown.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-3)', fontSize: 13 }}>
+        <div className="audit-empty">
           {auditEntries.length === 0 ? 'No audit entries yet — actions will appear here as users work.' : 'No entries match the filter.'}
         </div>
       ) : (
-        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div className="audit-table-card">
+          <table className="audit-table">
             <thead>
-              <tr style={{ background: 'var(--surface-2)' }}>
-                {['Time', 'User', 'Role', 'Action', 'Detail'].map(h => (
-                  <th key={h} style={{
-                    padding: '8px 12px', textAlign: 'left', fontWeight: 600,
-                    color: 'var(--text-2)', fontSize: 11, textTransform: 'uppercase',
-                    letterSpacing: '0.06em', borderBottom: '1px solid var(--border)',
-                  }}>{h}</th>
-                ))}
+              <tr>
+                <th>Time</th>
+                <th>User</th>
+                <th>Role</th>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>Detail</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((e, i) => (
-                <tr key={e.id} style={{
-                  borderBottom: i < shown.length - 1 ? '1px solid var(--border)' : 'none',
-                  background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)',
-                }}>
-                  <td style={{ padding: '8px 12px', color: 'var(--text-3)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>
-                    {e.ts}
+              {shown.map(e => {
+                const badge = ROLE_BADGE[e.role] || DEFAULT_ROLE_BADGE;
+                return (
+                <tr key={e.id}>
+                  <td className="audit-time">{e.ts}</td>
+                  <td>
+                    <div className="audit-user">{e.user}</div>
                   </td>
-                  <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text)' }}>{e.user}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    <span style={{
-                      padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-                      background: 'var(--surface-3)', color: 'var(--text-2)',
-                    }}>{e.role}</span>
+                  <td>
+                    <span className="audit-role-chip" style={{ color: badge.color, background: badge.bg }}>{e.role}</span>
                   </td>
-                  <td style={{ padding: '8px 12px', color: 'var(--text)' }}>{e.action}</td>
-                  <td style={{ padding: '8px 12px', color: 'var(--text-3)', fontSize: 12 }}>{e.detail}</td>
+                  <td>
+                    <span className="audit-action-chip">{auditActionLabel(e.action)}</span>
+                  </td>
+                  <td>
+                    <span className="audit-entity">{auditEntityLabel(e)}</span>
+                  </td>
+                  <td className="audit-detail">{e.detail || '-'}</td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
@@ -412,10 +521,12 @@ function UsersTab() {
   const emptyForm = { id: null, display_name: '', email: '', role: 'Project Manager', is_active: true };
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [editDraft, setEditDraft] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   async function loadUsers() {
     setLoading(true);
@@ -432,7 +543,7 @@ function UsersTab() {
   useEffect(() => { loadUsers(); }, []);
 
   function editUser(user) {
-    setForm({
+    setEditDraft({
       id: user.id,
       display_name: user.full_name,
       email: user.username,
@@ -449,21 +560,23 @@ function UsersTab() {
     setMessage('');
   }
 
+  function userPayload(source) {
+    return {
+      display_name: source.display_name.trim(),
+      email: source.email.trim().toLowerCase(),
+      role: source.role,
+      is_active: source.is_active,
+    };
+  }
+
   async function saveUser(e) {
     e.preventDefault();
     setSaving(true);
     setError('');
     setMessage('');
-    const payload = {
-      display_name: form.display_name.trim(),
-      email: form.email.trim().toLowerCase(),
-      role: form.role,
-      is_active: form.is_active,
-    };
+    const payload = userPayload(form);
     try {
-      const saved = form.id
-        ? await api.put(`/api/users/${form.id}`, payload)
-        : await api.post('/api/users', payload);
+      const saved = await api.post('/api/users', payload);
       setMessage(`${saved.full_name} saved`);
       setForm(emptyForm);
       await loadUsers();
@@ -474,26 +587,44 @@ function UsersTab() {
     }
   }
 
+  async function saveEdit(e) {
+    e.preventDefault();
+    if (!editDraft) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const saved = await api.put(`/api/users/${editDraft.id}`, userPayload(editDraft));
+      setMessage(`${saved.full_name} updated`);
+      setEditDraft(null);
+      await loadUsers();
+    } catch (e) {
+      setError(e.message || 'Unable to update user');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteUser(user) {
-    if (!window.confirm(`Delete ${user.full_name}? This will deactivate their PFMS access.`)) return;
     setSaving(true);
     setError('');
     setMessage('');
     try {
       await api.del(`/api/users/${user.id}`);
       setMessage(`${user.full_name} deleted`);
-      if (form.id === user.id) setForm(emptyForm);
+      if (editDraft?.id === user.id) setEditDraft(null);
       await loadUsers();
     } catch (e) {
       setError(e.message || 'Unable to delete user');
     } finally {
       setSaving(false);
+      setDeleteTarget(null);
     }
   }
 
   return (
     <div>
-      <form onSubmit={saveUser} style={{
+      <form className="user-add-form" onSubmit={saveUser} style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(170px, .8fr) auto',
         gap: 10,
@@ -524,13 +655,11 @@ function UsersTab() {
         </label>
         <label style={{ display: 'grid', gap: 6, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
           Role
-          <select
+          <Select
             value={form.role}
-            onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-            style={{ padding: '9px 11px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
-          >
-            {USER_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
-          </select>
+            options={APP_ROLES.map(role => ({ value: role, label: role }))}
+            onChange={value => setForm(f => ({ ...f, role: value }))}
+          />
         </label>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
@@ -543,9 +672,11 @@ function UsersTab() {
             Active
           </label>
           <button className="btn btn-primary" type="submit" disabled={saving}>
-            {saving ? 'Saving...' : form.id ? 'Update' : 'Add User'}
+            {saving ? 'Saving...' : 'Add User'}
           </button>
-          {form.id && <button className="btn btn-ghost" type="button" onClick={resetForm}>Cancel</button>}
+          {(form.display_name || form.email || form.role !== emptyForm.role || !form.is_active) && (
+            <button className="btn btn-ghost" type="button" onClick={resetForm}>Clear</button>
+          )}
         </div>
       </form>
 
@@ -597,7 +728,7 @@ function UsersTab() {
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => editUser(user)}>
                     Edit
                   </button>
-                  <button type="button" className="btn btn-danger btn-sm" disabled={saving} onClick={() => deleteUser(user)} style={{ marginLeft: 6 }}>
+                  <button type="button" className="btn btn-danger btn-sm" disabled={saving} onClick={() => setDeleteTarget(user)} style={{ marginLeft: 6 }}>
                     Delete
                   </button>
                 </td>
@@ -606,6 +737,82 @@ function UsersTab() {
           </tbody>
         </table>
       </div>
+      {editDraft && (
+        <div className="modal-overlay" role="presentation" onMouseDown={() => !saving && setEditDraft(null)}>
+          <form className="modal user-edit-modal" onSubmit={saveEdit} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="user-edit-title">Edit user</div>
+                <div className="user-edit-sub">{editDraft.display_name || editDraft.email}</div>
+              </div>
+            </div>
+            <div className="modal-body user-edit-body">
+              <label>
+                <span>Display name</span>
+                <input
+                  className="input"
+                  value={editDraft.display_name}
+                  onChange={e => setEditDraft(d => ({ ...d, display_name: e.target.value }))}
+                  required
+                  maxLength={160}
+                  autoFocus
+                />
+              </label>
+              <label>
+                <span>SSO email</span>
+                <input
+                  className="input"
+                  value={editDraft.email}
+                  onChange={e => setEditDraft(d => ({ ...d, email: e.target.value }))}
+                  required
+                  type="email"
+                  maxLength={254}
+                  placeholder="name@company.com"
+                />
+              </label>
+              <label>
+                <span>Role</span>
+                <Select
+                  value={editDraft.role}
+                  options={APP_ROLES.map(role => ({ value: role, label: role }))}
+                  onChange={value => setEditDraft(d => ({ ...d, role: value }))}
+                />
+              </label>
+              <label className="user-edit-active">
+                <input
+                  type="checkbox"
+                  checked={editDraft.is_active}
+                  onChange={e => setEditDraft(d => ({ ...d, is_active: e.target.checked }))}
+                />
+                Active user
+              </label>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => setEditDraft(null)} disabled={saving}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete user?"
+          message="This deactivates their PFMS access and removes them from the active user list."
+          itemLabel="User"
+          itemName={deleteTarget.full_name}
+          itemMeta={`${deleteTarget.username} · ${deleteTarget.role}`}
+          note="Existing audit history remains available for traceability."
+          cancelLabel="Keep user"
+          confirmLabel="Delete user"
+          busy={saving}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteUser(deleteTarget)}
+        />
+      )}
     </div>
   );
 }
@@ -615,6 +822,7 @@ function WipeDataTab() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const canSubmit = confirmation.trim() === 'delete' && !busy;
 
   async function wipeData() {
@@ -624,8 +832,6 @@ function WipeDataTab() {
       setError('Type delete to enable the wipe.');
       return;
     }
-    const ok = window.confirm('This will permanently wipe application data. This cannot be undone.');
-    if (!ok) return;
 
     setBusy(true);
     try {
@@ -638,6 +844,7 @@ function WipeDataTab() {
       setError(e.message || 'Unable to wipe data');
     } finally {
       setBusy(false);
+      setConfirmOpen(false);
     }
   }
 
@@ -691,7 +898,7 @@ function WipeDataTab() {
           type="button"
           className="btn btn-danger"
           disabled={!canSubmit}
-          onClick={wipeData}
+          onClick={() => setConfirmOpen(true)}
           style={{
             opacity: canSubmit ? 1 : 0.5,
             cursor: canSubmit ? 'pointer' : 'not-allowed',
@@ -728,6 +935,21 @@ function WipeDataTab() {
           Wipe complete. {result.wipedTableCount} tables were cleared.
         </div>
       )}
+      {confirmOpen && (
+        <DeleteConfirmModal
+          title="Wipe application data?"
+          message="This permanently clears application records and cannot be undone."
+          itemLabel="Confirmation"
+          itemName="delete"
+          itemMeta="Project, tender, import, cost, approval, revenue recognition, settings and audit data"
+          note="User accounts and the resource master are kept so Admin access is not lost."
+          cancelLabel="Cancel wipe"
+          confirmLabel="Wipe all data"
+          busy={busy}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={wipeData}
+        />
+      )}
     </div>
   );
 }
@@ -740,7 +962,7 @@ const TAB_META = {
   wipe:        { title: 'Data Wipe',     sub: 'Admin-only destructive data reset' },
 };
 
-export default function AdminPanel({ tab = 'pool', roleAllowed, setRoleAllowed }) {
+export default function AdminPanel({ tab = 'pool', roleAllowed, setRoleAllowed, roleCrud, setRoleCrud }) {
   const meta = TAB_META[tab] || TAB_META.pool;
   return (
     <div className="screen">
@@ -753,7 +975,7 @@ export default function AdminPanel({ tab = 'pool', roleAllowed, setRoleAllowed }
 
       {tab === 'users'       && <UsersTab />}
       {tab === 'pool'        && <ResourcePoolTab />}
-      {tab === 'permissions' && <PermissionsTab roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />}
+      {tab === 'permissions' && <PermissionsTab roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} roleCrud={roleCrud} setRoleCrud={setRoleCrud} />}
       {tab === 'audit'       && <AuditTab />}
       {tab === 'wipe'        && <WipeDataTab />}
     </div>

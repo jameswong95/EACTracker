@@ -1,12 +1,19 @@
 import { Router } from 'express';
-import { query } from '../db.js';
-import { ah, requireFields } from '../util.js';
+import { query, tx } from '../db.js';
+import { ah, logAudit, requireFields } from '../util.js';
+import { cleanText, parseSpreadsheetRows, spreadsheetNumber, spreadsheetUpload } from '../spreadsheetImport.js';
 
 // Global FAD / FX rates - organisation-wide foreign-exchange rates to SGD,
 // managed by Finance under Standards. rate_to_sgd = value in S$ of 1 unit of
 // the currency. SGD is the base (1.0). FAD is settled (locked) by Finance;
 // settlement state lives in app_settings (fad_settled_at / fad_settled_by).
 const r = Router();
+
+const FX_RATE_ALIASES = {
+  currency: ['currency', 'curr', 'ccy', 'currency code'],
+  rate_to_sgd: ['rate to sgd', 'rate to s$', 'rate_to_sgd', 'fad rate', 'fx rate', 'rate', 'sgd rate', 's$ rate'],
+  notes: ['notes', 'note', 'remarks', 'remark'],
+};
 
 async function settlement() {
   const rows = (await query(
@@ -42,6 +49,68 @@ r.post('/', ah(async (req, res) => {
     if (e && e.code === '23505') { e.status = 409; e.message = `Currency "${currency}" already exists`; }
     throw e;
   }
+}));
+
+r.post('/import', spreadsheetUpload.single('file'), ah(async (req, res) => {
+  const state = await settlement();
+  if (state.settled_at) {
+    return res.status(409).json({ error: 'FAD is settled - unsettle FAD before importing rates' });
+  }
+
+  const parsed = parseSpreadsheetRows(req.file, { aliases: FX_RATE_ALIASES });
+  const rows = [];
+  const errors = [];
+
+  for (const row of parsed.rows) {
+    const currency = String(cleanText(row.currency) || '').trim().toUpperCase();
+    const rate = spreadsheetNumber(row.rate_to_sgd);
+    const notes = cleanText(row.notes);
+    if (!/^[A-Z]{2,4}$/.test(currency)) errors.push(`row ${row._rowNumber}: currency must be a 2-4 letter code`);
+    if (rate == null || rate < 0) errors.push(`row ${row._rowNumber}: rate to SGD must be a non-negative number`);
+    if (/^[A-Z]{2,4}$/.test(currency) && rate != null && rate >= 0) rows.push({ currency, rate, notes });
+  }
+
+  if (errors.length) {
+    return res.status(400).json({
+      error: errors.slice(0, 8).join('; '),
+      errors: errors.slice(0, 25),
+    });
+  }
+  if (!rows.length) return res.status(400).json({ error: 'no valid FAD rate rows found' });
+
+  const summary = await tx(async (client) => {
+    let created = 0;
+    let updated = 0;
+    const samples = [];
+
+    for (const row of rows) {
+      const before = await client.query(`SELECT * FROM fx_rates WHERE currency = $1`, [row.currency]);
+      const result = await client.query(
+        `INSERT INTO fx_rates (currency, rate_to_sgd, notes)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (currency) DO UPDATE
+           SET rate_to_sgd = EXCLUDED.rate_to_sgd,
+               notes = EXCLUDED.notes,
+               updated_at = NOW()
+         RETURNING id, currency, rate_to_sgd, notes, updated_at`,
+        [row.currency, row.rate, row.notes],
+      );
+      before.rows[0] ? updated++ : created++;
+      samples.push(result.rows[0]);
+    }
+
+    await logAudit(client, {
+      entity_type: 'fx_rates',
+      entity_id: parsed.filename,
+      action: 'import',
+      new_value: JSON.stringify({ created, updated, total: rows.length }),
+      user_id: req.user?.id,
+    });
+
+    return { filename: parsed.filename, total: rows.length, created, updated, samples: samples.slice(0, 5) };
+  });
+
+  res.status(201).json(summary);
 }));
 
 // PATCH /api/fx-rates/:id  { rate_to_sgd, notes, currency }

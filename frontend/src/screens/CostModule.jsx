@@ -5,6 +5,7 @@ import { firstError, nonNegativeNumber, requiredText } from '../data/validation.
 import { CAT_COLORS } from '../components/Charts.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import Icon from '../components/Icon.jsx';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
 
 // Shared screen for the Material and Sub-Con modules. Each is a project-level
 // purchase register: description, estimated received date and amount. Everything
@@ -373,6 +374,7 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
       {deleteTarget && (
         <ConfirmDeleteModal
           target={deleteTarget}
+          moduleTitle={title}
           busy={busy}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={confirmDelete}
@@ -382,45 +384,21 @@ export default function CostModule({ module, title, etcKey, category, descPlaceh
   );
 }
 
-function ConfirmDeleteModal({ target, busy, onCancel, onConfirm }) {
+function ConfirmDeleteModal({ target, moduleTitle, busy, onCancel, onConfirm }) {
   const isSubItem = target.type === 'sub-item';
   return (
-    <div className="modal-overlay" role="presentation" onMouseDown={() => !busy && onCancel()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="cost-delete-title" onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h3 id="cost-delete-title" style={{ margin: 0 }}>
-              Delete {isSubItem ? 'sub-item' : 'line item'}?
-            </h3>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
-              This action cannot be undone.
-            </div>
-          </div>
-          <button className="btn btn-icon" onClick={onCancel} disabled={busy} aria-label="Close">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-        <div className="modal-body">
-          <div style={{
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            background: 'var(--surface-2)',
-            padding: 14,
-            fontSize: 13,
-            fontWeight: 750,
-            color: 'var(--text)',
-          }}>
-            {target.description || (isSubItem ? 'Sub-item' : 'Line item')}
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>
-          <button className="btn btn-danger btn-sm" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Deleting...' : `Delete ${isSubItem ? 'sub-item' : 'line item'}`}
-          </button>
-        </div>
-      </div>
-    </div>
+    <DeleteConfirmModal
+      title={`Delete ${isSubItem ? 'sub-item' : 'line item'}?`}
+      message={`This will remove the ${isSubItem ? 'sub-item' : 'line item'} from ${moduleTitle}.`}
+      itemLabel={isSubItem ? 'Sub-item' : 'Line item'}
+      itemName={target.description || (isSubItem ? 'Sub-item' : 'Line item')}
+      note={isSubItem ? 'The parent line item will remain.' : 'Any related sub-items under this line will be removed together.'}
+      cancelLabel={isSubItem ? 'Keep sub-item' : 'Keep line'}
+      confirmLabel={`Delete ${isSubItem ? 'sub-item' : 'line'}`}
+      busy={busy}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -429,9 +407,10 @@ function ConfirmDeleteModal({ target, busy, onCancel, onConfirm }) {
 function TimelineGrid({ items }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [expandedParents, setExpandedParents] = useState(() => new Set());
-  const firstColumnWidth = 320;
+  const firstColumnWidth = 300;
   const monthColumnWidth = 92;
-  const timelineMinWidth = firstColumnWidth + (MONTHS.length * monthColumnWidth);
+  const valueColumnWidth = 120;
+  const timelineMinWidth = firstColumnWidth + (MONTHS.length * monthColumnWidth) + valueColumnWidth;
 
   const timelineRows = items.flatMap(it => {
     const subItems = Array.isArray(it.sub_items) ? it.sub_items : [];
@@ -498,57 +477,66 @@ function TimelineGrid({ items }) {
   }
 
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <h4>Upcoming cost by month</h4>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-            Line items and sub-items are locked to the month of their estimated received date.
-            {unscheduledTotal > 0 && (
-              <span style={{ color: 'var(--warn)', fontWeight: 700 }}> · {fmt(unscheduledTotal)} unscheduled</span>
-            )}
+    <>
+      <div className="card card-p" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-3)', marginBottom: 6 }}>
+              Cost timeline
+            </div>
+            <div style={{ fontWeight: 750, fontSize: 17 }}>{year}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+              Values shown by estimated received date / sub-item month
+              {unscheduledTotal > 0 && (
+                <span style={{ color: 'var(--warn)', fontWeight: 700 }}> · {fmt(unscheduledTotal)} unscheduled</span>
+              )}
+            </div>
+          </div>
+          <div className="grow" />
+          <button className="btn btn-ghost btn-sm" onClick={() => setYear(y => y - 1)}>Previous</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setYear(new Date().getFullYear())}>Current</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setYear(y => y + 1)}>Next</button>
+          {parentIdsWithSubItems.length > 0 && (
+            <button
+              type="button"
+              className={`btn btn-ghost btn-sm cost-timeline-expand-all${allParentsExpanded ? ' is-open' : ''}`}
+              onClick={toggleAllParents}
+            >
+              <Icon name="chevronRight" size={13} />
+              {allParentsExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          )}
+          <div style={{ minWidth: 140, textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Year value</div>
+            <div className="num" style={{ fontWeight: 800, fontSize: 18 }}>{fmt(yearTotal)}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setYear(y => y - 1)}>‹</button>
-          <span style={{ fontWeight: 700, fontSize: 13, minWidth: 42, textAlign: 'center' }}>{year}</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => setYear(y => y + 1)}>›</button>
-        </div>
-        {parentIdsWithSubItems.length > 0 && (
-          <button
-            type="button"
-            className={`btn btn-ghost btn-sm cost-timeline-expand-all${allParentsExpanded ? ' is-open' : ''}`}
-            onClick={toggleAllParents}
-          >
-            <Icon name="chevronRight" size={13} />
-            {allParentsExpanded ? 'Collapse all' : 'Expand all'}
-          </button>
-        )}
-        <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>Year total {fmt(yearTotal)}</div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+
+      <div className="card" style={{ overflowX: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: timelineMinWidth, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: firstColumnWidth }} />
             {MONTHS.map(m => <col key={m} style={{ width: monthColumnWidth }} />)}
+            <col style={{ width: valueColumnWidth }} />
           </colgroup>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '8px 12px', position: 'sticky', left: 0, background: 'var(--surface)', width: firstColumnWidth }}>Line item</th>
-              {MONTHS.map(m => (
-                <th key={m} style={{ padding: '8px 4px', fontSize: 10.5, color: 'var(--text-3)', textAlign: 'center', width: monthColumnWidth }}>{m}</th>
-              ))}
+              <th>Line item</th>
+              {MONTHS.map(m => <th key={m} className="num">{m}</th>)}
+              <th className="num">Total</th>
             </tr>
           </thead>
           <tbody>
             {timelineRows.length === 0 && (
-              <tr><td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>No line items yet</td></tr>
+              <tr><td colSpan={MONTHS.length + 2} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 24 }}>No line items yet</td></tr>
             )}
             {visibleTimelineRows.map(row => {
               const isExpanded = row.kind === 'item' && expandedParents.has(row.itemId);
+              const rowTotal = MONTHS.reduce((sum, _, i) => sum + timelineValue(row, i + 1), 0);
               return (
               <tr key={row.id} className={row.kind === 'sub-item' ? 'cost-timeline-sub-row' : 'cost-timeline-item-row'}>
-                <td className="cost-timeline-label-cell" style={{ width: firstColumnWidth }}>
+                <td style={{ padding: '10px 12px' }}>
                   <div className={row.kind === 'sub-item' ? 'cost-timeline-label is-subitem' : 'cost-timeline-label'}>
                     {row.kind === 'sub-item' && <span className="cost-timeline-branch" />}
                     <div className="cost-timeline-label-main">
@@ -592,32 +580,31 @@ function TimelineGrid({ items }) {
                   const month = i + 1;
                   const val = timelineValue(row, month);
                   return (
-                    <td key={m} style={{ padding: 2, textAlign: 'center', width: monthColumnWidth }}>
-                      <div
-                        className={`cost-timeline-value${row.kind === 'sub-item' ? ' is-subitem' : ''}${val ? ' has-value' : ''}`}
-                        title="Locked to register estimated received date and amount"
-                      >
-                        {val ? fmt(val) : '—'}
-                      </div>
+                    <td key={m} className="num" style={{ padding: '10px 8px', color: val ? 'var(--text)' : 'var(--text-3)', fontWeight: val ? 700 : 500 }}>
+                      {val ? fmt(val) : '—'}
                     </td>
                   );
                 })}
+                <td className="num" style={{ padding: '10px 12px', fontWeight: 800 }}>
+                  {rowTotal ? fmt(rowTotal) : '—'}
+                </td>
               </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface-2)' }}>
-              <td style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, position: 'sticky', left: 0, background: 'var(--surface-2)', width: firstColumnWidth }}>Monthly forecast</td>
+              <td style={{ padding: '10px 12px', fontWeight: 800 }}>Monthly value</td>
               {colTotals.map((t, i) => (
-                <td key={i} style={{ padding: '8px 4px', textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: t ? 'var(--accent)' : 'var(--text-3)', width: monthColumnWidth }}>
+                <td key={i} className="num" style={{ padding: '10px 8px', fontWeight: 800, color: t ? 'var(--accent)' : 'var(--text-3)' }}>
                   {t ? fmt(t) : '—'}
                 </td>
               ))}
+              <td className="num" style={{ padding: '10px 12px', fontWeight: 800 }}>{fmt(yearTotal)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
-    </div>
+    </>
   );
 }

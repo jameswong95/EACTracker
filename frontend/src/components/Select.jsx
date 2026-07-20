@@ -101,17 +101,15 @@ export default function Select({
   const popup = open && pos ? createPortal(
     <div
       ref={popRef}
+      className="select-menu"
       style={{
         position: 'fixed', left: pos.left, width: pos.width, zIndex: 4000,
         ...(pos.flip ? { bottom: window.innerHeight - pos.top } : { top: pos.top }),
-        background: 'var(--surface)', border: '1px solid var(--border)',
-        borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-md)', padding: 6,
-        maxHeight: 320, display: 'flex', flexDirection: 'column', animation: 'dp-pop .12s ease',
       }}
       role="listbox"
     >
       {showSearch && (
-        <div style={{ padding: 2, marginBottom: 4 }}>
+        <div className="select-menu-search">
           <div style={{ position: 'relative' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -130,9 +128,9 @@ export default function Select({
         </div>
       )}
 
-      <div style={{ overflowY: 'auto', flex: 1 }}>
+      <div className="select-menu-options">
         {filtered.length === 0 && (
-          <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-3)' }}>No matches</div>
+          <div className="select-menu-empty">No matches</div>
         )}
         {filtered.map((o, i) => {
           const isSel = String(o.value) === String(value);
@@ -142,18 +140,9 @@ export default function Select({
               key={o.value === '' ? '__empty' : o.value}
               role="option"
               aria-selected={isSel}
+              className={`select-option${isSel ? ' is-selected' : ''}${isActive ? ' is-active' : ''}${o.value === '' ? ' is-empty' : ''}`}
               onMouseEnter={() => setActive(i)}
               onClick={() => choose(o)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                padding: '8px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
-                fontSize: 12.5, lineHeight: 1.3,
-                fontWeight: isSel ? 700 : 500,
-                fontStyle: o.value === '' ? 'italic' : 'normal',
-                color: isSel ? 'var(--accent)' : o.value === '' ? 'var(--text-3)' : 'var(--text)',
-                background: isActive ? 'var(--surface-3)' : 'transparent',
-                transition: 'background .1s',
-              }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
               {isSel && (

@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { useProject, useProjectInitiation, fmt } from '../data/store.js';
 import { api } from '../data/api.js';
 import Icon from '../components/Icon.jsx';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
+import Select from '../components/Select.jsx';
 
 const KINDS = [
   { id: 'resource', label: 'Resource' },
@@ -20,6 +22,7 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
   const [form, setForm] = useState(BLANK);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const byKind = useMemo(() => {
     const m = { resource: [], material: [], subcon: [], others: [] };
@@ -54,7 +57,7 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
   }
 
   async function removeItem(id) {
-    try { await api.del(`/api/project-initiation/${id}`); reload(); }
+    try { await api.del(`/api/project-initiation/${id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
 
@@ -130,15 +133,19 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr .75fr 1fr 1.6fr .7fr .9fr auto', gap: 8, alignItems: 'end' }}>
             <label className="field">
               <span className="field-label">Kind</span>
-              <select className="input" value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))}>
-                {KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
-              </select>
+              <Select
+                value={form.kind}
+                options={KINDS.map(k => ({ value: k.id, label: k.label }))}
+                onChange={value => setForm(f => ({ ...f, kind: value }))}
+              />
             </label>
             <label className="field">
               <span className="field-label">Category</span>
-              <select className="input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <Select
+                value={form.category}
+                options={CATS.map(c => ({ value: c, label: c }))}
+                onChange={value => setForm(f => ({ ...f, category: value }))}
+              />
             </label>
             <label className="field">
               <span className="field-label">Sub-job</span>
@@ -192,9 +199,12 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
                     <tr key={it.id}>
                       <td>
                         {canEdit ? (
-                          <select className="input" value={it.category} onChange={e => patchItem(it.id, { category: e.target.value })} style={{ maxWidth: 90 }}>
-                            {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
+                          <Select
+                            value={it.category}
+                            options={CATS.map(c => ({ value: c, label: c }))}
+                            onChange={value => patchItem(it.id, { category: value })}
+                            style={{ maxWidth: 90 }}
+                          />
                         ) : it.category}
                       </td>
                       <td>
@@ -221,7 +231,7 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
                       <td style={{ color: 'var(--text-3)', fontSize: 11 }}>
                         {it.source_tender_item_id ? `Tender line #${it.source_tender_item_id}` : 'Manual'}
                       </td>
-                      {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => removeItem(it.id)} title="Delete"><Icon name="x" size={13} /></button></td>}
+                      {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(it)} title="Delete"><Icon name="x" size={13} /></button></td>}
                     </tr>
                   ))}
                 </tbody>
@@ -230,6 +240,21 @@ export default function ProjectInitiation({ projectId, navigate, role }) {
           </div>
         );
       })}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete initiation line?"
+          message="This removes the line from the project initiation baseline."
+          itemLabel="Initiation line"
+          itemName={deleteTarget.description}
+          itemMeta={[deleteTarget.kind, deleteTarget.category, deleteTarget.sub_job_label].filter(Boolean).join(' · ')}
+          note="The item will no longer roll up into initiation totals."
+          cancelLabel="Keep line"
+          confirmLabel="Delete line"
+          busy={busy}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeItem(deleteTarget.id)}
+        />
+      )}
     </div>
   );
 }

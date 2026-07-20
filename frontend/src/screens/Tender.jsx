@@ -5,6 +5,7 @@ import StLabour from './tender/StLabour.jsx';
 import Prelim from './tender/Prelim.jsx';
 import Icon from '../components/Icon.jsx';
 import Select from '../components/Select.jsx';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
 
 const KINDS = [
   { id: 'resource', label: 'Resource' },
@@ -49,6 +50,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [tab, setTab] = useState('estimate');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const tender = data?.tender;
   const items = data?.items || [];
@@ -112,7 +114,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
   }
 
   async function removeItem(id) {
-    try { await api.del(`/api/tender/items/${id}`); reload(); }
+    try { await api.del(`/api/tender/items/${id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
 
@@ -150,7 +152,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
   }
 
   async function removeVo(id) {
-    try { await api.del(`/api/tender/vos/${id}`); reload(); }
+    try { await api.del(`/api/tender/vos/${id}`); setDeleteTarget(null); reload(); }
     catch (e) { setErr(e.message || 'Delete failed'); }
   }
 
@@ -361,7 +363,7 @@ export default function Tender({ tenderId, navigate, role, session }) {
                       </td>
                       <td className="num" style={{ fontWeight: 600 }}>{fmt(it.amount)}</td>
                       {canEdit && (
-                        <td><button className="btn btn-ghost btn-sm" onClick={() => removeItem(it.id)} title="Delete"><Icon name="x" size={13} /></button></td>
+                        <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget({ type: 'item', row: it })} title="Delete"><Icon name="x" size={13} /></button></td>
                       )}
                     </tr>
                   ))}
@@ -376,19 +378,41 @@ export default function Tender({ tenderId, navigate, role, session }) {
       {tab === 'vos' && tender && (
         <VoPanel
           vos={vos} voTotals={voTotals} gpPct={gpPct} canEdit={canEdit}
-          voForm={voForm} setVoForm={setVoForm} addVo={addVo} patchVo={patchVo} removeVo={removeVo} busy={busy}
+          voForm={voForm} setVoForm={setVoForm} addVo={addVo} patchVo={patchVo}
+          requestDeleteVo={row => setDeleteTarget({ type: 'vo', row })} busy={busy}
         />
       )}
 
       {tab === 'labour' && tender && <StLabour tenderId={tender.id} canEdit={canEdit} />}
       {tab === 'prelim' && tender && <Prelim   tenderId={tender.id} canEdit={canEdit} />}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title={deleteTarget.type === 'vo' ? 'Delete variation order?' : 'Delete tender line?'}
+          message={deleteTarget.type === 'vo'
+            ? 'This removes the variation order from this tender.'
+            : 'This removes the estimate line from this tender.'}
+          itemLabel={deleteTarget.type === 'vo' ? 'Variation order' : 'Tender line'}
+          itemName={deleteTarget.row.description}
+          itemMeta={deleteTarget.type === 'vo'
+            ? [deleteTarget.row.ref, deleteTarget.row.status, fmt(deleteTarget.row.amount)].filter(Boolean).join(' · ')
+            : [deleteTarget.row.kind, deleteTarget.row.category, fmt(deleteTarget.row.amount)].filter(Boolean).join(' · ')}
+          note={deleteTarget.type === 'vo'
+            ? 'Confirmed and potential VO totals will update after deletion.'
+            : 'Tender cost, revenue and margin totals will update after deletion.'}
+          cancelLabel={deleteTarget.type === 'vo' ? 'Keep VO' : 'Keep line'}
+          confirmLabel={deleteTarget.type === 'vo' ? 'Delete VO' : 'Delete line'}
+          busy={busy}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteTarget.type === 'vo' ? removeVo(deleteTarget.row.id) : removeItem(deleteTarget.row.id)}
+        />
+      )}
     </div>
   );
 }
 
 // Variation Orders — potential vs confirmed. Confirmed VOs feed the blended
 // margin / totals; potential VOs are tracked but excluded. No auto budget recalc.
-function VoPanel({ vos, voTotals, gpPct, canEdit, voForm, setVoForm, addVo, patchVo, removeVo, busy }) {
+function VoPanel({ vos, voTotals, gpPct, canEdit, voForm, setVoForm, addVo, patchVo, requestDeleteVo, busy }) {
   const rev = (amount, gp) => {
     const g = Math.max(0, Math.min(99.999, gp != null ? Number(gp) : Number(gpPct) || 0)) / 100;
     return g >= 1 ? Number(amount || 0) : Number(amount || 0) / (1 - g);
@@ -473,7 +497,7 @@ function VoPanel({ vos, voTotals, gpPct, canEdit, voForm, setVoForm, addVo, patc
                     )}
                   </td>
                   <td className="num" style={{ color: 'var(--text-2)' }}>{fmt(rev(v.amount, v.gp_pct))}</td>
-                  {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => removeVo(v.id)} title="Delete"><Icon name="x" size={13} /></button></td>}
+                  {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => requestDeleteVo(v)} title="Delete"><Icon name="x" size={13} /></button></td>}
                 </tr>
               ))}
             </tbody>

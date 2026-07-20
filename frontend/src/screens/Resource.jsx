@@ -6,6 +6,8 @@ import { spreadsheetFileError } from '../data/files.js';
 import { firstError, monthNumber, periodRange, requiredText, yearNumber } from '../data/validation.js';
 import { CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
+import Select from '../components/Select.jsx';
 
 let nextId = 100;
 
@@ -108,66 +110,6 @@ function PersonSelect({ available, onSelect, onCancel }) {
               </div>
             ))
           }
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Custom role picker (avoids native <select> OS styling) ── */
-function RoleSelect({ roles, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef();
-
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
-
-  return (
-    <div ref={ref} style={{ position: 'relative', flex: 1 }}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '8px 12px', border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`,
-          borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', color: 'var(--text)',
-          fontSize: 13, fontFamily: 'inherit', cursor: 'pointer',
-          boxShadow: open ? '0 0 0 3px rgba(232,150,31,.12)' : 'none',
-          transition: 'border-color .12s, box-shadow .12s',
-        }}
-      >
-        <span>{value}</span>
-        <svg width="10" height="6" viewBox="0 0 10 6" fill="none"
-          style={{ flexShrink: 0, marginLeft: 8, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>
-          <path d="M0 0l5 6 5-6z" fill="var(--accent)" />
-        </svg>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 300,
-          background: 'var(--surface)', border: '1px solid var(--border-2)',
-          borderRadius: 8, boxShadow: 'var(--shadow-md)', overflow: 'hidden',
-        }}>
-          {roles.map(r => (
-            <div key={r}
-              onMouseDown={() => { onChange(r); setOpen(false); }}
-              style={{
-                padding: '9px 14px', cursor: 'pointer', fontSize: 13,
-                fontWeight: r === value ? 600 : 400,
-                color: r === value ? 'var(--accent)' : 'var(--text)',
-                background: r === value ? 'var(--accent-light)' : '',
-              }}
-              onMouseEnter={e => { if (r !== value) e.currentTarget.style.background = 'var(--surface-2)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = r === value ? 'var(--accent-light)' : ''; }}
-            >
-              {r}
-            </div>
-          ))}
         </div>
       )}
     </div>
@@ -635,7 +577,11 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
                 </button>
                 <div style={{ flex: 1 }}>
                   {pendingPerson.roles?.length > 1 ? (
-                    <RoleSelect roles={pendingPerson.roles} value={pendingFn} onChange={setPendingFn} />
+                    <Select
+                      value={pendingFn}
+                      options={pendingPerson.roles.map(r => ({ value: r, label: r }))}
+                      onChange={setPendingFn}
+                    />
                   ) : (
                     <div style={{ padding: '7px 12px', fontSize: 13, color: 'var(--text-2)', background: 'var(--surface-3)', borderRadius: 6, border: '1px solid var(--border-2)' }}>
                       {pendingFn}
@@ -884,45 +830,18 @@ function ResourceBody({ p, navigate, RESOURCE_POOL, RATES, role, session }) {
           </table>
         </div>
         {canDeleteResources && deletePersonTarget && (
-          <div className="modal-overlay" role="presentation" onMouseDown={() => setDeletePersonTarget(null)}>
-            <div className="modal" role="dialog" aria-modal="true" aria-labelledby="remove-resource-title" onMouseDown={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <div>
-                  <h3 id="remove-resource-title" style={{ margin: 0 }}>Remove person?</h3>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
-                    This removes the person from this project resource plan.
-                  </div>
-                </div>
-                <button className="btn btn-icon" onClick={() => setDeletePersonTarget(null)} aria-label="Close">
-                  <Icon name="x" size={14} />
-                </button>
-              </div>
-              <div className="modal-body">
-                <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', padding: 14 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                      background: 'var(--accent-light)', border: '1px solid rgba(232,150,31,.2)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 10, fontWeight: 800, color: 'var(--accent)',
-                    }}>
-                      {deletePersonTarget.role.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>{deletePersonTarget.role}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
-                        {[deletePersonTarget.fn, deletePersonTarget.grade].filter(Boolean).join(' · ') || 'No function set'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-ghost btn-sm" onClick={() => setDeletePersonTarget(null)}>Cancel</button>
-                <button className="btn btn-danger btn-sm" onClick={() => removeRow(deletePersonTarget.id)}>Remove person</button>
-              </div>
-            </div>
-          </div>
+          <DeleteConfirmModal
+            title="Remove person?"
+            message="This removes the person from this project resource plan."
+            itemLabel="Resource"
+            itemName={deletePersonTarget.role}
+            itemMeta={[deletePersonTarget.fn, deletePersonTarget.grade].filter(Boolean).join(' · ') || 'No function set'}
+            note="Their planned FTE values will be removed from this project timeline."
+            cancelLabel="Keep person"
+            confirmLabel="Remove person"
+            onCancel={() => setDeletePersonTarget(null)}
+            onConfirm={() => removeRow(deletePersonTarget.id)}
+          />
         )}
       </div>
 
@@ -1084,19 +1003,21 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               Grade
-              <select className="input" style={{ marginTop: 4 }} value={form.grade}
-                onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}>
-                <option value="">—</option>
-                {grades.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
+              <Select
+                value={form.grade}
+                options={[{ value: '', label: '-' }, ...grades.map(g => ({ value: g, label: g }))]}
+                onChange={value => setForm(f => ({ ...f, grade: value }))}
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
               From (month)
-              <select className="input" style={{ marginTop: 4 }} value={form.need_month}
-                onChange={e => setForm(f => ({ ...f, need_month: e.target.value }))}>
-                <option value="">—</option>
-                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-              </select>
+              <Select
+                value={form.need_month}
+                options={[{ value: '', label: '-' }, ...MONTHS.map((m, i) => ({ value: i + 1, label: m }))]}
+                onChange={value => setForm(f => ({ ...f, need_month: value }))}
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               From (year)
@@ -1106,11 +1027,12 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
             </label>
             <label style={{ flex: '0 1 110px', fontSize: 11, color: 'var(--text-3)' }}>
               To (month)
-              <select className="input" style={{ marginTop: 4 }} value={form.need_end_month}
-                onChange={e => setForm(f => ({ ...f, need_end_month: e.target.value }))}>
-                <option value="">—</option>
-                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-              </select>
+              <Select
+                value={form.need_end_month}
+                options={[{ value: '', label: '-' }, ...MONTHS.map((m, i) => ({ value: i + 1, label: m }))]}
+                onChange={value => setForm(f => ({ ...f, need_end_month: value }))}
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={{ flex: '0 1 90px', fontSize: 11, color: 'var(--text-3)' }}>
               To (year)
@@ -1204,47 +1126,19 @@ function PlaceholderRequests({ projectId, role, session, RATES, requests, reload
       )}
 
       {deleteTarget && (
-        <div className="modal-overlay" role="presentation" onMouseDown={() => !busy && setDeleteTarget(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="withdraw-request-title" onMouseDown={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3 id="withdraw-request-title" style={{ margin: 0 }}>Withdraw request?</h3>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
-                  This removes the request from the forecast timeline.
-                </div>
-              </div>
-              <button className="btn btn-icon" onClick={() => setDeleteTarget(null)} disabled={busy} aria-label="Close">
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div style={{
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                background: 'var(--surface-2)',
-                padding: 14,
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 750, color: 'var(--text)' }}>
-                  {deleteTarget.function_title}{deleteTarget.grade ? ` · ${deleteTarget.grade}` : ''}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>
-                  {reqRangeLabel(deleteTarget) || 'No date range set'}
-                </div>
-                {deleteTarget.remarks && (
-                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 8, lineHeight: 1.5 }}>
-                    {deleteTarget.remarks}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(null)} disabled={busy}>Cancel</button>
-              <button className="btn btn-danger btn-sm" onClick={() => del(deleteTarget)} disabled={busy}>
-                {busy ? 'Withdrawing...' : 'Withdraw request'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteConfirmModal
+          title="Withdraw request?"
+          message="This removes the request from the forecast timeline."
+          itemLabel="Request"
+          itemName={`${deleteTarget.function_title}${deleteTarget.grade ? ` · ${deleteTarget.grade}` : ''}`}
+          itemMeta={reqRangeLabel(deleteTarget) || 'No date range set'}
+          note={deleteTarget.remarks || 'The request can be raised again later if needed.'}
+          cancelLabel="Keep request"
+          confirmLabel={busy ? 'Withdrawing...' : 'Withdraw request'}
+          busy={busy}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => del(deleteTarget)}
+        />
       )}
     </div>
   );

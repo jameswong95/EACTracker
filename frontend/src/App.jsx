@@ -19,17 +19,13 @@ import PdApprovals from './screens/PdApprovals.jsx';
 import AdminPanel from './screens/AdminPanel.jsx';
 import { logAction } from './data/auditLog.js';
 import { api } from './data/api.js';
-
-const ROLE_DEFAULTS = { 'Project Manager': 'portfolio', 'Project Director': 'portfolio', Finance: 'portfolio', Leader: 'portfolio', Admin: 'portfolio' };
-
-// PRD §10: roles and minimum access
-const ROLE_ALLOWED_INIT = {
-  'Project Manager':  ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'standards'],
-  'Project Director': ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'standards', 'pd-approvals'],
-  Finance:            ['portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists'],
-  Leader:             ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals'],
-  Admin:              ['dashboard', 'portfolio', 'tenders', 'tender', 'project', 'project-initiation', 'resource', 'material', 'sub-con', 'others', 'revrec', 'sap-import', 'standards', 'assists', 'pd-approvals', 'admin-users', 'admin-pool', 'admin-permissions', 'admin-audit', 'admin-wipe'],
-};
+import {
+  ROLE_ALLOWED_INIT,
+  ROLE_DEFAULTS,
+  mergeRoleCrud,
+  mergeRolePermissions,
+  roleAllowedFromCrud,
+} from './config/permissions.js';
 
 export default function App() {
   const [session, setSession] = useState(() => {
@@ -53,12 +49,30 @@ export default function App() {
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [roleAllowed, setRoleAllowed] = useState(ROLE_ALLOWED_INIT);
+  const [roleAllowed, setRoleAllowed] = useState(() => {
+    return mergeRolePermissions(null);
+  });
+  const [roleCrud, setRoleCrud] = useState(() => {
+    try {
+      return mergeRoleCrud(JSON.parse(localStorage.getItem('pfms-role-crud') || 'null'), null);
+    } catch {
+      return mergeRoleCrud(null, null);
+    }
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('pfms-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('pfms-role-allowed', JSON.stringify(roleAllowed));
+  }, [roleAllowed]);
+
+  useEffect(() => {
+    localStorage.setItem('pfms-role-crud', JSON.stringify(roleCrud));
+    setRoleAllowed(roleAllowedFromCrud(roleCrud));
+  }, [roleCrud]);
 
   useEffect(() => {
     if (session) return;
@@ -129,8 +143,8 @@ export default function App() {
     setSession(s);
     setRole(s.role);
     const savedScreen = localStorage.getItem('pfms-screen');
-    const allowed = ROLE_ALLOWED_INIT[s.role] || [];
-    setScreen(savedScreen && allowed.includes(savedScreen) ? savedScreen : ROLE_DEFAULTS[s.role]);
+    const allowed = roleAllowed[s.role] || ROLE_ALLOWED_INIT[s.role] || [];
+    setScreen(savedScreen && allowed.includes(savedScreen) ? savedScreen : ROLE_DEFAULTS[s.role] || 'portfolio');
     logAction({ action: 'Sign in', detail: s.full_name, user: s.full_name, role: s.role });
   }
 
@@ -156,7 +170,7 @@ export default function App() {
   function switchRole(newRole) {
     logAction({ action: 'Switch role', detail: `${role} → ${newRole}`, user: session?.full_name || 'System', role: newRole });
     setRole(newRole);
-    const def = ROLE_DEFAULTS[newRole];
+    const def = ROLE_DEFAULTS[newRole] || 'portfolio';
     setScreen(def);
     localStorage.setItem('pfms-screen', def);
     setMobileNavOpen(false);
@@ -165,7 +179,7 @@ export default function App() {
   if (!session) return <Login onSignIn={handleSignIn} />;
 
   const allowed = roleAllowed[role] || [];
-  const activeScreen = allowed.includes(screen) ? screen : ROLE_DEFAULTS[role];
+  const activeScreen = allowed.includes(screen) ? screen : ROLE_DEFAULTS[role] || 'portfolio';
 
   const screens = {
     dashboard:    <Dashboard navigate={navigate} session={session} />,
@@ -183,11 +197,11 @@ export default function App() {
     standards:    <Standards navigate={navigate} role={role} />,
     assists:      <Assists navigate={navigate} />,
     'pd-approvals':      <PdApprovals navigate={navigate} session={session} />,
-    'admin-users':       <AdminPanel tab="users"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
-    'admin-pool':        <AdminPanel tab="pool"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
-    'admin-permissions': <AdminPanel tab="permissions" roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
-    'admin-audit':       <AdminPanel tab="audit"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
-    'admin-wipe':        <AdminPanel tab="wipe"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} />,
+    'admin-users':       <AdminPanel tab="users"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} roleCrud={roleCrud} setRoleCrud={setRoleCrud} />,
+    'admin-pool':        <AdminPanel tab="pool"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} roleCrud={roleCrud} setRoleCrud={setRoleCrud} />,
+    'admin-permissions': <AdminPanel tab="permissions" roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} roleCrud={roleCrud} setRoleCrud={setRoleCrud} />,
+    'admin-audit':       <AdminPanel tab="audit"       roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} roleCrud={roleCrud} setRoleCrud={setRoleCrud} />,
+    'admin-wipe':        <AdminPanel tab="wipe"        roleAllowed={roleAllowed} setRoleAllowed={setRoleAllowed} roleCrud={roleCrud} setRoleCrud={setRoleCrud} />,
   };
 
   return (
@@ -218,7 +232,7 @@ export default function App() {
           </button>
           <span className="mobile-topbar-title">PFMS</span>
         </div>
-        {screens[activeScreen] || screens[ROLE_DEFAULTS[role]]}
+        {screens[activeScreen] || screens[ROLE_DEFAULTS[role] || 'portfolio']}
       </main>
     </div>
   );

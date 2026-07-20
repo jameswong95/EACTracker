@@ -3,6 +3,7 @@ import { useTenderPrelim, useTenderFx, fmt } from '../../data/store.js';
 import { api } from '../../data/api.js';
 import Select from '../../components/Select.jsx';
 import Icon from '../../components/Icon.jsx';
+import DeleteConfirmModal from '../../components/DeleteConfirmModal.jsx';
 
 // Preliminaries — miscellaneous project set-up costs. Each line is entered in a
 // chosen currency and converted to a Singapore Dollar equivalent using FAD rates.
@@ -12,6 +13,7 @@ export default function Prelim({ tenderId, canEdit }) {
   const { rows: fx } = useTenderFx(tenderId);
   const [err, setErr] = useState(null);
   const [form, setForm] = useState({ sn: '', description: '', currency: 'SGD', cost: '', esc_pct: '', qty: '1' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const rateOf = useMemo(() => {
     const m = { SGD: 1 };
@@ -42,7 +44,7 @@ export default function Prelim({ tenderId, canEdit }) {
     setForm({ sn: '', description: '', currency: 'SGD', cost: '', esc_pct: '', qty: '1' });
   });
   const patchItem = report((id, patch) => api.patch(`/api/tender/prelim/${id}`, patch));
-  const removeItem = report((id) => api.del(`/api/tender/prelim/${id}`));
+  const removeItem = report(async (id) => { await api.del(`/api/tender/prelim/${id}`); setDeleteTarget(null); });
 
   return (
     <div>
@@ -129,7 +131,7 @@ export default function Prelim({ tenderId, canEdit }) {
                     ) : it.qty}
                   </td>
                   <td className="num" style={{ fontWeight: 600 }}>{fmt(totalSgd(it))}</td>
-                  {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => removeItem(it.id)} title="Delete"><Icon name="x" size={13} /></button></td>}
+                  {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(it)} title="Delete"><Icon name="x" size={13} /></button></td>}
                 </tr>
               ))}
             </tbody>
@@ -166,6 +168,20 @@ export default function Prelim({ tenderId, canEdit }) {
           </div>
         )}
       </div>
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title="Delete preliminary item?"
+          message="This removes the preliminary cost item from this tender."
+          itemLabel="Preliminary item"
+          itemName={deleteTarget.description}
+          itemMeta={[deleteTarget.currency, fmt(totalSgd(deleteTarget))].filter(Boolean).join(' · ')}
+          note="Tender preliminary totals will update after deletion."
+          cancelLabel="Keep item"
+          confirmLabel="Delete item"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => removeItem(deleteTarget.id)}
+        />
+      )}
     </div>
   );
 }

@@ -1,19 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useResourcePool, useRates, useAudit } from '../data/store.js';
-
-const ALL_SCREENS = [
-  { id: 'dashboard',    label: 'Dashboard' },
-  { id: 'portfolio',    label: 'Portfolio' },
-  { id: 'project',      label: 'Project' },
-  { id: 'resource',     label: 'Resource Plan' },
-  { id: 'revrec',       label: 'Rev. Rec.' },
-  { id: 'sap-import',   label: 'SAP Import' },
-  { id: 'standards',    label: 'Standards' },
-  { id: 'assists',      label: 'AI Assist' },
-  { id: 'pd-approvals', label: 'PD Approvals' },
-];
-
-const ROLE_LABELS = ['Project Manager', 'Project Director', 'Finance'];
+import Select from './Select.jsx';
+import { APP_MODULES, APP_ROLES, DEFAULT_ROLE_BADGE, PERMISSION_ROLES, ROLE_BADGE } from '../config/permissions.js';
 
 function gradeColor(g) {
   if (g === 'E5') return 'var(--bad)';
@@ -26,52 +14,6 @@ function gradeBg(g) {
   if (g === 'E4') return 'var(--warn-bg)';
   if (g === 'E3') return 'rgba(99,102,241,0.12)';
   return 'var(--surface-3)';
-}
-
-function FilterSelect({ value, onChange, options }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef();
-  useEffect(() => {
-    function h(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-  const label = options.find(o => o.value === value)?.label ?? 'All roles';
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)} style={{
-        padding: '6px 26px 6px 9px', borderRadius: 6,
-        border: '1px solid var(--border)', background: 'var(--surface-2)',
-        color: 'var(--text)', fontSize: 12, fontFamily: 'inherit',
-        cursor: 'pointer', position: 'relative', whiteSpace: 'nowrap',
-      }}>
-        {label}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"
-          style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', opacity: 0.45 }}>
-          <path d="M2 3.5l3 3 3-3" />
-        </svg>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 3px)', left: 0, zIndex: 999,
-          minWidth: '100%', background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.15)', overflow: 'hidden',
-        }}>
-          {options.map(o => (
-            <div key={o.value} onClick={() => { onChange(o.value); setOpen(false); }}
-              style={{
-                padding: '7px 11px', fontSize: 12, cursor: 'pointer',
-                color: o.value === value ? 'var(--accent)' : 'var(--text)',
-                background: 'transparent', fontWeight: o.value === value ? 600 : 400,
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >{o.label}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function ResourcePoolTab() {
@@ -159,24 +101,27 @@ function PermissionsTab({ roleAllowed, setRoleAllowed }) {
       <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 0, marginBottom: 12 }}>
         Changes take effect immediately. Admin always has full access.
       </p>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 820 }}>
           <thead>
             <tr style={{ background: 'var(--surface-2)' }}>
               <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border)' }}>Screen</th>
-              {ROLE_LABELS.map(r => (
-                <th key={r} style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: 'var(--text)', fontSize: 11, borderBottom: '1px solid var(--border)', width: 48 }}>{r}</th>
+              {PERMISSION_ROLES.map(r => (
+                <th key={r} style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: 'var(--text)', fontSize: 11, borderBottom: '1px solid var(--border)', minWidth: 70 }}>{r}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {ALL_SCREENS.map((s, i) => (
+            {APP_MODULES.map((s, i) => (
               <tr key={s.id} style={{
-                borderBottom: i < ALL_SCREENS.length - 1 ? '1px solid var(--border)' : 'none',
+                borderBottom: i < APP_MODULES.length - 1 ? '1px solid var(--border)' : 'none',
                 background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)',
               }}>
-                <td style={{ padding: '8px 10px', fontWeight: 500, color: 'var(--text)', fontSize: 12 }}>{s.label}</td>
-                {ROLE_LABELS.map(r => (
+                <td style={{ padding: '8px 10px', color: 'var(--text)', fontSize: 12 }}>
+                  <div style={{ fontWeight: 650 }}>{s.label}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-3)', marginTop: 1 }}>{s.group}</div>
+                </td>
+                {PERMISSION_ROLES.map(r => (
                   <td key={r} style={{ padding: '8px', textAlign: 'center' }}>
                     <input type="checkbox"
                       checked={(roleAllowed[r] || []).includes(s.id)}
@@ -194,18 +139,37 @@ function PermissionsTab({ roleAllowed, setRoleAllowed }) {
   );
 }
 
+function auditRoleOptions(entries) {
+  const seen = new Set(APP_ROLES);
+  const extras = entries
+    .map(entry => entry.role)
+    .filter(Boolean)
+    .filter(role => {
+      if (seen.has(role)) return false;
+      seen.add(role);
+      return true;
+    });
+  return [
+    { value: '', label: 'All roles' },
+    ...APP_ROLES.map(role => ({ value: role, label: role })),
+    ...extras.map(role => ({ value: role, label: role })),
+  ];
+}
+
+function auditActionLabel(action) {
+  return String(action || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
 function AuditTab() {
   const { entries: auditEntries } = useAudit();
   const [q, setQ] = useState('');
   const [roleF, setRoleF] = useState('');
-  const roleOptions = [
-    { value: '', label: 'All roles' },
-    ...Array.from(new Set(auditEntries.map(e => e.role))).map(r => ({ value: r, label: r })),
-  ];
+  const roleOptions = auditRoleOptions(auditEntries);
   const shown = auditEntries.filter(e =>
-    (!q || e.action.toLowerCase().includes(q.toLowerCase()) ||
-     e.detail.toLowerCase().includes(q.toLowerCase()) ||
-     e.user.toLowerCase().includes(q.toLowerCase())) &&
+    (!q || String(e.action || '').toLowerCase().includes(q.toLowerCase()) ||
+     String(e.detail || '').toLowerCase().includes(q.toLowerCase()) ||
+     String(e.entityId || '').toLowerCase().includes(q.toLowerCase()) ||
+     String(e.user || '').toLowerCase().includes(q.toLowerCase())) &&
     (!roleF || e.role === roleF)
   );
 
@@ -219,7 +183,7 @@ function AuditTab() {
             border: '1px solid var(--border)', background: 'var(--surface-2)',
             color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', outline: 'none',
           }} />
-        <FilterSelect value={roleF} onChange={setRoleF} options={roleOptions} />
+        <Select value={roleF} onChange={setRoleF} options={roleOptions} style={{ width: 160 }} />
         <span style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{shown.length} entries</span>
       </div>
 
@@ -231,23 +195,25 @@ function AuditTab() {
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-          {shown.map((e, i) => (
+          {shown.map((e, i) => {
+            const badge = ROLE_BADGE[e.role] || DEFAULT_ROLE_BADGE;
+            return (
             <div key={e.id} style={{
-              padding: '9px 12px',
+              padding: '10px 12px',
               borderBottom: i < shown.length - 1 ? '1px solid var(--border)' : 'none',
               background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)', flex: 1 }}>{e.action}</span>
-                <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'var(--surface-3)', color: 'var(--text-2)' }}>{e.role}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                <span style={{ fontWeight: 750, fontSize: 12, color: 'var(--text)', flex: 1 }}>{auditActionLabel(e.action)}</span>
+                <span className="audit-role-chip" style={{ color: badge.color, background: badge.bg, minHeight: 20, fontSize: 10 }}>{e.role}</span>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 500 }}>{e.user}</span>
-                {e.detail && <span style={{ fontSize: 11, color: 'var(--text-3)', flex: 1 }}>{e.detail}</span>}
+              <div style={{ display: 'grid', gap: 3 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 650 }}>{e.user}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-3)', overflowWrap: 'anywhere' }}>{e.detail || e.entityId || '-'}</span>
                 <span style={{ fontSize: 10, color: 'var(--text-3)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{e.ts}</span>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       )}
     </div>

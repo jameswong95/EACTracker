@@ -9,7 +9,7 @@ await query(`UPDATE users SET role = 'Project Director' WHERE role = 'PD'`);
 
 // 3. Add new constraint with full names
 await query(`ALTER TABLE users ADD CONSTRAINT users_role_check
-  CHECK (role IN ('Project Manager','Project Director','Finance','Admin','Leader'))`);
+  CHECK (role IN ('Project Manager','Project Director','Finance','Admin','Leader','System Engineer','Technical Director','Technical Manager','Support'))`);
 
 const { rows } = await query(`SELECT role, count(*) FROM users GROUP BY role ORDER BY role`);
 console.log('Role counts after migration:');

@@ -5,7 +5,17 @@ import { ah, logAudit } from '../util.js';
 import * as v from '../validation.js';
 
 const r = Router();
-const ROLES = ['Project Manager', 'Project Director', 'Finance', 'Admin', 'Leader'];
+const ROLES = [
+  'Project Manager',
+  'Project Director',
+  'Finance',
+  'Admin',
+  'Leader',
+  'System Engineer',
+  'Technical Director',
+  'Technical Manager',
+  'Support',
+];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function initialsFor(name) {

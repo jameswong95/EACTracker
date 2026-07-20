@@ -3,6 +3,7 @@ import { useTenderLabour, fmt } from '../../data/store.js';
 import { api } from '../../data/api.js';
 import Select from '../../components/Select.jsx';
 import Icon from '../../components/Icon.jsx';
+import DeleteConfirmModal from '../../components/DeleteConfirmModal.jsx';
 
 const UNIT_OPTS = [
   { value: 'md', label: 'Man-days' },
@@ -32,6 +33,7 @@ export default function StLabour({ tenderId, canEdit }) {
   const [newFn, setNewFn] = useState({ name: '', rate: '', unit: 'md' });
   const [showFns, setShowFns] = useState(true);
   const [alloc, setAlloc] = useState({});      // `${phase}:${fn}:${year}:${month}` -> string
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const savingRef = useRef(new Set());
 
   const phases = data?.phases || [];
@@ -87,7 +89,7 @@ export default function StLabour({ tenderId, canEdit }) {
     setNewPhase('');
   });
   const renamePhase = report((id, name) => api.patch(`/api/tender/labour/phases/${id}`, { name }));
-  const delPhase = report((id) => api.del(`/api/tender/labour/phases/${id}`));
+  const delPhase = report(async (id) => { await api.del(`/api/tender/labour/phases/${id}`); setDeleteTarget(null); });
 
   const addFn = report(async () => {
     if (!newFn.name.trim()) { setErr('Function name required'); return; }
@@ -95,7 +97,7 @@ export default function StLabour({ tenderId, canEdit }) {
     setNewFn({ name: '', rate: '', unit: 'md' });
   });
   const patchFn = report((id, patch) => api.patch(`/api/tender/labour/functions/${id}`, patch));
-  const delFn = report((id) => api.del(`/api/tender/labour/functions/${id}`));
+  const delFn = report(async (id) => { await api.del(`/api/tender/labour/functions/${id}`); setDeleteTarget(null); });
 
   const updateRange = report((patch) => api.put(`/api/tender/${tenderId}/labour/range`, { ...range, ...patch }));
 
@@ -216,7 +218,7 @@ export default function StLabour({ tenderId, canEdit }) {
                         <Select ghost style={{ minWidth: 120 }} value={f.unit} options={UNIT_OPTS} onChange={v => patchFn(f.id, { unit: v })} />
                       ) : (UNIT_OPTS.find(u => u.value === f.unit)?.label || f.unit)}
                     </td>
-                    {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => delFn(f.id)} title="Delete"><Icon name="x" size={13} /></button></td>}
+                    {canEdit && <td><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget({ type: 'function', row: f })} title="Delete"><Icon name="x" size={13} /></button></td>}
                   </tr>
                 ))}
                 {canEdit && (
@@ -256,7 +258,7 @@ export default function StLabour({ tenderId, canEdit }) {
               ) : <div style={{ fontSize: 13, fontWeight: 700 }}>{ph.name}</div>}
               <div className="grow" />
               <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Phase total: <strong style={{ color: 'var(--text)' }}>{fmt(phaseGrand)}</strong></div>
-              {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => delPhase(ph.id)} title="Delete phase">Delete</button>}
+              {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget({ type: 'phase', row: ph })} title="Delete phase">Delete</button>}
             </div>
             <div className="table-wrap">
               <table style={{ whiteSpace: 'nowrap' }}>
@@ -357,6 +359,22 @@ export default function StLabour({ tenderId, canEdit }) {
             </table>
           </div>
         </div>
+      )}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          title={deleteTarget.type === 'phase' ? 'Delete labour phase?' : 'Delete labour function?'}
+          message={deleteTarget.type === 'phase'
+            ? 'This removes the phase and its tender labour allocations.'
+            : 'This removes the function from tender labour planning.'}
+          itemLabel={deleteTarget.type === 'phase' ? 'Phase' : 'Function'}
+          itemName={deleteTarget.row.name}
+          itemMeta={deleteTarget.type === 'function' ? `${fmt(deleteTarget.row.rate)} · ${deleteTarget.row.unit}` : null}
+          note="Tender labour totals will update after deletion."
+          cancelLabel={deleteTarget.type === 'phase' ? 'Keep phase' : 'Keep function'}
+          confirmLabel={deleteTarget.type === 'phase' ? 'Delete phase' : 'Delete function'}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteTarget.type === 'phase' ? delPhase(deleteTarget.row.id) : delFn(deleteTarget.row.id)}
+        />
       )}
     </div>
   );
