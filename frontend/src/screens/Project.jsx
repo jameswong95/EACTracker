@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useProject, useEtc, useRates, useEacMonthly, useExternalResourcePlan, useResourceRequests, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
+import { useProject, useEtc, useRates, useExternalResourcePlan, useResourceRequests, useCostModule, useUsers, fmt, fmtSapSync, fmtAsAt } from '../data/store.js';
 import { api } from '../data/api.js';
 import { MultiSeriesLineChart, SegmentedRing, GroupedBarChart, fmtShort, C, CAT_COLORS } from '../components/Charts.jsx';
 import Icon from '../components/Icon.jsx';
@@ -409,12 +409,13 @@ function buildGpTimeline(p, labels, asAtIdx) {
   return { budgetLine, actualLine, forecastLine, budgetGp, recognitionGp, forecastGp };
 }
 
-// ── Cross-module monthly rollup (Labour + Material + Sub-Con) ─────────────
+// ── Cross-module monthly rollup (PM + Material + Sub-Con + Other) ─────────────
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ROLLUP_BUCKETS = [
-  { key: 'labour',   label: 'Labour',   color: CAT_COLORS['PM'], match: (c) => c === 'labour' },
+  { key: 'pm',       label: 'PM',       color: CAT_COLORS['PM'], match: (c) => c === 'pm' || c === 'labour' },
   { key: 'material', label: 'Material', color: CAT_COLORS['Material'], match: (c) => ['material', 'materials', 'hardware', 'software', 'licence', 'license'].includes(c) },
   { key: 'subcon',   label: 'Sub-Con',  color: CAT_COLORS['Subcon'],  match: (c) => ['subcon', 'subcontract', 'sub-con'].includes(c) },
+  { key: 'other',    label: 'Other LOB and MISC', color: CAT_COLORS['Other LOB and MISC'], match: (c) => ['other', 'other lob and misc', 'misc', 'lob'].includes(c) },
 ];
 
 function bucketFor(costCategory) {
@@ -506,42 +507,80 @@ function monthAbsFromDate(value) {
 }
 
 function PlannedSpendRollup({ projectId, labourPlan }) {
-  const { data, loading } = useEacMonthly(projectId);
   const rates = useRates();
+  const { requests, loading: requestsLoading } = useResourceRequests(projectId);
+  const { items: materialItems, loading: materialLoading } = useCostModule('materials', projectId);
+  const { items: subconItems, loading: subconLoading } = useCostModule('sub-con', projectId);
+  const { items: otherItems, loading: otherLoading } = useCostModule('others', projectId);
 
   const months = React.useMemo(() => {
-    if (!data) return [];
-    const rowCat = {};
-    (data.rows || []).forEach(r => { rowCat[r.id] = r.cost_category; });
-    const acc = {}; // 'year-month' → bucket sums
+    const acc = {}; // 'year-month' -> bucket sums
     function ensure(year, month) {
       const key = `${year}-${month}`;
-      if (!acc[key]) acc[key] = { year, month, labour: 0, material: 0, subcon: 0 };
+      if (!acc[key]) acc[key] = { year, month, pm: 0, material: 0, subcon: 0, other: 0 };
       return acc[key];
     }
-    (data.values || []).forEach(v => {
-      const b = bucketFor(rowCat[v.row_id]);
-      if (!b) return;
-      ensure(v.year, v.month)[b.key] += (Number(v.amount_k) || 0) * 1000; // amount_k is thousands
-    });
 
     const rateOf = (grade) => rates.find(x => x.grade === grade)?.monthly || 0;
     const planStartAbs = monthAbsFromDate(labourPlan?.allocation_start_date);
+    const nowAbs = new Date().getFullYear() * 12 + new Date().getMonth();
+    const isForecastMonth = (abs) => {
+      const q = Math.floor(abs / 3);
+      return q * 3 + 2 >= nowAbs;
+    };
     if (planStartAbs != null) {
       (labourPlan?.resources || []).forEach(resource => {
         const rate = rateOf(resource.grade);
         if (!rate) return;
         (resource.fte || []).forEach((fte, index) => {
           const abs = planStartAbs + index;
+          if (!isForecastMonth(abs)) return;
           const year = Math.floor(abs / 12);
           const month = (abs % 12) + 1;
-          ensure(year, month).labour += (Number(fte) || 0) * rate;
+          ensure(year, month).pm += (Number(fte) || 0) * rate;
         });
       });
     }
+    (requests || [])
+      .filter(r => r.status === 'open')
+      .forEach(rq => {
+        const headcount = Number(rq.headcount) || 1;
+        const fromYear = Number(rq.need_year) || (planStartAbs != null ? Math.floor(planStartAbs / 12) : new Date().getFullYear());
+        const fromMonth = Number(rq.need_month) || 1;
+        const fromAbs = fromYear * 12 + (fromMonth - 1);
+        let endAbs = fromAbs;
+        if (rq.need_end_year && rq.need_end_month) {
+          endAbs = Number(rq.need_end_year) * 12 + (Number(rq.need_end_month) - 1);
+        }
+        if (endAbs < fromAbs) endAbs = fromAbs;
+        for (let abs = fromAbs; abs <= endAbs; abs++) {
+          if (!isForecastMonth(abs)) continue;
+          const year = Math.floor(abs / 12);
+          const month = (abs % 12) + 1;
+          ensure(year, month).pm += headcount * rateOf(rq.grade);
+        }
+      });
+
+    const nextMonthStartAbs = new Date().getFullYear() * 12 + new Date().getMonth() + 1;
+    function addCostItem(bucket, item) {
+      const rows = [
+        item,
+        ...(Array.isArray(item.sub_items) ? item.sub_items : []),
+      ];
+      rows.forEach(row => {
+        const abs = monthAbsFromDate(row.estimated_received_date);
+        if (abs == null || abs < nextMonthStartAbs) return;
+        const year = Math.floor(abs / 12);
+        const month = (abs % 12) + 1;
+        ensure(year, month)[bucket] += Number(row.amount) || 0;
+      });
+    }
+    (materialItems || []).forEach(item => addCostItem('material', item));
+    (subconItems || []).forEach(item => addCostItem('subcon', item));
+    (otherItems || []).forEach(item => addCostItem('other', item));
 
     const populated = Object.values(acc)
-      .map(m => ({ ...m, total: m.labour + m.material + m.subcon }))
+      .map(m => ({ ...m, total: m.pm + m.material + m.subcon + m.other }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
     if (!populated.length) return [];
     const firstAbs = populated[0].year * 12 + (populated[0].month - 1);
@@ -553,23 +592,24 @@ function PlannedSpendRollup({ projectId, labourPlan }) {
     for (let abs = firstAbs; abs <= lastAbs; abs++) {
       const year = Math.floor(abs / 12);
       const month = (abs % 12) + 1;
-      arr.push(byAbs[abs] || { year, month, labour: 0, material: 0, subcon: 0, total: 0 });
+      arr.push(byAbs[abs] || { year, month, pm: 0, material: 0, subcon: 0, other: 0, total: 0 });
     }
     // mark first month of each year for the axis label
     let lastYear = null;
     arr.forEach(m => { m.showYear = m.year !== lastYear; lastYear = m.year; });
     return arr;
-  }, [data, labourPlan, rates]);
+  }, [labourPlan, materialItems, otherItems, requests, rates, subconItems]);
 
   const totals = React.useMemo(() => {
     const t = months.reduce((a, m) => ({
-      labour: a.labour + m.labour, material: a.material + m.material,
-      subcon: a.subcon + m.subcon, total: a.total + m.total,
-    }), { labour: 0, material: 0, subcon: 0, total: 0 });
+      pm: a.pm + m.pm, material: a.material + m.material,
+      subcon: a.subcon + m.subcon, other: a.other + m.other, total: a.total + m.total,
+    }), { pm: 0, material: 0, subcon: 0, other: 0, total: 0 });
     const peak = months.reduce((best, m) => (m.total > (best?.total || 0) ? m : best), null);
     return { ...t, peak };
   }, [months]);
 
+  const loading = requestsLoading || materialLoading || subconLoading || otherLoading;
   if (loading) return null;
 
   return (
@@ -578,7 +618,7 @@ function PlannedSpendRollup({ projectId, labourPlan }) {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Planned Spend by Month</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-            Cross-module rollup — Labour + Material + Sub-Con, showing the total planned spend trajectory.
+            Cross-module rollup - PM + Material + Sub-Con + Other LOB and MISC, showing the total forecast spend trajectory.
           </div>
         </div>
         <div className="chart-legend" style={{ margin: 0 }}>
@@ -597,15 +637,16 @@ function PlannedSpendRollup({ projectId, labourPlan }) {
 
       {months.length === 0 ? (
         <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-          No monthly cost plan yet. Add Labour, Material or Sub-Con lines to the monthly EAC grid to see the spend trajectory.
+          No monthly forecast yet. Add PM allocations, Material, Sub-Con or Other LOB and MISC lines to see the spend trajectory.
         </div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
             {[
-              { label: 'Labour',       value: totals.labour,   color: CAT_COLORS['PM'] },
+              { label: 'PM',           value: totals.pm,       color: CAT_COLORS['PM'] },
               { label: 'Material',     value: totals.material, color: CAT_COLORS['Material'] },
               { label: 'Sub-Con',      value: totals.subcon,   color: CAT_COLORS['Subcon'] },
+              { label: 'Other LOB and MISC', value: totals.other, color: CAT_COLORS['Other LOB and MISC'] },
               { label: 'Total planned', value: totals.total,   color: 'var(--text-1)', strong: true },
               { label: 'Peak month',   text: totals.peak ? `${MONTH_ABBR[totals.peak.month - 1]} ${totals.peak.year}` : '—',
                 sub: totals.peak ? fmtShort(totals.peak.total) : '', color: 'var(--text-1)' },
@@ -706,7 +747,7 @@ function TabOverview({ p, navigate }) {
         ))}
       </div>
 
-      {/* Cross-module monthly rollup (Labour + Material + Sub-Con) */}
+      {/* Cross-module monthly rollup (PM + Material + Sub-Con) */}
       <PlannedSpendRollup projectId={p.id} labourPlan={externalLabourPlan} />
 
       {/* Alerts */}
